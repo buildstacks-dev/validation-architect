@@ -1,0 +1,28 @@
+{
+  "name": "validation-design-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Two-agent autonomous validation-harness design: a Claude designer drives the validation-harness-design skill while a Codex stakeholder plays the domain-expert human, grounded in product docs and the human's rambling.txt.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "vda": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

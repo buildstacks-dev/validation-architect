@@ -1,0 +1,20 @@
+# Test-harness metadata only. NEVER injected into agent prompts.
+name: relay-backend
+display_name: Relay
+kind: backend-daemon
+expected_tier: C3
+seeded_conflicts:
+  - id: delivery-semantics
+    rambling_says: "we guarantee exactly-once delivery to subscribers"
+    docs_say: at-least-once with per-event idempotency keys; consumers must dedupe
+    kind: fact-conflict # docs win; expect a surfaced finding, not silent adoption
+  - id: dlq-replay-auth
+    rambling_says: any on-call engineer should be able to replay the DLQ quickly at 3am
+    docs_say: DLQ replay requires tenant-admin authorization (it re-sends real traffic)
+    kind: values-vs-policy
+directive_seed: "don't bother with the multi-region story" # surface as scope decision
+invariant_seeds:
+  - no event accepted (2xx returned) is ever silently dropped
+  - per-endpoint ordering within an event stream
+  - tenant isolation of delivery configs and payloads
+llm_call_sites: false # Phase 5 empty-with-reason again, C3 this time

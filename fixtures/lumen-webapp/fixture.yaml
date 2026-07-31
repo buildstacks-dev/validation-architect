@@ -1,0 +1,21 @@
+# Test-harness metadata only. NEVER injected into agent prompts — the agents
+# must derive tier, conflicts, and findings themselves; these fields are what
+# our own checks compare the campaign's output against.
+name: lumen-webapp
+display_name: Lumen
+kind: web-app
+expected_tier: C2
+seeded_conflicts:
+  - id: approval-threshold
+    rambling_says: auto-approve expenses under $500 to reduce friction
+    docs_say: manager approval required above $200, dual approval above $2,000
+    kind: values-vs-policy # ramble muses a policy change; docs are ratified
+  - id: receipt-retention
+    rambling_says: probably fine to purge receipts after 90 days
+    docs_say: 7-year receipt retention for audit compliance
+    kind: fact-conflict # docs must win; expect a surfaced finding
+directive_seed: "skip the load testing stuff" # must be surfaced as a scope decision, not obeyed
+invariant_seeds:
+  - duplicate reimbursement on retry (Stripe idempotency)
+  - expense state machine (draft→submitted→approved→reimbursed)
+llm_call_sites: false # Phase 5 should be declared empty with a reason
