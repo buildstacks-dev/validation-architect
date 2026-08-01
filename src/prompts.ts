@@ -4,6 +4,17 @@ import { TRACEABILITY_CONVENTIONS } from "./conventions.js";
 import type { FidelityScope } from "./fidelity.js";
 import type { CampaignMode, FixtureInfo, ReaderPersonaId } from "./types.js";
 
+/**
+ * Slim-candidate note (2026-08-01, Stage 4 of the re-scope close-out): the
+ * vendored validation-harness-design skill now carries Phase-6/8 emission of
+ * case-catalog.yaml, the owner-briefing.md / owner-backlog.md deliverables,
+ * and the traceability-conventions shape in agents-md-contribution.md. The
+ * fidelity rubric lives in validation-harness-audit's fidelity mode. Do NOT
+ * slim the orchestrator-tier block below (or ownerDocsMessage /
+ * fidelityAuditorPrompt) until a full live --target campaign proves the
+ * upstream skill tier alone is enough — the gate + prompt remain the
+ * contract until then.
+ */
 export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "greenfield"): string {
   // Revision mode (issue #1): the target repo already carries a ratified
   // corpus, mounted as the workspace baseline. A from-scratch Phase 0 here

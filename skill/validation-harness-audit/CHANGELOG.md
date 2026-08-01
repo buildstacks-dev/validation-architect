@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+Enablement promotions from the validation-architect re-scope (2026-08-01).
+
+- New `fidelity` mode: per-wave / per-ticket judgment pass over a product repo whose deterministic closure (`validation-trace`) is already green. Four axes (seed coverage, negative-control reality, oracle match, no quiet narrowing); findings only — never propose a patch. Distinct from campaign-scale design-conformance audit and from `verify`/`harden`.
+- Design-time artifact list updated to include `case-catalog.yaml` and the owner documents (`owner-briefing.md`, `owner-backlog.md`).
+
 ## 0.4.0
 
 Aligned with validation-harness-design 0.4.0 (the rightsizing revision derived from the first full brownfield campaign).

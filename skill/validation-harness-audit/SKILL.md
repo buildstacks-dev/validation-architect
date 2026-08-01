@@ -24,7 +24,7 @@ The assurance conclusion must always be scoped to a defined system, revision, en
 
 validation-harness-design and this skill form one loop over the life of a product: **design → build → audit → revise**.
 
-- **Design time.** validation-harness-design produces the durable harness spec: a reconciled system map (`system-map.md`), falsifiable invariants (`invariants.md`), a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with committed golden sets, a traced case catalog (`case-catalog.md`), a proposed agent-instructions section (`agents-md-contribution.md`) that routes future coding agents to these artifacts, and `validation-policy.yaml` — the machine-readable declaration of the five validation layers (invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening), gates, thresholds, obligations, artifact locations, and any harness-coexistence constraints.
+- **Design time.** validation-harness-design produces the durable harness spec: a reconciled system map (`system-map.md`), falsifiable invariants (`invariants.md`), a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with committed golden sets, a traced case catalog (`case-catalog.md` + machine-readable `case-catalog.yaml`), owner-facing documents (`owner-briefing.md`, `owner-backlog.md`), a proposed agent-instructions section (`agents-md-contribution.md`) that routes future coding agents to these artifacts and the traceability conventions, and `validation-policy.yaml` — the machine-readable declaration of the five validation layers (invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening), gates, thresholds, obligations, artifact locations, and any harness-coexistence constraints.
 - **Audit time (this skill).** Measure what was actually built against what was declared, and against the criticality the system actually carries. The policy file is the diff surface: a validation lane the policy declares empty with a reason is a decision; a lane that is simply absent is a finding.
 - **Findings routing.** Case-level gaps — a missing test, a weak oracle, an unexercised failure mode — are remediated here in `harden` mode. Structural findings — a boundary map that contradicts the architecture, a mis-placed lane, invariants that no longer describe the system — are routed to validation-harness-design's `harness-revision` mode; do not pile case fixes onto a wrongly shaped harness.
 - **Shared discipline.** Golden sets are authored before prompt tuning, never after; audit corpora and holdouts are never rewritten to match fixes; every deterministic defect surfaced by a live run or eval campaign deposits a deterministic detector in the same change.
@@ -55,9 +55,10 @@ Resolve the mode from the user’s request. Explicit mode wins.
 - `design`: Produce the assurance strategy and validation plan without modifying production or test code.
 - `harden`: Implement approved validation improvements and limited testability changes.
 - `verify`: Independently evaluate a defined revision and evidence package without implementing fixes.
+- `fidelity`: Per-wave / per-ticket judgment pass over a product repo that already carries a ratified design corpus and an implemented (or partially implemented) test tree. Answers the one question deterministic closure cannot: do the citing specs actually falsify their ratified seeds, or has the case been quietly weakened? Findings only — never propose a patch, never edit a file. See [Fidelity mode](#fidelity-mode) below.
 - `full`: Profile, assess, design, harden, independently verify, and report.
 
-Default to `assess` when the user asks to review or audit. Use `full` when the user asks to improve, harden, reach production-grade validation, or execute the complete lifecycle. Do not make repository changes unless the selected mode permits them.
+Default to `assess` when the user asks to review or audit. Use `full` when the user asks to improve, harden, reach production-grade validation, or execute the complete lifecycle. Use `fidelity` when the user (or the validation-architect CLI) asks for a per-wave / per-PR fidelity audit. Do not make repository changes unless the selected mode permits them — `fidelity` never does.
 
 `design` mode plans remediation for a system that already exists. For a harness that does not exist yet — a new product, feature, or module with no code — use validation-harness-design instead.
 
@@ -406,12 +407,28 @@ The work is complete only when:
 9. Residual risks, unknowns, assumptions, and acceptance authority are explicit.
 10. Another reviewer can reproduce the conclusion from the retained artifacts.
 
+## Fidelity mode
+
+A scoped, findings-only judgment pass. Distinct from campaign-scale design-conformance audit and from `verify`/`harden`: the product repo already has a ratified corpus and citing specs; a deterministic closure check (`validation-trace`) has already passed; this mode asks whether those specs are faithful to the ratified seeds.
+
+**Preconditions.** Refuse (do not invent findings about missing files) when closure is red — fix closure before asking for judgment. Scope is exhaustive within a wave or an explicit ticket set; do not audit families outside the scope.
+
+**Rubric — four axes.** For each scoped implementable family with citing specs:
+
+1. **Seed coverage.** Every enumeration item the catalog row (or its cited contract clause) names has a real assertion in some citing spec.
+2. **Negative-control reality.** The detector can actually fire: a seeded violation would fail the test. A constant-pass, assert-on-setup-only, tautology, or a "negative control" that never plants the violation is a finding — **blocking** tier by rule, because closure now overstates the harness.
+3. **Oracle match.** The assertion kind matches the row's declared oracle.
+4. **No quiet narrowing.** The implemented case has not been weakened relative to the ratified seed text (narrowed input domain, loosened tolerance, dropped failure mode, a skipped/`it.todo` carrying the citation while the catalog counts the family covered).
+
+**Hard rules.** Read-only; **findings only — never propose a patch**, never emit a diff, never rewrite a test body. Never relitigate ratified prunes, blocked cells, or recorded decisions. Never audit taste. Evidence quotes the ratified text AND the spec text, with file paths. Output uses the same `AUD-xxx (tier) — <path> — <claim>` headers as other modes (the `AUD-9xx` range is reserved for fidelity passes when an orchestrator assigns iteration numbers). End with a "What I checked" coverage section listing every scoped family — mandatory even at zero findings. Remediation belongs to the product repo's coding agents (via `implement-harness-ticket`); structural findings re-enter validation-harness-design's `harness-revision` mode.
+
 ## Invocation examples
 
 - `Use $validation-harness-audit in assess mode. Determine whether this CLI has sufficient validation for local use on real repositories.`
 - `Use $validation-harness-audit in full mode. Harden this multi-tenant service for the stated production target.`
 - `Use $validation-harness-audit in verify mode against commit <sha> and the existing .validation evidence package.`
 - `Use $validation-harness-audit in assess mode. Diff the built harness against validation-policy.yaml and report lane conformance.`
+- `Use $validation-harness-audit in fidelity mode scoped to Wave 1. Findings only — do not edit any file.`
 - `Profile this flight-control repository, but do not edit or run hardware-facing commands.`
 
 For environments without skill support, use [STANDALONE_REVIEWER_PROMPT.md](STANDALONE_REVIEWER_PROMPT.md).

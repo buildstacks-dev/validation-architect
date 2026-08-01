@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+Enablement promotions from the validation-architect re-scope (2026-08-01), so the skill carries what the orchestrator previously enforced alone.
+
+- Phase 6 + deliverable 7: emit `case-catalog.yaml` (schema `validation-architect/case-catalog/v1`) alongside `case-catalog.md` at matrix closure; the two must agree; regenerate when the markdown catalog or backlog family claims change.
+- Phase 8 deliverables 11–12: `owner-briefing.md` (ratification-moment narrative, fixed section shape) and `owner-backlog.md` (living consequence-language companion per wave/ticket); both non-normative by construction. Adversarial reader test extended to cover them.
+- Deliverable 10 (`agents-md-contribution.md`): routes coding agents to update both catalog surfaces, lists the normative traceability conventions the `validation-trace` CLI enforces, and names the `implement-harness-ticket` skill as the standard implementation path.
+
 ## 0.4.0
 
 Rightsizing revision, derived from the first full brownfield application (Operon, 2026-07-29/30, `parallel-greenfield`): the campaign produced strong artifacts and found two real C3 production defects, but stalled at 74 executable tests because a single global expansion gate froze catalog growth behind out-of-layer conditions (live target, eval threshold, CI authorization).
