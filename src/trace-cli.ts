@@ -80,7 +80,10 @@ function cmdCheck(args: string[]): number {
   }
   const opts: Parameters<typeof runTrace>[1] = {};
   const manifest = flags.get("manifest");
-  if (manifest) opts.manifestPath = manifest;
+  // Resolve --manifest against cwd so an absolute OR cwd-relative path works
+  // when the enablement bundle hasn't been installed into the target yet
+  // (the Operon pilot smoke case).
+  if (manifest) opts.manifestPath = resolve(manifest);
   const tests = flags.get("tests");
   if (tests) opts.testsRoot = tests;
 

@@ -139,6 +139,10 @@ export function ownerBacklogNames(text: string): Map<string, string> {
 export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResult {
   const checks: TraceChecks = { agreement: [], forward: [], backward: [], statusHonesty: [] };
   const manifestRel = opts.manifestPath ?? join("validation-design", "case-catalog.yaml");
+  // Absolute --manifest paths win; relative ones resolve against the target
+  // root (the product-repo convention: the enablement bundle lands next to
+  // the tests). Callers that keep the manifest outside the target pass an
+  // absolute path.
   const manifestAbs = manifestRel.startsWith("/") ? manifestRel : join(targetRoot, manifestRel);
 
   const fail = (reds: string[]): TraceResult => ({

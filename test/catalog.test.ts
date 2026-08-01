@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkCatalogAgreement,
   expandCellId,
+  extractCfTokens,
   generateManifest,
   parseBacklogMarkdown,
   parseCatalogMarkdown,
@@ -47,6 +48,13 @@ describe("expandCellId", () => {
 
   it("rejects non-CF garbage", () => {
     expect(expandCellId("HB-014").ids).toEqual([]);
+  });
+});
+
+describe("extractCfTokens", () => {
+  it("does not pull CF-fragments out of non-family ids (B01-CF-11)", () => {
+    expect(extractCfTokens('expect(failedIds).toContain("B01-CF-11");')).toEqual([]);
+    expect(extractCfTokens("// CF-B01-L3 — the GitHub live smoke")).toEqual(["CF-B01-L3"]);
   });
 });
 

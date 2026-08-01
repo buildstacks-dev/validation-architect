@@ -97,8 +97,14 @@ export function expandCellId(raw: string): { ids: string[]; covers?: string[] } 
   return { ids: [] };
 }
 
-/** CF tokens in free text (backlog entries, spec headers), brace forms included. */
-const CF_TOKEN_RE = /CF-[A-Za-z0-9-]+-\{[^}]*\}|CF-[A-Za-z0-9*/+-]+[A-Za-z0-9*]/g;
+/**
+ * CF tokens in free text (backlog entries, spec headers), brace forms
+ * included. The lookbehind refuses mid-token matches so a conformance-suite
+ * id like `B01-CF-11` (Operon github-double) is not mistaken for a family
+ * citation `CF-11`.
+ */
+const CF_TOKEN_RE =
+  /(?<![A-Za-z0-9-])CF-[A-Za-z0-9-]+-\{[^}]*\}|(?<![A-Za-z0-9-])CF-[A-Za-z0-9*/+-]+[A-Za-z0-9*]/g;
 
 export function extractCfTokens(text: string): string[] {
   const out = new Set<string>();
