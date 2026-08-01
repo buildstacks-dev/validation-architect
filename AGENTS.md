@@ -62,4 +62,5 @@ and the anti-yes-loop design.
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
 fixtures, cli) · `fixtures/` three synthetic products (web app / backend
-daemon / agentic LLM) · `runs/` gitignored campaign outputs.
+daemon / agentic LLM) plus `operon`, the real-target pilot docs snapshot ·
+`runs/` gitignored campaign outputs.

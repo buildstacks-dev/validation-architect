@@ -1,0 +1,7 @@
+# Test-harness metadata only. NEVER injected into agent prompts.
+# Real target (not an eval fixture): no seeded conflicts, no expected tier —
+# the campaign derives everything from the corpus and rambling.txt.
+name: operon
+display_name: Operon
+kind: agentic-org-runtime
+real_target: true # a real product's docs snapshot (operon-2026-07-31), not a synthetic eval fixture

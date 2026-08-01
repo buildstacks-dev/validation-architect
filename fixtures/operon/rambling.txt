@@ -1,0 +1,131 @@
+(Provenance: channeled by Claude at Bikram's explicit request on 2026-07-31,
+from his standing directives, recorded decisions, and session history. He
+asked for this file to be written rather than writing it himself; treat it as
+his channel with that caveat. He can and will append below the marker at the
+bottom if he wants to correct anything mid-campaign.)
+
+OK so here's where my head is at with Operon and why we're doing this
+rebuild.
+
+Operon is an org runtime. A standing team of AI agents that plans, builds,
+reviews, and ships a software product through a real private GitHub repo,
+spending real provider tokens, with me gating only the critical stuff. That
+sentence should scare you the right amount. This thing writes to GitHub. It
+spends money. It runs on a schedule when I'm not looking. It manages durable
+state under ~/.operon that other runs depend on. When I think about what
+validation has to protect, it's in roughly this order:
+
+1. Money and approvals. It must never spend past its caps and it must never
+   execute a gated operation without the approval actually existing. The
+   approvals store treats CLI self-approval as tampering, on purpose. That
+   property is sacred.
+2. Durable state and people's work. ~/.operon state, the managed clones. A
+   turn that dies at its budget cap can leave real uncommitted work in a
+   managed clone, and the next turn must not eat it. We had a whole class of
+   bugs about this. Losing a user's work is unforgivable.
+3. Git correctness. There was a defect where a guessed default branch made
+   the loop silently diff against the wrong tree. Silent wrongness is the
+   worst category. Wrong-and-loud I can live with.
+4. Secrets. Prompts, logs, telemetry — there's one secret-pattern list and
+   everything redacts through it. If a token ever lands in a provider prompt
+   or a run log we have failed.
+5. Honesty of the whole apparatus. Green must mean something. More below,
+   this one is personal.
+
+Some history you need, because it explains my values.
+
+We had a PR — #182 — where the change claimed a green test suite and the
+suite was actually red in nine places. I merged process changes after that:
+I re-run the repo's own checks by name on the exact candidate SHA before
+believing anyone, human or agent. The lesson for harness design: the harness
+should produce machine-checkable evidence, not agent testimony. If a claim
+can be faked by writing "tests passed" in a PR description, the harness
+design is wrong. Evidence over assertion, always.
+
+We had a qualification gate — the Phase 6 learning gate — that required a
+treatment arm to strictly beat control on all three learning pairs, no
+rerun allowed. A maxed-out control produced ties, ties meant invalid, and an
+objectively flawless product failed qualification on what was basically a
+coin flip. Roughly 50/50. I lived with that gate red and it taught me: a
+deterministic claim gets a deterministic gate; a stochastic claim gets a
+real statistical design with a sample size, or it gets explicit human
+judgment. What it never gets is a one-shot pass/fail coin flip that can
+block a release. If the new harness proposes evals (it should — the
+planner, the reviewer verdicts, the brief quality all have LLM judgment in
+them), design the scoring like you mean it.
+
+We had campaigns die mid-run because Codex's refresh-token rotation raced
+and killed auth. Multi-hour live runs WILL be interrupted — auth, rate
+limits, me closing a laptop. Anything long-running in this harness must
+checkpoint and resume, not restart. If a live validation layer loses three
+hours of evidence because of a token refresh, that layer is misdesigned.
+
+And the one that's currently driving me up the wall: agents trying to run
+validation get stuck on Operon's own approval queue. "Budget for this turn
+exceeded, do you approve?" — and everything stalls until I type a command.
+That's the approvals system doing its job in production and being a
+disaster in testing. So, a hard requirement, please treat it as such: the
+live-sandbox layer of this harness must run unattended, start to finish,
+with ZERO human approval decisions, in a sandbox org. If that needs a
+designed test-mode policy profile — raised ceilings, auto-granted
+budget-tier approvals, sandbox orgs only — design it as an explicit,
+ratified surface. Not a backdoor, not an env var someone finds in a shell
+history. And even in that loosened profile, external publishing and
+anything touching a non-sandbox repo stays hard-gated. The old
+proportionality benchmark literally targeted "zero human decisions" as a
+metric, so this has precedent: unattended runnability is a designed
+property, not an accident.
+
+My engineering values, the short version. I believe in the
+engineering-heavy loop: orchestrator-owned pipelines, deterministic gates,
+rich briefs. Throwing tickets at a model and hoping doesn't work. Where a
+gate can decide, a gate decides; model judgment is for where judgment is
+actually needed. Related: builder and reviewer are different providers on
+purpose — uncorrelated blind spots. Any validation of the review pipeline
+that quietly collapses to one provider is testing a different, weaker
+system.
+
+Proportionality. I once watched a milestone balloon into process theater
+and I wrote the rule down: one milestone, one ticket, one PR; resume over
+restart; agree on the analysis before making systemic changes. Apply that
+to the harness itself. I do not want the 83-contract apparatus back. The
+old machinery was impressive and exhausting — evidence promotion,
+attestation chains, campaign manifests. Some of that protected real things
+(the release-bytes attestation caught a real class of problem) and some of
+it was ceremony. Rebuild what earns its keep at the criticality of the
+claim it protects, at the cheapest layer that can falsify that claim.
+Offline and hermetic first. Live and expensive only where nothing cheaper
+can falsify the claim. When in doubt, smaller.
+
+Models: I run flagships. Budget caps are the spend control, not model
+downgrades. And models get swapped — we did a ratified refresh mid-July.
+A model swap should be a safe, boring operation: the harness should tell
+me quickly whether the new model still clears the bars, which is another
+reason the eval layer needs real design.
+
+Maintenance reality: agents will maintain this harness, not me. Every
+defect fix deposits its detector — that rule held up well and it stays.
+Detectors need to be cheap, deterministic, and impossible to ignore. The
+whole thing should run from one command with no runbook archaeology. If a
+new contributor (human or agent) can't figure out how to run validation in
+thirty seconds, we've rebuilt the wrong thing.
+
+Scope honesty for this campaign: release gating is suspended right now — we
+archived the old qualification machinery with everything else. The new
+harness owns that ground eventually, so design its replacement, but
+proportionate (see above — I want something I trust AND afford, in tokens
+and in my attention). Sandbox live targets exist: alpha and beta apps under
+my GitHub account, registered in apps.yaml. Consequence class: this system
+spends money and writes to repos, so treat it as high-consequence — but
+it's also currently a solo-operator product, not a bank. Calibrate there.
+
+One process note: the incumbent suite is archived and off-limits — the
+whole point of this exercise is a design unanchored from it. Don't ask
+what the old tests covered. The docs and this ramble are the inputs.
+
+What does winning look like? I stop reading every diff. The org runs a
+scheduled turn while I sleep, and in the morning the evidence tells me in
+one screen whether anything needs me. Validation runs unattended, gates
+what matters, stays quiet about what doesn't, and never, ever lies green.
+
+--- live additions below this line ---
