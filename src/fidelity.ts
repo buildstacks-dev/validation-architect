@@ -120,6 +120,22 @@ export function checkFidelityReportFormat(text: string): string[] {
   return violations;
 }
 
+/**
+ * The completeness half of the report contract: the rubric makes the
+ * "What I checked" coverage section mandatory even at zero findings, so an
+ * auditor session that ends on mid-work narration (observed live: "waiting
+ * for the remaining sub-passes to complete") cannot read as a clean pass.
+ * Fail-closed, same discipline as the no-patches guard.
+ */
+export function checkFidelityReportCompleteness(text: string): string[] {
+  if (!/what i checked/i.test(text)) {
+    return [
+      'report lacks the mandatory "What I checked" coverage section — an incomplete auditor session must not read as a clean pass',
+    ];
+  }
+  return [];
+}
+
 export interface FidelityOptions extends TraceOptions {
   wave?: string;
   tickets?: string[];
@@ -165,7 +181,7 @@ export async function runFidelityAudit(
   });
   const prompt = fidelityAuditorPrompt(scope, trace.manifest.product);
   const text = await auditor.run(prompt, targetRoot);
-  const violations = checkFidelityReportFormat(text);
+  const violations = [...checkFidelityReportFormat(text), ...checkFidelityReportCompleteness(text)];
   const findings = parseFindings(text, FIDELITY_ITERATION);
 
   const header = `# Fidelity audit${trace.manifest.product ? ` — ${trace.manifest.product}` : ""}

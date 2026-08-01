@@ -289,6 +289,7 @@ AUD-901 (blocking) — <spec or catalog file> — <the specific fidelity gap>
 - Tier: blocking (a scoped promise is unprotected while closure claims otherwise — includes every axis-b finding) / significant (weakening that leaves partial protection) / minor (worth recording; never style).
 - Below each header: the catalog/contract quote, the spec quote, and why the second fails the first.
 - End with a "What I checked" section: every scoped family, the files opened for it, and the axes applied. Mandatory even with zero findings — and zero findings on a freshly implemented wave is possible but suspicious; never manufacture findings, never suppress real ones.
+- Your FINAL message is the report itself, complete — never a progress note. You have no sub-agents, sub-passes, or parallel helpers; do the whole audit in this one session and do not end your turn until the full report (findings + "What I checked") is written. A message like "waiting for remaining passes" is a protocol violation.
 
 Begin: read the scoped catalog rows, then the citing specs, then write the report. No preamble — the report only.`;
 }

@@ -107,6 +107,9 @@ describe("the fidelity prompt", () => {
     expect(prompt).toContain("never propose a patch");
     expect(prompt).toContain("Never relitigate ratified decisions");
     expect(prompt).toContain("AUD-901");
+    // the anti-yield rule (a live session once ended on mid-work narration)
+    expect(prompt).toContain("no sub-agents, sub-passes, or parallel helpers");
+    expect(prompt).toContain('"What I checked"');
   });
 });
 
@@ -165,5 +168,18 @@ Fix it like this:
   it("GREEN: findings-only prose passes, and markdown horizontal rules are not diff hunks", () => {
     expect(checkFidelityReportFormat(WEAKENED_FINDING_REPORT)).toEqual([]);
     expect(checkFidelityReportFormat("above\n\n---\n\nbelow")).toEqual([]);
+  });
+
+  it("RED: mid-work narration without the mandatory 'What I checked' section must not read as a clean pass", async () => {
+    // Observed live (Operon wave-0/1 pass, 2026-08-01): the auditor yielded
+    // its turn with "waiting for the remaining sub-passes to complete" — the
+    // runner returned that narration as the final text, and it parsed as a
+    // clean zero-finding report. Fail closed instead.
+    const narration =
+      "Verified the CF-B17 driver context directly. Now waiting for the remaining sub-passes to complete; I'll write the final report afterwards.";
+    const res = await runFidelityAudit(scripted(narration), weakened, { tickets: ["HB-001"] });
+    expect(res.status).toBe("protocol-violation");
+    expect(res.violations.some((v) => v.includes("What I checked"))).toBe(true);
+    expect(res.report).toContain("PROTOCOL-VIOLATION");
   });
 });
