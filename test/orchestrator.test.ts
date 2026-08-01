@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { serializeManifest, type CaseCatalogManifest } from "../src/catalog.js";
 import { runCampaign, type OrchestratorDeps } from "../src/orchestrator.js";
+import { ownerDocsMessage } from "../src/prompts.js";
 import { RambleWatcher } from "../src/ramble.js";
 import { Transcript, readTranscript } from "../src/transcript.js";
 import type { AuditState, RunConfig, RunState } from "../src/types.js";
@@ -48,6 +49,28 @@ function doneAudit(): AuditState {
     findings: [],
     dispositions: {},
     verdict: "clean",
+  };
+}
+
+/** Seed the two owner-facing docs the completion gate requires (issues #2/#3). */
+function writeOwnerDocs(root: string = dir): void {
+  mkdirSync(join(root, "validation-design"), { recursive: true });
+  writeFileSync(join(root, "validation-design", "owner-briefing.md"), "# Owner briefing\n\nStakes.\n");
+  writeFileSync(join(root, "validation-design", "owner-backlog.md"), "# Owner backlog\n\n### HB-001 — First ticket\n");
+}
+
+/**
+ * Designer script step for the owner-docs phase: write the two files when
+ * asked, then emit CAMPAIGN-COMPLETE. Used by every test that walks the
+ * audit loop all the way to completion.
+ */
+function ownerDocsStep(): ScriptStep {
+  return (incoming) => {
+    if (!incoming.includes("owner-briefing.md") || !incoming.includes("owner-backlog.md")) {
+      return "unexpected — expected the owner-docs instruction\n<<AWAITING-HUMAN>>";
+    }
+    writeOwnerDocs();
+    return "Owner briefing and backlog companion written.\n<<CAMPAIGN-COMPLETE>>";
   };
 }
 
@@ -360,6 +383,7 @@ describe("runCampaign audit stage", () => {
           incoming.includes('verdict "clean"')
             ? "Audit section written to ratification-package.md.\n<<CAMPAIGN-COMPLETE>>"
             : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
       ],
       ["ack", "CONFIRMED: audit dispositions — checked: invariants.md rev 6"],
       [
@@ -403,6 +427,7 @@ describe("runCampaign audit stage", () => {
           incoming.includes('verdict "clean-with-disputes"')
             ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
             : "wrong verdict\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
       ],
       ["ack", "CONFIRMED: dispute upheld — the auditor relitigated ratified decision D-004"],
       [
@@ -420,6 +445,7 @@ describe("runCampaign audit stage", () => {
     for (let i = 0; i < 13; i++) designerScript.push(`window chatter ${i}\n<<AWAITING-HUMAN>>`);
     designerScript.push("ack verification\n<<CAMPAIGN-COMPLETE>>");
     designerScript.push("Audit section written.\n<<CAMPAIGN-COMPLETE>>");
+    designerScript.push(ownerDocsStep());
     const stakeholderScript: ScriptStep[] = ["ack"];
     for (let i = 0; i < 12; i++) stakeholderScript.push(`still discussing ${i}`);
 
@@ -453,6 +479,7 @@ describe("runCampaign audit stage", () => {
           incoming.includes('verdict "reservations"')
             ? "Audit section written, reservations recorded.\n<<CAMPAIGN-COMPLETE>>"
             : "wrong verdict\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
       ],
       ["ack", "CONFIRMED: dispositions — checked"],
       [
@@ -487,6 +514,7 @@ describe("runCampaign audit stage", () => {
           incoming.includes('verdict "clean"')
             ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
             : "unexpected\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
       ],
       ["ack"],
       ["No findings.\n\nWhat I checked: the full corpus against the conformance rubric."],
@@ -507,6 +535,7 @@ describe("runCampaign audit stage", () => {
             ? "ack verification\n<<CAMPAIGN-COMPLETE>>"
             : "unexpected resume point\n<<AWAITING-HUMAN>>",
         "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
+        ownerDocsStep(),
       ],
       [],
       ["AUD-101: VERIFIED — fix landed"],
@@ -542,6 +571,7 @@ describe("runCampaign audit stage", () => {
           present = true;
           return "Actually written now.\n<<CAMPAIGN-COMPLETE>>";
         },
+        ownerDocsStep(),
       ],
       [],
       [],
@@ -632,6 +662,7 @@ describe("runCampaign audit stage", () => {
           fixed = true;
           return "Manifest repaired.\n<<CAMPAIGN-COMPLETE>>";
         },
+        ownerDocsStep(),
       ],
       [],
       [],
@@ -652,5 +683,56 @@ describe("runCampaign audit stage", () => {
     expect(fixed).toBe(true);
     const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
     expect(notes.some((n) => n.note?.includes("catalog agreement"))).toBe(true);
+  });
+
+  it("gates completion on owner-briefing.md and owner-backlog.md after the Audit section", async () => {
+    const { deps } = makeDeps(
+      [
+        "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
+        // First attempt: claim done without writing the files → rejected.
+        "I forgot the owner docs but I'm done anyway.\n<<CAMPAIGN-COMPLETE>>",
+        ownerDocsStep(),
+      ],
+      [],
+      [],
+    );
+    const state = makeState(makeConfig(), { readersRan: true });
+    state.audit = {
+      iteration: 2,
+      phase: "package",
+      windowExchanges: 0,
+      findings: [],
+      dispositions: {},
+      verdict: "clean",
+    };
+    state.pending = { to: "designer", text: "[Environment: write the Audit section]" };
+
+    const final = await runCampaign(deps, state, kickoffs);
+    expect(final.status).toBe("completed");
+    expect(final.audit?.phase).toBe("done");
+    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
+    expect(notes.some((n) => n.note?.includes("requesting owner-briefing.md"))).toBe(true);
+    expect(notes.some((n) => n.note?.includes("missing owner docs"))).toBe(true);
+  });
+
+  it("resumes mid-owner-docs phase from a pending designer message", async () => {
+    const { deps, stakeholder } = makeDeps([ownerDocsStep()], []);
+    const state = makeState(makeConfig(), { readersRan: true });
+    state.audit = {
+      iteration: 2,
+      phase: "owner-docs",
+      windowExchanges: 0,
+      findings: [],
+      dispositions: {},
+      verdict: "clean",
+    };
+    state.pending = { to: "designer", text: ownerDocsMessage() };
+    state.exchanges = 25;
+
+    const final = await runCampaign(deps, state, kickoffs);
+    expect(final.status).toBe("completed");
+    expect(stakeholder.received).toHaveLength(0);
+    expect(existsSync(join(dir, "validation-design", "owner-briefing.md"))).toBe(true);
+    expect(existsSync(join(dir, "validation-design", "owner-backlog.md"))).toBe(true);
   });
 });

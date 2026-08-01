@@ -16,7 +16,7 @@ Read that file now and follow it as the canonical workflow, reading its referenc
 
 - Scope mode: product. Target: production ${fixture.displayName}.
 - The ratified product and architecture documents are in ./docs/ — they are the source of product truth. There is no incumbent test suite; this is a greenfield design (no coexistence posture needed).
-- The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md).
+- The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md, owner-briefing.md, owner-backlog.md).
 - Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is specified in harness-backlog.md, not built. Catalog derivation is design work, not implementation: case-catalog.md must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
 
 ## Machine-readable catalog + AGENTS.md conventions (orchestrator requirements)
@@ -262,6 +262,40 @@ export function catalogAgreementRequiredMessage(problems: string[]): string {
   return `[Environment: CAMPAIGN-COMPLETE rejected — the case-catalog manifest does not agree with case-catalog.md (or is missing/unparseable). Fix the disagreement, then emit <<CAMPAIGN-COMPLETE>> again. Findings:
 
 ${problems.map((p) => `- ${p}`).join("\n")}]`;
+}
+
+/**
+ * Owner-facing documents (issues #2 and #3). Sent once the audit loop has
+ * closed and the ratification package's Audit section is written — a
+ * separate environment message so the designer treats them as a distinct
+ * pass, not an afterthought inside the package.
+ */
+export function ownerDocsMessage(): string {
+  return `[Environment: the audit loop is closed and the ratification package's Audit section is written. Before the campaign can complete, write the two owner-facing documents. Both are NON-NORMATIVE by construction — generated from the ratified artifacts; if either disagrees with an artifact, the artifact wins and the disagreement is a bug in the document. Both should read aloud cleanly (audio-friendly).
+
+## 1. validation-design/owner-briefing.md (ratification moment — frozen at campaign close)
+
+Narrative, 2–4 pages, consequence language. No unexplained ID on first use; IDs appear only as parenthetical anchors. Fixed section shape:
+
+1. What this product can break (the tier, told as stakes, not as "C3")
+2. The promises (each invariant as one plain sentence)
+3. The seams (boundaries as "places where two systems can disagree about what happened")
+4. What we deliberately will NOT test, and why (pruned/thin lanes, declared-empty lanes)
+5. The decisions on your desk — one entry per ratification item, each with "what saying yes commits you to"
+6. What is still unknown (open findings, in terms of the incident you'd face, not the register ID)
+7. What gets built, in what order — one paragraph per backlog wave, in consequence language (e.g. "Wave 1 is the permission-to-effect chain — until it lands, the promise that agents can't grant themselves authority is designed but unproven"). Per-ticket depth does NOT belong here; that is the living companion.
+
+State at the top that this briefing is a summary of the ratified artifacts, not a second source of truth.
+
+## 2. validation-design/owner-backlog.md (living follow-along companion)
+
+One consequence-language paragraph per wave and per HB ticket: which promise the ticket defends, the plain story of the failure it exists to catch, and what "done" buys the owner. No unexplained ID on first use. State its non-normative status and the backlog revision it was generated from. Note that it must be regenerated when harness-backlog.md changes (the AGENTS.md contribution carries that staleness contract).
+
+When both files exist, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment rejects completion until they do.]`;
+}
+
+export function ownerDocsRequiredMessage(missing: string[]): string {
+  return `[Environment: CAMPAIGN-COMPLETE rejected — owner-facing document(s) still missing: ${missing.join(", ")}. Write them per the previous instruction (owner-briefing.md + owner-backlog.md under validation-design/), then emit <<CAMPAIGN-COMPLETE>> again.]`;
 }
 
 export function designerEmptyTurnNudge(): string {

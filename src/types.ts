@@ -67,13 +67,14 @@ export type AuditVerdict = "clean" | "clean-with-disputes" | "reservations";
  * resumes exactly. Phases: an auditor run is represented by
  * `pending.to === "auditor"` (not a phase); "window" = the capped feedback
  * window after an audit report; "package" = awaiting the designer's
- * ratification-package Audit section; "done" = final CAMPAIGN-COMPLETE
- * acceptable.
+ * ratification-package Audit section; "owner-docs" = awaiting
+ * owner-briefing.md + owner-backlog.md (issues #2/#3); "done" = final
+ * CAMPAIGN-COMPLETE acceptable.
  */
 export interface AuditState {
   /** Audit reports produced so far (0–2). */
   iteration: number;
-  phase: "window" | "package" | "done";
+  phase: "window" | "package" | "owner-docs" | "done";
   /** Stakeholder turns consumed inside the current feedback window. */
   windowExchanges: number;
   findings: AuditFinding[];

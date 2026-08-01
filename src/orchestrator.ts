@@ -14,6 +14,8 @@ import {
   auditorPrompt,
   catalogAgreementRequiredMessage,
   designerEmptyTurnNudge,
+  ownerDocsMessage,
+  ownerDocsRequiredMessage,
   rambleRefreshNote,
   readerReportMessage,
   readerTestRequiredMessage,
@@ -305,7 +307,39 @@ export async function runCampaign(
             continue;
           }
         }
-        // phase "package" with the Audit section written, or "done" (pre-set).
+        // Owner-facing documents (issues #2/#3): after the Audit section, one
+        // more environment message, then gate completion on both files.
+        if (state.audit.phase === "package") {
+          state.audit.phase = "owner-docs";
+          state.pending = { to: "designer", text: ownerDocsMessage() };
+          transcript.note("orchestrator", "audit package accepted; requesting owner-briefing.md and owner-backlog.md");
+          log("gated CAMPAIGN-COMPLETE: owner-facing documents required");
+          persist();
+          continue;
+        }
+        if (state.audit.phase === "owner-docs") {
+          const missing = (["owner-briefing.md", "owner-backlog.md"] as const).filter(
+            (name) => !existsSync(join(state.workspace, "validation-design", name)),
+          );
+          if (missing.length > 0) {
+            state.completionRejections = (state.completionRejections ?? 0) + 1;
+            if (state.completionRejections > 2) {
+              state.status = "aborted";
+              state.statusReason = `designer never wrote ${missing.join(" / ")}`;
+              persist();
+              return state;
+            }
+            transcript.note(
+              "orchestrator",
+              `CAMPAIGN-COMPLETE rejected: missing owner docs — ${missing.join(", ")}`,
+            );
+            log(`rejected CAMPAIGN-COMPLETE (missing owner docs: ${missing.join(", ")})`);
+            state.pending = { to: "designer", text: ownerDocsRequiredMessage([...missing]) };
+            persist();
+            continue;
+          }
+        }
+        // phase "owner-docs" with both files present, or "done" (pre-set).
         state.audit.phase = "done";
         state.status = "completed";
         state.pending = undefined;

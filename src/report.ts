@@ -214,8 +214,29 @@ ${warnings.map((w) => `- ${w}`).join("\n") || "(none)"}
 
 ## Ratification
 
-This design is a **draft until a human ratifies it**. Start from
-\`workspace/validation-design/ratification-package.md\`${artifacts.some((a) => a.path === "ratification-package.md") ? "" : " (⚠ missing — the designer did not write it)"}, then spot-review by risk tier.
+This design is a **draft until a human ratifies it**.
+
+**Recommended first read for the ratifying human:**
+\`workspace/validation-design/owner-briefing.md\`${
+    artifacts.some((a) => a.path === "owner-briefing.md")
+      ? ""
+      : " (⚠ missing — the designer did not write it)"
+  }
+— plain-language stakes, promises, decisions, and wave order. The formal package
+is \`workspace/validation-design/ratification-package.md\`${
+    artifacts.some((a) => a.path === "ratification-package.md")
+      ? ""
+      : " (⚠ missing — the designer did not write it)"
+  }.
+
+**Living companion while the harness is built:**
+\`workspace/validation-design/owner-backlog.md\`${
+    artifacts.some((a) => a.path === "owner-backlog.md")
+      ? ""
+      : " (⚠ missing — the designer did not write it)"
+  }
+— consequence-language paragraphs per wave and per HB ticket. Non-normative;
+regenerate when the backlog changes.
 `;
   writeFileSync(join(runDir, "report.md"), md);
   return md;

@@ -9,6 +9,8 @@ describe("TRACEABILITY_CONVENTIONS (issue #4)", () => {
     expect(TRACEABILITY_CONVENTIONS).toContain("Every implementable family owns ≥1 citing spec");
     expect(TRACEABILITY_CONVENTIONS).toContain("case-catalog.yaml");
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-trace");
+    expect(TRACEABILITY_CONVENTIONS).toContain("implement-harness-ticket");
+    expect(TRACEABILITY_CONVENTIONS).toContain("owner-backlog.md");
   });
 
   it("is embedded verbatim in the designer kickoff so every campaign emits it", () => {

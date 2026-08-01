@@ -52,6 +52,7 @@ describe("generateReport", () => {
   function writeRun(opts: {
     stakeholderTexts: string[];
     withRatification: boolean;
+    withOwnerDocs?: boolean;
     exchanges?: number;
     extraEntries?: TranscriptEntry[];
     audit?: RunState["audit"];
@@ -61,6 +62,10 @@ describe("generateReport", () => {
     writeFileSync(join(workspace, "validation-design", "invariants.md"), "# inv");
     if (opts.withRatification) {
       writeFileSync(join(workspace, "validation-design", "ratification-package.md"), "# ratify");
+    }
+    if (opts.withOwnerDocs !== false && opts.withRatification) {
+      writeFileSync(join(workspace, "validation-design", "owner-briefing.md"), "# briefing");
+      writeFileSync(join(workspace, "validation-design", "owner-backlog.md"), "# backlog");
     }
     writeFileSync(join(workspace, "rambling.txt"), "thoughts");
     const state: RunState = {
@@ -106,6 +111,9 @@ describe("generateReport", () => {
     expect(md).toContain("human-amplified");
     expect(md).not.toContain("RUBBER-STAMP SUSPECT");
     expect(md).not.toContain("⚠ missing");
+    expect(md).toContain("owner-briefing.md");
+    expect(md).toContain("owner-backlog.md");
+    expect(md).toContain("Recommended first read for the ratifying human");
   });
 
   it("flags a rubber-stamp-suspect run and a missing ratification package", () => {
