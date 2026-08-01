@@ -86,8 +86,8 @@ families:
     layers: "2"
     risk: E3
     oracle: evid
-    ticket: HB-042
-    wave: "4"
+    ticket: HB-032
+    wave: "3"
   - id: CF-J03-S
     section: Journey matrix
     status: implementable
@@ -158,12 +158,16 @@ families:
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-031
+    wave: "3"
   - id: CF-J04-A
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: STD
     oracle: state
+    ticket: HB-031
+    wave: "3"
   - id: CF-J05-S
     section: Journey matrix
     status: implementable
@@ -331,18 +335,24 @@ families:
     layers: "2"
     risk: STD
     oracle: state
+    ticket: HB-021
+    wave: "2"
   - id: CF-J09-R
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: evid
+    ticket: HB-021
+    wave: "2"
   - id: CF-J09-I
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-021
+    wave: "2"
   - id: CF-J09-RC
     section: Journey matrix
     status: implementable
@@ -357,6 +367,8 @@ families:
     layers: "2"
     risk: STD
     oracle: state
+    ticket: HB-021
+    wave: "2"
   - id: CF-J10-S
     section: Journey matrix
     status: implementable
@@ -404,30 +416,40 @@ families:
     layers: "2"
     risk: STD
     oracle: state
+    ticket: HB-048
+    wave: "4"
   - id: CF-J11-R
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E1
     oracle: refusal
+    ticket: HB-048
+    wave: "4"
   - id: CF-J11-I
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E3
     oracle: evid
+    ticket: HB-048
+    wave: "4"
   - id: CF-J11-RC
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E1
     oracle: evid
+    ticket: HB-048
+    wave: "4"
   - id: CF-J11-A
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: THIN (render)
     oracle: evid
+    ticket: HB-048
+    wave: "4"
   - id: CF-J12-S
     section: Journey matrix
     status: implementable
@@ -638,24 +660,32 @@ families:
     layers: "2"
     risk: E2/E3
     oracle: state+evid
+    ticket: HB-049
+    wave: "4"
   - id: CF-J18-R
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: evid
+    ticket: HB-049
+    wave: "4"
   - id: CF-J18-I
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E3
     oracle: evid
+    ticket: HB-049
+    wave: "4"
   - id: CF-J18-RC
     section: Journey matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-049
+    wave: "4"
   - id: CF-J18-A
     section: Journey matrix
     status: implementable
@@ -774,46 +804,62 @@ families:
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-041
+    wave: "4"
   - id: CF-SM-PLAN-I
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-041
+    wave: "4"
   - id: CF-SM-PLAN-R
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-041
+    wave: "4"
   - id: CF-SM-PLAN-C
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-041
+    wave: "4"
   - id: CF-SM-LADDER-L
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E3
     oracle: evid
+    ticket: HB-042
+    wave: "4"
   - id: CF-SM-LADDER-I
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E3
     oracle: evid
+    ticket: HB-042
+    wave: "4"
   - id: CF-SM-LADDER-R
     section: State-machine matrix
     status: pruned
     prune: PRUNE-dup:CF-J02-I/RC
     reason: PRUNE-dup:CF-J02-I/RC (ladder transitions are lifecycle ops)
+    ticket: HB-042
+    wave: "4"
   - id: CF-SM-LADDER-C
     section: State-machine matrix
     status: pruned
     prune: PRUNE-dup:CF-J02-I/RC
     reason: PRUNE-dup:CF-J02-I/RC (ladder transitions are lifecycle ops)
+    ticket: HB-042
+    wave: "4"
   - id: CF-SM-LEARN-L
     section: State-machine matrix
     status: implementable
@@ -892,18 +938,24 @@ families:
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-023
+    wave: "2"
   - id: CF-SM-TURN-I
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-023
+    wave: "2"
   - id: CF-SM-TURN-R
     section: State-machine matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-023
+    wave: "2"
   - id: CF-SM-TURN-C
     section: State-machine matrix
     status: implementable
@@ -936,12 +988,16 @@ families:
     layers: "2"
     risk: E1
     oracle: state+refusal
+    ticket: HB-011
+    wave: "1"
   - id: CF-INV-004
     section: Invariant matrix
     status: implementable
     layers: 1/2
     risk: E2/FLOOR
     oracle: refusal
+    ticket: HB-014
+    wave: "1"
   - id: CF-INV-005
     section: Invariant matrix
     status: implementable
@@ -964,6 +1020,8 @@ families:
     layers: 1/2
     risk: E2
     oracle: refusal+state
+    ticket: HB-022
+    wave: "2"
   - id: CF-INV-008
     section: Invariant matrix
     status: implementable
@@ -986,6 +1044,8 @@ families:
     layers: "2"
     risk: E1/FLOOR
     oracle: diff+refusal
+    ticket: HB-015
+    wave: "1"
   - id: CF-INV-011
     section: Invariant matrix
     status: implementable
@@ -1000,24 +1060,32 @@ families:
     layers: 1/2
     risk: E3/E1
     oracle: refusal
+    ticket: HB-032
+    wave: "3"
   - id: CF-INV-013
     section: Invariant matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-023
+    wave: "2"
   - id: CF-INV-014
     section: Invariant matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: evid
+    ticket: HB-021
+    wave: "2"
   - id: CF-INV-015
     section: Invariant matrix
     status: implementable
     layers: 1/2
     risk: FLOOR
     oracle: refusal
+    ticket: HB-034
+    wave: "3"
   - id: CF-B01
     section: Boundary matrix
     status: implementable
@@ -1048,54 +1116,72 @@ families:
     layers: "2"
     risk: E2 (T-11 exhaustive)
     oracle: state
+    ticket: HB-004
+    wave: "0"
   - id: CF-B02-L3
     section: Boundary matrix
     status: implementable
     layers: "3"
     risk: E2
     oracle: live
+    ticket: HB-004
+    wave: "0"
   - id: CF-B03
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: E1/E2
     oracle: state
+    ticket: HB-024
+    wave: "2"
   - id: CF-B03-L3
     section: Boundary matrix
     status: implementable
     layers: "3"
     risk: E1/E2
     oracle: live
+    ticket: HB-024
+    wave: "2"
   - id: CF-B04
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: E1
     oracle: refusal
+    ticket: HB-024
+    wave: "2"
   - id: CF-B04-L3
     section: Boundary matrix
     status: implementable
     layers: "3"
     risk: E1
     oracle: live
+    ticket: HB-024
+    wave: "2"
   - id: CF-B05
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: STD
     oracle: evid
+    ticket: HB-043
+    wave: "4"
   - id: CF-B06
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-043
+    wave: "4"
   - id: CF-B07
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: E2
     oracle: state
+    ticket: HB-023
+    wave: "2"
   - id: CF-B08
     section: Boundary matrix
     status: pruned
@@ -1109,12 +1195,16 @@ families:
     oracle: state
     blocked_remainder:
       - F-PT-008
+    ticket: HB-012
+    wave: "1"
   - id: CF-B09b
     section: Boundary matrix
     status: implementable
     layers: "2"
     risk: E1
     oracle: state+evid
+    ticket: HB-011
+    wave: "1"
   - id: CF-B10
     section: Boundary matrix
     status: implementable
@@ -1134,6 +1224,8 @@ families:
     layers: "2"
     risk: E3
     oracle: evid
+    ticket: HB-032
+    wave: "3"
   - id: CF-B13
     section: Boundary matrix
     status: implementable
@@ -1169,6 +1261,8 @@ families:
     layers: "2"
     risk: E3
     oracle: evid+refusal
+    ticket: HB-030
+    wave: "3"
   - id: CF-B17
     section: Boundary matrix
     status: implementable
@@ -1185,46 +1279,64 @@ families:
     layers: 1/2
     risk: E2 (T-11)
     oracle: state+refusal
+    ticket: HB-004
+    wave: "0"
   - id: CF-C-B01
     section: Contract matrix
     status: implementable
     layers: 1/2 + 3
     risk: E3
+    ticket: HB-003
+    wave: "0"
   - id: CF-C-B02
     section: Contract matrix
     status: implementable
     layers: 1/2 + 3
     risk: E2
+    ticket: HB-024
+    wave: "2"
   - id: CF-C-B03
     section: Contract matrix
     status: implementable
     layers: 1/2 + 3 + 5 (rotation)
     risk: E1/E2
+    ticket: HB-024
+    wave: "2"
   - id: CF-C-B04
     section: Contract matrix
     status: implementable
     layers: 1/2 + 3
     risk: E1
+    ticket: HB-024
+    wave: "2"
   - id: CF-C-B05
     section: Contract matrix
     status: implementable
     layers: 1/2 + 3 (launchd lifecycle proof)
     risk: STD (health claims E3)
+    ticket: HB-043
+    wave: "4"
   - id: CF-C-B06
     section: Contract matrix
     status: implementable
     layers: 2 + 5 (real elapsed time)
     risk: E2
+    ticket: HB-043
+    wave: "4"
   - id: CF-C-B07
     section: Contract matrix
     status: implementable
     layers: 2 + 5 (sleep/wake)
     risk: E2
+    ticket: HB-023
+    wave: "2"
   - id: CF-C-B08
     section: Contract matrix
     status: implementable
     layers: "2"
     risk: E2
+    ticket: HB-021
+    wave: "2"
   - id: CF-C-B09A
     section: Contract matrix
     status: implementable
@@ -1232,26 +1344,36 @@ families:
     risk: E1
     blocked_remainder:
       - F-PT-008
+    ticket: HB-012
+    wave: "1"
   - id: CF-C-B09B
     section: Contract matrix
     status: implementable
     layers: 2 + 3 (unattended profile)
     risk: E1
+    ticket: HB-011
+    wave: "1"
   - id: CF-C-B10
     section: Contract matrix
     status: implementable
     layers: 1/2
     risk: E1/FLOOR
+    ticket: HB-014
+    wave: "1"
   - id: CF-C-B11
     section: Contract matrix
     status: implementable
     layers: 1/2
     risk: E1 (T-10)
+    ticket: HB-017
+    wave: "1"
   - id: CF-C-B12
     section: Contract matrix
     status: implementable
     layers: "2"
     risk: E3/FLOOR (T-4 slice)
+    ticket: HB-032
+    wave: "3"
   - id: CF-C-B13
     section: Contract matrix
     status: implementable
@@ -1259,6 +1381,8 @@ families:
     risk: STD
     blocked_remainder:
       - F-PT-006
+    ticket: HB-040
+    wave: "4"
   - id: CF-C-B14
     section: Contract matrix
     status: implementable
@@ -1278,6 +1402,8 @@ families:
     status: implementable
     layers: "2"
     risk: E3
+    ticket: HB-030
+    wave: "3"
   - id: CF-C-B17
     section: Contract matrix
     status: implementable
@@ -1285,24 +1411,32 @@ families:
     risk: E1 (T-12)
     blocked_remainder:
       - B-17-L3
+    ticket: HB-013
+    wave: "1"
   - id: CF-C-OPLIFE
     section: Contract matrix
     status: implementable
     layers: "2"
     risk: E1 (T-8 slices)
     oracle: state+refusal
+    ticket: HB-015
+    wave: "1"
   - id: CF-C-OPPLAN
     section: Contract matrix
     status: implementable
     layers: 1/2
     risk: STD (validator depth per risk-allocation §3)
     oracle: refusal+state
+    ticket: HB-041
+    wave: "4"
   - id: CF-C-OPLOOP
     section: Contract matrix
     status: implementable
     layers: "2"
     risk: E3
     oracle: state
+    ticket: HB-031
+    wave: "3"
   - id: CF-C-ACCEPT
     section: Contract matrix
     status: pruned
@@ -1363,12 +1497,16 @@ families:
     layers: 1/2
     risk: STD
     oracle: refusal
+    ticket: HB-041
+    wave: "4"
   - id: CF-S1-qual
     section: LLM call-site matrix
     status: implementable
     layers: "4"
     risk: L4Q
     oracle: stat
+    ticket: HB-062
+    wave: L4
   - id: CF-S1-traj
     section: LLM call-site matrix
     status: pruned
@@ -1399,6 +1537,8 @@ families:
     layers: "4"
     risk: L4Q (deferred/THIN)
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S2-judge
     section: LLM call-site matrix
     status: pruned
@@ -1415,17 +1555,28 @@ families:
     layers: "4"
     risk: L4Q (first-funded)
     oracle: stat
+    ticket: HB-061
+    wave: L4
   - id: CF-S3-judge
     section: LLM call-site matrix
     status: implementable
     layers: "4"
     risk: L4Q (first-funded)
     oracle: stat
+    ticket: HB-061
+    wave: L4
   - id: CF-S3-traj
     section: LLM call-site matrix
     status: pruned
     prune: PRUNE-na
     reason: PRUNE-na (single-pass judge; trajectory covered by S-2)
+  - id: CF-LLM-S3
+    section: LLM call-site matrix
+    status: pruned
+    prune: PRUNE-dup:CF-S3-env
+    reason: PRUNE-dup:CF-S3-env — legacy alias id used by the Wave-0 skeleton spec
+      (s3-verdict-marker.test.ts); the marker/parser cases are the S-3 envelope, itself dup-pruned
+      to the CF-INV-009/012 clause families
   - id: CF-S4-env
     section: LLM call-site matrix
     status: pruned
@@ -1437,6 +1588,8 @@ families:
     layers: "4"
     risk: L4Q
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S4-traj
     section: LLM call-site matrix
     status: pruned
@@ -1458,6 +1611,8 @@ families:
     layers: "4"
     risk: L4Q (deferred/THIN)
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S5-traj
     section: LLM call-site matrix
     status: pruned
@@ -1479,6 +1634,8 @@ families:
     layers: "4"
     risk: L4Q (deferred/THIN)
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S6-traj
     section: LLM call-site matrix
     status: pruned
@@ -1500,12 +1657,16 @@ families:
     layers: "4"
     risk: L4Q
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S7-qual
     section: LLM call-site matrix
     status: implementable
     layers: "4"
     risk: L4Q
     oracle: stat
+    ticket: HB-063
+    wave: L4
   - id: CF-S7-traj
     section: LLM call-site matrix
     status: pruned
@@ -1540,6 +1701,8 @@ families:
     layers: "4"
     risk: THIN
     oracle: stat (non-gating)
+    ticket: HB-063
+    wave: L4
   - id: CF-OPS-CONT
     section: Operational-obligation matrix
     status: implementable
@@ -1583,6 +1746,8 @@ families:
     layers: "5"
     risk: E1 (deferred lane, declared)
     oracle: mixed
+    ticket: HB-073
+    wave: L5
   - id: CF-OPS-REC
     section: Operational-obligation matrix
     status: pruned
@@ -1606,11 +1771,15 @@ tickets:
     families:
       - CF-B01
       - CF-B01-L3
+      - CF-C-B01
     name: GitHub double v1 + conformance-pair scaffold
   - id: HB-004
     wave: "0"
     status: landed
-    families: []
+    families:
+      - CF-B02
+      - CF-B02-L3
+      - CF-C-CORE
     name: "Adapter double v1 (one adapter first: Claude)"
   - id: HB-005
     wave: "0"
@@ -1638,6 +1807,9 @@ tickets:
     wave: "1"
     status: pending
     families:
+      - CF-B09b
+      - CF-C-B09B
+      - CF-INV-003
       - CF-SM-APPR-C
       - CF-SM-APPR-I
       - CF-SM-APPR-L
@@ -1651,6 +1823,8 @@ tickets:
     wave: "1"
     status: pending
     families:
+      - CF-B09a
+      - CF-C-B09A
       - CF-J06-A
       - CF-J06-I
       - CF-J06-R
@@ -1662,6 +1836,7 @@ tickets:
     status: pending
     families:
       - CF-B17
+      - CF-C-B17
       - CF-J05-A
       - CF-J05-I
       - CF-J05-R
@@ -1678,12 +1853,16 @@ tickets:
     status: pending
     families:
       - CF-B10
+      - CF-C-B10
       - CF-INV-001
+      - CF-INV-004
     name: Authority resolution + org-identity suite
   - id: HB-015
     wave: "1"
     status: pending
     families:
+      - CF-C-OPLIFE
+      - CF-INV-010
       - CF-J01-A
       - CF-J01-I
       - CF-J01-R
@@ -1705,6 +1884,7 @@ tickets:
     wave: "1"
     status: pending
     families:
+      - CF-C-B11
       - CF-J12-A
       - CF-J12-I
       - CF-J12-R
@@ -1730,13 +1910,20 @@ tickets:
     wave: "2"
     status: pending
     families:
+      - CF-C-B08
       - CF-INV-005
+      - CF-INV-014
+      - CF-J09-A
+      - CF-J09-I
+      - CF-J09-R
       - CF-J09-RC
-    name: Claim uniqueness/races
+      - CF-J09-S
+    name: Claim uniqueness/races + dispatch admission outcomes
   - id: HB-022
     wave: "2"
     status: pending
     families:
+      - CF-INV-007
       - CF-J07-A
       - CF-J07-I
       - CF-J07-R
@@ -1747,13 +1934,26 @@ tickets:
     wave: "2"
     status: pending
     families:
+      - CF-B07
+      - CF-C-B07
+      - CF-INV-013
       - CF-J04-I
       - CF-SM-TURN-C
+      - CF-SM-TURN-I
+      - CF-SM-TURN-L
+      - CF-SM-TURN-R
     name: Crash-point sweeps
   - id: HB-024
     wave: "2"
     status: pending
-    families: []
+    families:
+      - CF-B03
+      - CF-B03-L3
+      - CF-B04
+      - CF-B04-L3
+      - CF-C-B02
+      - CF-C-B03
+      - CF-C-B04
     name: Adapter enforcement slices T-11
   - id: HB-025
     wave: "2"
@@ -1765,13 +1965,18 @@ tickets:
     wave: "3"
     status: pending
     families:
+      - CF-B16
+      - CF-C-B16
       - CF-INV-009
     name: Merge boundary suite
   - id: HB-031
     wave: "3"
     status: pending
     families:
+      - CF-C-OPLOOP
+      - CF-J04-A
       - CF-J04-R
+      - CF-J04-RC
       - CF-J04-S
       - CF-SM-LOOP-C
       - CF-SM-LOOP-I
@@ -1782,7 +1987,13 @@ tickets:
     wave: "3"
     status: pending
     families:
+      - CF-B12
+      - CF-C-B12
       - CF-INV-008
+      - CF-INV-012
+      - CF-J02-A
+      - CF-J07-A
+      - CF-J08-A
       - CF-J15-A
       - CF-J15-I
       - CF-J15-R
@@ -1800,11 +2011,18 @@ tickets:
       - CF-IF-UI
       - CF-IF-XSURF
     name: Cross-surface agreement
+  - id: HB-034
+    wave: "3"
+    status: pending
+    families:
+      - CF-INV-015
+    name: Error-branch capability-reduction sweep
   - id: HB-040
     wave: "4"
     status: pending
     families:
       - CF-B13
+      - CF-C-B13
       - CF-J10-A
       - CF-J10-I
       - CF-J10-R
@@ -1819,11 +2037,17 @@ tickets:
     wave: "4"
     status: pending
     families:
+      - CF-C-OPPLAN
       - CF-J03-A
       - CF-J03-I
       - CF-J03-R
       - CF-J03-RC
       - CF-J03-S
+      - CF-S1-env
+      - CF-SM-PLAN-C
+      - CF-SM-PLAN-I
+      - CF-SM-PLAN-L
+      - CF-SM-PLAN-R
     name: Planner validator + planning ops
   - id: HB-042
     wave: "4"
@@ -1834,11 +2058,19 @@ tickets:
       - CF-J02-R
       - CF-J02-RC
       - CF-J02-S
+      - CF-SM-LADDER-C
+      - CF-SM-LADDER-I
+      - CF-SM-LADDER-L
+      - CF-SM-LADDER-R
     name: Onboarding ladder + lifecycle records
   - id: HB-043
     wave: "4"
     status: pending
     families:
+      - CF-B05
+      - CF-B06
+      - CF-C-B05
+      - CF-C-B06
       - CF-J16-I
       - CF-J16-R
       - CF-J16-S
@@ -1866,6 +2098,25 @@ tickets:
     families:
       - CF-S9-env
     name: S-9 format-repair contract suite
+  - id: HB-048
+    wave: "4"
+    status: pending
+    families:
+      - CF-J11-A
+      - CF-J11-I
+      - CF-J11-R
+      - CF-J11-RC
+      - CF-J11-S
+    name: Draft-role journeys
+  - id: HB-049
+    wave: "4"
+    status: pending
+    families:
+      - CF-J18-I
+      - CF-J18-R
+      - CF-J18-RC
+      - CF-J18-S
+    name: Unattended-composite hermetic slices
   - id: HB-050
     wave: L3
     status: pending
@@ -1874,7 +2125,13 @@ tickets:
   - id: HB-051
     wave: L3
     status: pending
-    families: []
+    families:
+      - CF-B02
+      - CF-B02-L3
+      - CF-B03
+      - CF-B03-L3
+      - CF-B04
+      - CF-B04-L3
     name: CF-B02-L3/CF-B03-L3/CF-B04-L3 adapter conformance runs
   - id: HB-052
     wave: L3
@@ -1908,17 +2165,27 @@ tickets:
   - id: HB-061
     wave: L4
     status: pending
-    families: []
+    families:
+      - CF-S3-judge
+      - CF-S3-qual
     name: Author reviewer/ seeded-defect + clean sets
   - id: HB-062
     wave: L4
     status: pending
-    families: []
-    name: Author planner/ sets;
+    families:
+      - CF-S1-qual
+    name: Author planner/ sets
   - id: HB-063
     wave: L4
     status: pending
-    families: []
+    families:
+      - CF-COND
+      - CF-S2-qual
+      - CF-S4-qual
+      - CF-S5-qual
+      - CF-S6-qual
+      - CF-S7-judge
+      - CF-S7-qual
     name: builder-trajectory scenario fixtures; later scaffolds per elicited priority
   - id: HB-070
     wave: L5
@@ -1941,7 +2208,8 @@ tickets:
   - id: HB-073
     wave: L5
     status: pending
-    families: []
+    families:
+      - CF-OPS-ABUSE
     name: Abuse lane cases
   - id: HB-P1
     wave: unparked

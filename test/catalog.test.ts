@@ -56,6 +56,19 @@ describe("extractCfTokens", () => {
     expect(extractCfTokens('expect(failedIds).toContain("B01-CF-11");')).toEqual([]);
     expect(extractCfTokens("// CF-B01-L3 — the GitHub live smoke")).toEqual(["CF-B01-L3"]);
   });
+
+  it("splits slash-joined lists of FULL family ids into separate citations (HB-051 convention)", () => {
+    // Regression: "CF-B02-L3/CF-B03-L3/CF-B04-L3" used to match as ONE token
+    // that expandCellId then dropped, so HB-051's claims were invisible and
+    // the trace CLI reported CF-B03-L3/CF-B04-L3 as unowned (false positive).
+    expect(extractCfTokens("CF-B02-L3/CF-B03-L3/CF-B04-L3 adapter conformance runs")).toEqual([
+      "CF-B02-L3",
+      "CF-B03-L3",
+      "CF-B04-L3",
+    ]);
+    // The compound-suffix convention (parts are NOT full ids) is untouched.
+    expect(extractCfTokens("CF-J16-S/R/I scheduler lifecycle")).toEqual(["CF-J16-S/R/I"]);
+  });
 });
 
 describe("tokenMatch", () => {
@@ -79,10 +92,11 @@ describe("parseCatalogMarkdown against the Operon pilot catalog (ground truth)",
   it("reproduces the catalog's own closure accounting", () => {
     // §9 closure statement: 81 journey family cells (+4 pruned +1 blocked as
     // 86 rows), 32 state-machine cells, 15 invariants, 22 boundary entries,
-    // 22+1 contract entries, 6 interfaces, 33 LLM entries, 7 ops entries.
-    expect(families).toHaveLength(224);
+    // 22+1 contract entries, 6 interfaces, 33 LLM entries + the CF-LLM-S3
+    // alias row (2026-08-01 backward-closure fix), 7 ops entries.
+    expect(families).toHaveLength(225);
     expect(families.filter((f) => f.status === "implementable")).toHaveLength(192);
-    expect(families.filter((f) => f.status === "pruned")).toHaveLength(31);
+    expect(families.filter((f) => f.status === "pruned")).toHaveLength(32);
     expect(families.filter((f) => f.status === "blocked")).toHaveLength(1);
   });
 

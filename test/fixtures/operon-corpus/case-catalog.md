@@ -254,6 +254,14 @@ value asserted as provisional. **Per-ID resolver:**
 
 ## 7. LLM call-site matrix (S × deterministic-envelope / statistical-quality / trajectory / judge-calibration)
 
+<!-- changelog 2026-08-01 (validation-trace backward closure): +CF-LLM-S3 alias
+row. The Wave-0 skeleton spec (claude-tests/unit/s3-verdict-marker.test.ts,
+HB-005d) cites the S-3 verdict-marker contract as CF-LLM-S3 — a pre-catalog
+name from before the CF-S<n> convention settled. Recorded here as a named
+dup-prune so the citation resolves in the catalog rather than rewriting
+history in the spec header; it is an alias, not a 33rd semantic cell (§9's
+32-cell accounting is unchanged). -->
+
 | Cell | Family | Layer | Oracle | Risk |
 |---|---|---|---|---|
 | CF-S1-env | C-OP-PLAN validator envelope (PRUNE-dup:CF-C-OPPLAN) + malformed-TicketPlan handling, format-repair path budget | 1/2 | refusal | STD |
@@ -266,6 +274,7 @@ value asserted as provisional. **Per-ID resolver:**
 | CF-S3-env | verdict marker/parser/HEAD-binding — PRUNE-dup:CF-INV-009/012 clause families | — | — | — |
 | CF-S3-qual+judge | reviewer meta-eval per scaffold: seeded classes × severities + clean controls, per-pairing, **inconclusive-only until F-PT-009** | 4 | stat | L4Q (first-funded) |
 | CF-S3-traj | PRUNE-na (single-pass judge; trajectory covered by S-2) | — | — | — |
+| CF-LLM-S3 | PRUNE-dup:CF-S3-env — legacy alias id used by the Wave-0 skeleton spec (s3-verdict-marker.test.ts); the marker/parser cases are the S-3 envelope, itself dup-pruned to the CF-INV-009/012 clause families | — | — | — |
 | CF-S4-env | analysis/filing claim separation — PRUNE-dup:CF-J11-I/RC | — | — | — |
 | CF-S4-qual | SRE golden set (gamma-class fixtures) — **inconclusive-only until F-PT-010** | 4 | stat | L4Q |
 | CF-S4-traj/judge | PRUNE-na (single-pass analyzer; no judge) | — | — | — |

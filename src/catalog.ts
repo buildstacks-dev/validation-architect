@@ -108,7 +108,20 @@ const CF_TOKEN_RE =
 
 export function extractCfTokens(text: string): string[] {
   const out = new Set<string>();
-  for (const m of text.matchAll(CF_TOKEN_RE)) out.add(m[0]);
+  for (const m of text.matchAll(CF_TOKEN_RE)) {
+    const token = m[0];
+    // A slash-joined list of FULL family ids ("CF-B02-L3/CF-B03-L3/CF-B04-L3",
+    // the HB-051 backlog convention) is separate citations — distinct from the
+    // compound-suffix convention ("CF-J16-S/R/I", parts are not full ids),
+    // which stays one token for expandCellId.
+    if (token.includes("/CF-")) {
+      for (const part of token.split("/")) {
+        if (part.startsWith("CF-")) out.add(part);
+      }
+    } else {
+      out.add(token);
+    }
+  }
   return [...out];
 }
 

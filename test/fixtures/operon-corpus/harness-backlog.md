@@ -19,6 +19,18 @@ qualified for HB-054 (finding 2); Waves 1-4 layer/defends convention note added
 resolved-ratified — see ratification-package.md §9); HB-P3/HB-P5 stay parked
 (F-PT-006/008 still open); +HB-080 operator triage runbook; +HB-081 product-side
 inconclusive-semantics surface (product change, not harness). -->
+<!-- closure 2026-08-01 (validation-trace forward closure): the catalog carried
+implementable families no ticket claimed by CF id — an undeclared gap per the
+traceability conventions. Every such family is now claimed by name: existing
+tickets absorb the families their prose scope already implied (HB-003/004,
+HB-011..HB-017, HB-021..HB-024, HB-030..HB-032, HB-040..HB-043, HB-061..HB-063,
+HB-073); three new tickets own the clusters no existing ticket honestly covers:
+HB-034 (CF-INV-015 error-branch sweep), HB-048 (CF-J11-* draft-role journeys),
+HB-049 (CF-J18 hermetic slices). Nothing was pruned — pruning is the owner's
+call; every claim below is a pending-wave declaration, not a coverage claim.
+Note: a base-family claim (e.g. CF-B03-*) also group-claims its -L3 sibling in
+the generated manifest's owner field; the L3 EXECUTOR stays the Wave L3 ticket
+(HB-051) as written there. -->
 
 **Convention (Waves 1–4):** tickets in these waves inherit *Layer* and risk from
 their wave heading and *defend* the invariants/contracts named by their case-family
@@ -53,12 +65,12 @@ claude-tests/unit/s3-verdict-marker.test.ts). -->
 - **HB-003 — GitHub double v1 + conformance-pair scaffold.** Scripted fake per
   boundary-map B-01 (state machine, per-call failure scripts, lost-response mode,
   configurable default branch). Conformance suite structured to run against fake now
-  and real later (CF-B01-L3). *Acceptance:* fake passes its own contract suite; one
+  and real later (CF-B01-L3); contract clauses CF-C-B01. *Acceptance:* fake passes its own contract suite; one
   scripted failure mode (lost response) demonstrably reproducible; negative control:
   a deliberately lying fake variant fails the suite. *Defends:* B-01, INV-008/009.
   *Layer:* 2. *Executor:* build-agent.
 - **HB-004 — Adapter double v1 (one adapter first: Claude).** Mocked runtime per
-  provider-adapter-core + B-02 scripts. *Acceptance:* core contract clauses assert
+  provider-adapter-core (CF-C-CORE) + B-02 scripts (CF-B02-*). *Acceptance:* core contract clauses assert
   against it; usage-absent renders unknown (INV-006 seed red-then-green). *Layer:*
   1–2. *Executor:* build-agent.
 - **HB-005 — Skeleton test per layer (one each, with negative controls).**
@@ -86,52 +98,71 @@ claude-tests/unit/s3-verdict-marker.test.ts). -->
 - **HB-010** Gate classifier adversarial suite (CF-INV-002 seeds incl. obfuscation,
   unknown-tool fail-closed). Executor: build-agent.
 - **HB-011** Approval store + grant lifecycle state machines (CF-SM-APPR-*,
-  CF-SM-GRANT-*, both grant shapes; orphan-grant intermediate). Executor: build-agent.
-- **HB-012** Continuation/resume fingerprint suite (CF-J06-*, B-09a; F-PT-008 clause
-  parked). Executor: build-agent.
-- **HB-013** Typed executor + marker typing (CF-B17-*, CF-J05-*, CF-J17-*; B-17 live
-  remainder stays BLOCKED). Executor: build-agent.
-- **HB-014** Authority resolution + org-identity suite (CF-B10-*, CF-INV-001 seeds,
-  B-10a identity classes). Executor: build-agent.
-- **HB-015** Destructive lifecycle containment (CF-J01-*, CF-J14-*, C-OP-LIFE;
-  sibling-diff oracle; temp-FS/git fault injection only). Executor: build-agent.
+  CF-SM-GRANT-*, CF-INV-003 approval-before-effect seeds, CF-B09b-* decision-entry
+  incl. CF-C-B09B clauses, both grant shapes; orphan-grant intermediate). Executor:
+  build-agent.
+- **HB-012** Continuation/resume fingerprint suite (CF-J06-*, CF-B09a-* incl.
+  CF-C-B09A clauses; F-PT-008 clause parked). Executor: build-agent.
+- **HB-013** Typed executor + marker typing (CF-B17-*, CF-J05-*, CF-J17-*, CF-C-B17
+  clauses; B-17 live remainder stays BLOCKED). Executor: build-agent.
+- **HB-014** Authority resolution + org-identity suite (CF-B10-*, CF-C-B10 clauses,
+  CF-INV-001 seeds, CF-INV-004 facet-isolation seeds, B-10a identity classes).
+  Executor: build-agent.
+- **HB-015** Destructive lifecycle containment (CF-J01-*, CF-J14-*, CF-INV-010
+  destruction-containment seeds, CF-C-OPLIFE clauses; sibling-diff oracle;
+  temp-FS/git fault injection only). Executor: build-agent.
 - **HB-016** Secret confinement egress suite (CF-INV-011 seeds; single-policy
   structural check). Executor: build-agent.
-- **HB-017** Learning activation boundary (CF-J12-*, CF-SM-LEARN-*, B-11 publisher
-  forward-completion). Executor: build-agent.
+- **HB-017** Learning activation boundary (CF-J12-*, CF-SM-LEARN-*, CF-C-B11
+  clauses, B-11 publisher forward-completion). Executor: build-agent.
 
 ## Wave 2 — E-2 durability + money (exhaustive; L1/L2)
 
 - **HB-020** Settlement conservation + reconcile (CF-J08-*, CF-INV-006 property tests
-  via fast-check). **HB-021** Claim uniqueness/races (CF-INV-005, CF-J09-RC).
-  **HB-022** Admission/pause (CF-J07-*; the former F-PT-003 block lifted 2026-07-31 —
-  convergence cases land via HB-P1, unparked below). **HB-023** Crash-point
-  sweeps (CF-J04-I, CF-SM-TURN-C, B-07 harness; F-PT-004 line ratified 2026-07-31:
-  preserve-and-inspect — ambiguous-byte cases land via HB-P2, unparked below).
-  **HB-024** Adapter enforcement slices T-11 (budget observation per capability
-  matrix; session binding; remaining adapter doubles Codex + pi incl. rotation
-  scripts and extension-absence). **HB-025** FS/git substrate faults (CF-B15-*).
+  via fast-check). **HB-021** Claim uniqueness/races + dispatch admission outcomes
+  (CF-INV-005, CF-J09-*, CF-INV-014 named-reason seeds, CF-C-B08 clauses).
+  **HB-022** Admission/pause (CF-J07-*, CF-INV-007 pause-integrity seeds; the former
+  F-PT-003 block lifted 2026-07-31 — convergence cases land via HB-P1, unparked
+  below). **HB-023** Crash-point sweeps (CF-J04-I, CF-SM-TURN-*, CF-B07-* harness
+  incl. CF-C-B07 clauses, CF-INV-013 durability seeds; F-PT-004 line ratified
+  2026-07-31: preserve-and-inspect — ambiguous-byte cases land via HB-P2, unparked
+  below). **HB-024** Adapter enforcement slices T-11 (budget observation per
+  capability matrix; session binding; remaining adapter doubles Codex + pi —
+  CF-B03-*, CF-B04-* — incl. rotation scripts and extension-absence; adapter
+  contract clauses CF-C-B02, CF-C-B03, CF-C-B04; the -L3 conformance runs stay
+  Wave L3). **HB-025** FS/git substrate faults (CF-B15-*).
   Executor: build-agent (all).
 
 ## Wave 3 — E-3 merge + evidence truth (exhaustive; L1/L2)
 
-- **HB-030** Merge boundary suite (CF-INV-009; HEAD equality; resolved default).
-  **HB-031** Loop state machine + labels-after-artifacts (CF-SM-LOOP-*, CF-J04-S/R).
-  **HB-032** Evidence truthfulness sweep across readers (CF-INV-008, CF-J15-*,
-  CF-J07-A/J08-A/J02-A, B-12 incl. capability/traversal). **HB-033** Cross-surface
-  agreement (CF-IF-XSURF + CF-IF-* conformance). Executor: build-agent (all).
+- **HB-030** Merge boundary suite (CF-INV-009; HEAD equality; resolved default;
+  CF-B16-* scripted gate commands incl. CF-C-B16 clauses — gate evidence binds to
+  the candidate SHA). **HB-031** Loop state machine + labels-after-artifacts
+  (CF-SM-LOOP-*, CF-J04-S/R/RC/A, CF-C-OPLOOP clauses). **HB-032** Evidence
+  truthfulness sweep across readers (CF-INV-008, CF-INV-012 evidence-gate seeds,
+  CF-J15-*, CF-J07-A, CF-J08-A, CF-J02-A, CF-B12-* incl. capability/traversal +
+  CF-C-B12 clauses). **HB-033** Cross-surface agreement (CF-IF-XSURF + CF-IF-*
+  conformance). **HB-034** Error-branch capability-reduction sweep (CF-INV-015 —
+  the cross-family negative-control harness: every seeded error branch yields
+  *less* capability, never more/greener). Executor: build-agent (all).
 
 ## Wave 4 — standard + thin remainder (L1/L2)
 
-- **HB-040** Event inbox (CF-B13-*, CF-J10-*, CF-SM-EVENT-*; F-PT-006 clauses
-  parked). **HB-041** Planner validator + planning ops (CF-J03-*, C-OP-PLAN).
-  **HB-042** Onboarding ladder + lifecycle records (CF-J02-*). **HB-043** Scheduler
-  lifecycle hermetic (CF-J16-S/R/I). **HB-044** Retention GROW suite (CF-OPS-GROW,
-  seeded aged state). **HB-045** Presentation smokes (thin, per risk-allocation §4).
-  **HB-046** Trajectory assertions (CF-S2-traj ratified grounds + observed metrics).
-  **HB-047** S-9 format-repair contract suite (CF-S9-env: exactly-one repaired
-  structure, same session, bounded attempts, settles per turn — contract-only, no
-  quality rubric). Executor: build-agent (all).
+- **HB-040** Event inbox (CF-B13-*, CF-C-B13 clauses, CF-J10-*, CF-SM-EVENT-*;
+  F-PT-006 clauses parked). **HB-041** Planner validator + planning ops (CF-J03-*,
+  CF-SM-PLAN-*, CF-C-OPPLAN clauses, CF-S1-env validator envelope). **HB-042**
+  Onboarding ladder + lifecycle records (CF-J02-*, CF-SM-LADDER-*). **HB-043**
+  Scheduler lifecycle hermetic (CF-J16-S/R/I, CF-B05-* host surface incl. CF-C-B05
+  clauses, CF-B06-* clock sweep incl. CF-C-B06 clauses). **HB-044** Retention GROW
+  suite (CF-OPS-GROW, seeded aged state). **HB-045** Presentation smokes (thin, per
+  risk-allocation §4). **HB-046** Trajectory assertions (CF-S2-traj ratified
+  grounds + observed metrics). **HB-047** S-9 format-repair contract suite
+  (CF-S9-env: exactly-one repaired structure, same session, bounded attempts,
+  settles per turn — contract-only, no quality rubric). **HB-048** Draft-role
+  journeys (CF-J11-*: Support/Marketing/SRE internal-artifact runs, publication
+  gate, incident-filing uniqueness). **HB-049** Unattended-composite hermetic
+  slices (CF-J18-S, CF-J18-R, CF-J18-I, CF-J18-RC — the L2 rig; the live composite
+  stays HB-054). Executor: build-agent (all).
 
 ## Wave L3 — live lane (gated on its own layer: targets + spend authorization —
 except HB-054, which additionally depends on a ratified product surface, flagged in
@@ -157,11 +188,14 @@ its ticket)
 
 - **HB-060** Eval runner v1 (data-collection mode; inconclusive-only reporting;
   per-tuple aggregation; token ceilings; shard rotation). Executor: build-agent.
-- **HB-061** Author reviewer/ seeded-defect + clean sets (first-funded; provenance
-  rules per scaffold). Executor: human + build-agent. *Note: threshold verdicts stay
-  inconclusive until F-PT-009 ratifies — authoring is NOT gated on ratification.*
-- **HB-062** Author planner/ sets; **HB-063** builder-trajectory scenario fixtures;
-  later scaffolds per elicited priority. Executor: human + build-agent.
+- **HB-061** Author reviewer/ seeded-defect + clean sets (CF-S3-qual+judge;
+  first-funded; provenance rules per scaffold). Executor: human + build-agent.
+  *Note: threshold verdicts stay inconclusive until F-PT-009 ratifies — authoring
+  is NOT gated on ratification.*
+- **HB-062** Author planner/ sets (CF-S1-qual); **HB-063** builder-trajectory
+  scenario fixtures; later scaffolds per elicited priority (CF-S2-qual, CF-S4-qual,
+  CF-S5-qual, CF-S6-qual, CF-S7-judge+qual, CF-COND — each stays inconclusive-only
+  under its owning finding per the L4Q rule). Executor: human + build-agent.
 
 ## Wave L5 — ops lane (gated per obligation)
 
@@ -169,7 +203,7 @@ its ticket)
   Executor: build-agent. **HB-071** Soak protocol runner + evidence collector
   (CF-OPS-SOAK incl. CF-OPS-ROT sub-evidence). *Gate: human schedules the 7-day
   window.* Executor: human + campaign. **HB-072** Threat model document. *Owner:
-  human; due per policy.* **HB-073** Abuse lane cases. *Gate: HB-072.*
+  human; due per policy.* **HB-073** Abuse lane cases (CF-OPS-ABUSE). *Gate: HB-072.*
 
 ## Unparked at ratification (2026-07-31) — formerly parked, now implementable
 
