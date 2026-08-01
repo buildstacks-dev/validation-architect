@@ -235,7 +235,7 @@ runs/<runId>/
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
-| `skill/` | vendored copies of validation-harness-design and validation-harness-audit |
+| `skill/` | vendored design + audit skills, plus `implement-harness-ticket` (Enable leg) |
 | `fixtures/` | three synthetic products + the `operon` real-target pilot |
 | `test/` | offline suite (fake adapters, no tokens) |
 | `bin/validation-trace.js` | package bin for the product-agnostic trace CLI |

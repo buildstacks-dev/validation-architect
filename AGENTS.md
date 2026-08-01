@@ -64,4 +64,5 @@ audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
 fixtures, catalog, trace, conventions, cli) · `fixtures/` three synthetic
 products (web app / backend daemon / agentic LLM) plus `operon`, the
 real-target pilot docs snapshot · `bin/validation-trace.js` the product-
-agnostic closure CLI · `runs/` gitignored campaign outputs.
+agnostic closure CLI · `skill/implement-harness-ticket/` the coding-agent
+enablement skill · `runs/` gitignored campaign outputs.
