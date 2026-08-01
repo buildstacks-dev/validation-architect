@@ -8,8 +8,12 @@
     "node": ">=20"
   },
   "packageManager": "pnpm@11.10.0",
+  "bin": {
+    "validation-trace": "./bin/validation-trace.js"
+  },
   "scripts": {
     "vda": "tsx src/cli.ts",
+    "trace": "tsx src/trace-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
