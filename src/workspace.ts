@@ -18,11 +18,25 @@ const VENDORED_SKILLS = ["validation-harness-design", "validation-harness-audit"
  * The designer works read-write here; the stakeholder mounts the same
  * directory read-only via the Codex sandbox; the auditor runs fresh read-only
  * sessions over it.
+ *
+ * When the source is a target repo that already carries a ratified corpus
+ * (issue #1 revision mode), pass `seedCorpusFrom` — the existing
+ * validation-design/ is copied in as the harness-revision baseline instead of
+ * starting empty.
  */
-export function assembleWorkspace(repoRoot: string, fixture: FixtureInfo, runDir: string): string {
+export function assembleWorkspace(
+  repoRoot: string,
+  fixture: FixtureInfo,
+  runDir: string,
+  opts?: { seedCorpusFrom?: string },
+): string {
   const workspace = join(runDir, "workspace");
   mkdirSync(join(workspace, ".claude", "skills"), { recursive: true });
-  mkdirSync(join(workspace, "validation-design"), { recursive: true });
+  if (opts?.seedCorpusFrom) {
+    cpSync(opts.seedCorpusFrom, join(workspace, "validation-design"), { recursive: true });
+  } else {
+    mkdirSync(join(workspace, "validation-design"), { recursive: true });
+  }
 
   for (const skill of VENDORED_SKILLS) {
     cpSync(join(repoRoot, "skill", skill), join(workspace, ".claude", "skills", skill), {

@@ -16,10 +16,14 @@ and the anti-yes-loop design.
 ## Commands
 
 - `pnpm install` · `pnpm typecheck` · `pnpm test` — offline, no tokens.
-- `pnpm vda run <fixture> [--smoke]` · `resume` · `readers` · `audit` ·
-  `report` · `list` — **live, spends subscription quota on BOTH providers**
-  (`readers`/`audit` spend Claude only). Never run a live campaign casually;
-  a full run is hours of wall clock.
+- `pnpm vda run <fixture> [--smoke]` /
+  `pnpm vda run --target <product-repo> [--fresh]` · `resume` · `readers` ·
+  `audit` · `report` · `list` — **live, spends subscription quota on BOTH
+  providers** (`readers`/`audit` spend Claude only). Never run a live
+  campaign casually; a full run is hours of wall clock.
+- `pnpm vda deliver <runId>` — offline; (re-)lands a completed target run's
+  corpus in the product repo as a `validation-design/<runId>` branch via a
+  temp worktree (never touches the user's checkout).
 
 ## Working rules
 
@@ -61,7 +65,7 @@ and the anti-yes-loop design.
 
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
-fixtures, catalog, trace, conventions, cli) · `fixtures/` three synthetic
+fixtures, target, catalog, trace, conventions, cli) · `fixtures/` three synthetic
 products (web app / backend daemon / agentic LLM) plus `operon`, the
 real-target pilot docs snapshot · `bin/validation-trace.js` the product-
 agnostic closure CLI · `skill/implement-harness-ticket/` the coding-agent

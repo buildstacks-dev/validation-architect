@@ -86,6 +86,9 @@ export interface AuditState {
 export type ClaudeAuthMode = "subscription" | "api-key";
 export type CodexAuthMode = "chatgpt" | "api-key";
 
+/** How the designer kickoff scopes the campaign (issue #1). */
+export type CampaignMode = "greenfield" | "revision";
+
 export interface RunConfig {
   fixture: string;
   runId: string;
@@ -158,6 +161,15 @@ export interface RunState {
    */
   emptyDesignerTurns?: number | undefined;
   rambleMtimeMs?: number | undefined;
+  /**
+   * Absolute path of the target product repo when the run is anchored to one
+   * (issue #1). Absent for fixture runs — the test/demo path.
+   */
+  target?: string | undefined;
+  /** Kickoff scope chosen at run start; "revision" when the target already carried a corpus. */
+  campaignMode?: CampaignMode | undefined;
+  /** Set once artifacts have been delivered to the target repo as a branch. */
+  delivery?: { branch: string; commit: string; deliveredAt: string } | undefined;
   startedAt: string;
   updatedAt: string;
   config: RunConfig;

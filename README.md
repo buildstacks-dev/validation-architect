@@ -148,7 +148,13 @@ pnpm install
 pnpm test          # offline suite, no tokens
 pnpm typecheck
 
-# full autonomous campaign (spends real subscription quota on both sides)
+# the production journey: anchor to a product repo (see "Developer journey")
+pnpm vda run --target ~/code/myproduct            # greenfield or auto-revision
+pnpm vda run --target ~/code/myproduct --fresh    # force from-scratch (warns)
+pnpm vda deliver <runId>                          # re-deliver the corpus branch
+
+# fixture campaigns — the test/demo path for exercising the skill surface
+# (spends real subscription quota on both sides)
 pnpm vda run lumen-webapp
 pnpm vda run relay-backend
 pnpm vda run docsmith-agent
@@ -183,6 +189,40 @@ and the verification rubric are reserved for the in-campaign iteration 2.
 `claude` CLI login (ANTHROPIC_API_KEY is stripped unless `--claude-auth
 api-key`), the Codex side uses the ChatGPT login from `codex login`
 (`--codex-auth api-key` switches to OPENAI_API_KEY).
+
+## Developer journey
+
+The product repo is first-class; VDA is a tool invoked against it. Install
+once, then:
+
+1. **First run (greenfield).** `pnpm vda run --target <product-repo>`. Inputs
+   are the repo's real `docs/` and its `rambling.txt` (optional). The
+   campaign runs in a sandboxed workspace under `runs/<runId>/` as usual, but
+   on completion the durable spec — the whole `validation-design/` corpus —
+   is **delivered to the product repo** as a branch
+   (`validation-design/<runId>`), committed via a temporary worktree so your
+   checkout is never touched. Campaign residue (transcript, `state.json`,
+   `report.md`) stays VDA-local.
+2. **Ratify & land.** Review the branch like any change — open a PR from it;
+   the ratification package is a natural PR description. Merging is the
+   human ratification moment.
+3. **Iterate (revision).** Re-running `vda run --target` against a repo that
+   already carries `validation-design/validation-policy.yaml` auto-detects
+   the corpus, mounts it as the baseline, and kicks the designer off in the
+   skill's `harness-revision` mode: diff against the current docs, reopen
+   only affected concepts, surgical edits, retired IDs preserved — never a
+   from-scratch Phase 0. `--fresh` opts out, with a warning that it creates
+   a second, diverging design.
+4. **Agents as callers.** The delivered `agents-md-contribution.md` routes
+   the repo's coding agents to the corpus, the `implement-harness-ticket`
+   skill, and the `validation-trace` CI check — and back into VDA
+   (`harness-revision`) when the structure moves.
+
+If delivery fails (target not a git repo, no commits yet), the campaign
+record is still intact — fix the repo and `pnpm vda deliver <runId>`;
+re-delivery idempotently updates the same branch. Fixture runs (`vda run
+<fixture>`) skip delivery entirely: fixtures exercise the skill surface,
+they are not the production journey.
 
 ## Fixtures
 
@@ -231,6 +271,7 @@ runs/<runId>/
 | `src/designer.ts` · `src/stakeholder.ts` · `src/readers.ts` · `src/auditor.ts` | provider adapters |
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
 | `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
+| `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |
 | `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |

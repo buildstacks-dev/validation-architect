@@ -1,21 +1,34 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { TRACEABILITY_CONVENTIONS } from "./conventions.js";
-import type { FixtureInfo, ReaderPersonaId } from "./types.js";
+import type { CampaignMode, FixtureInfo, ReaderPersonaId } from "./types.js";
 
-export function designerKickoff(fixture: FixtureInfo): string {
+export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "greenfield"): string {
+  // Revision mode (issue #1): the target repo already carries a ratified
+  // corpus, mounted as the workspace baseline. A from-scratch Phase 0 here
+  // would re-derive everything — wasteful and dangerous (a second, diverging
+  // truth) — so the kickoff routes into the skill's harness-revision mode.
+  const workflowScope =
+    mode === "revision"
+      ? `Read that file now and follow it as the canonical workflow, reading its references/ files at the points it directs. This is NOT a from-scratch campaign: ./validation-design/ already contains this product's ratified harness-design corpus, mounted as your baseline. Enter the skill's harness-revision scope mode — ingest the existing artifacts as the baseline, diff them against the current ./docs/, and reopen ONLY the concepts the diff affects. Surgical edits with inline changelogs; unaffected invariants, boundaries, and policy entries stay untouched; retired invariants keep their IDs. Never re-run a from-scratch Phase 0 interrogation.`
+      : `Read that file now and follow it as the canonical workflow, reading its references/ files at the points it directs. Run the full workflow: Phase 0 through Phase 8 including the adversarial review.`;
+  const scopeBullet =
+    mode === "revision"
+      ? `- Scope mode: harness-revision. Target: production ${fixture.displayName}.
+- The ratified product and architecture documents are in ./docs/ — they are the source of product truth. ./validation-design/ carries the prior ratified design: it is the baseline under revision, never a blank slate.`
+      : `- Scope mode: product. Target: production ${fixture.displayName}.
+- The ratified product and architecture documents are in ./docs/ — they are the source of product truth. There is no incumbent test suite; this is a greenfield design (no coexistence posture needed).`;
   return `You are the Designer in a fully autonomous validation-harness design campaign for the product "${fixture.displayName}".
 
 Use the validation-harness-design skill located at:
 
 ./.claude/skills/validation-harness-design/SKILL.md
 
-Read that file now and follow it as the canonical workflow, reading its references/ files at the points it directs. Run the full workflow: Phase 0 through Phase 8 including the adversarial review.
+${workflowScope}
 
 ## Campaign parameters
 
-- Scope mode: product. Target: production ${fixture.displayName}.
-- The ratified product and architecture documents are in ./docs/ — they are the source of product truth. There is no incumbent test suite; this is a greenfield design (no coexistence posture needed).
+${scopeBullet}
 - The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md, owner-briefing.md, owner-backlog.md).
 - Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is specified in harness-backlog.md, not built. Catalog derivation is design work, not implementation: case-catalog.md must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
 

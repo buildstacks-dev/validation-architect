@@ -10,6 +10,7 @@ import { RambleWatcher } from "./ramble.js";
 import { ClaudeReaderRunner } from "./readers.js";
 import { generateReport } from "./report.js";
 import { CodexStakeholder } from "./stakeholder.js";
+import { deliverArtifacts, existingCorpusDir, loadTarget, resolveCampaignMode } from "./target.js";
 import { Transcript, readTranscript } from "./transcript.js";
 import type { ClaudeAuthMode, CodexAuthMode, RunConfig, RunState } from "./types.js";
 import { assembleWorkspace, ensureAuditSkill, ramblePath } from "./workspace.js";
@@ -90,8 +91,35 @@ function auditSectionPresent(workspace: string): () => boolean {
   };
 }
 
+/**
+ * Deliver a completed target-anchored run's corpus to the product repo as a
+ * branch. Failure is reported, never fatal to the run record — `vda deliver`
+ * retries idempotently.
+ */
+function tryDeliver(runDir: string, state: RunState): void {
+  if (!state.target) return;
+  try {
+    const delivery = deliverArtifacts({
+      workspace: state.workspace,
+      target: state.target,
+      runId: state.runId,
+    });
+    state.delivery = { ...delivery, deliveredAt: new Date().toISOString() };
+    state.updatedAt = new Date().toISOString();
+    saveState(runDir)(state);
+    console.log(
+      `[vda] delivered to ${state.target} — branch ${delivery.branch} @ ${delivery.commit.slice(0, 12)}`,
+    );
+    console.log(`[vda] review & ratify: git -C ${state.target} switch ${delivery.branch} (or open a PR from that branch)`);
+  } catch (err) {
+    console.error(`[vda] delivery to target failed: ${(err as Error).message}`);
+    console.error(`[vda] artifacts are intact in the workspace; retry with: vda deliver ${state.runId}`);
+    process.exitCode = 1;
+  }
+}
+
 async function execCampaign(runDir: string, state: RunState): Promise<void> {
-  const fixture = loadFixture(repoRoot, state.fixture);
+  const fixture = state.target ? loadTarget(state.target) : loadFixture(repoRoot, state.fixture);
   // Runs started before the audit stage existed lack the vendored audit skill
   // in their workspace; backfill so resume enters the audit loop cleanly.
   ensureAuditSkill(repoRoot, state.workspace);
@@ -134,7 +162,7 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
     },
     state,
     {
-      designer: designerKickoff(fixture),
+      designer: designerKickoff(fixture, state.campaignMode ?? "greenfield"),
       stakeholder: stakeholderKickoff(repoRoot, fixture),
     },
   );
@@ -143,18 +171,43 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
   console.log(`[vda] campaign ${final.status}${final.statusReason ? ` (${final.statusReason})` : ""}`);
   console.log(`[vda] report: ${join(runDir, "report.md")}`);
   console.log(`[vda] artifacts: ${join(state.workspace, "validation-design")}`);
-  if (final.status !== "completed") process.exitCode = 1;
+  if (final.status === "completed") {
+    tryDeliver(runDir, final);
+  } else {
+    process.exitCode = 1;
+  }
 }
 
 async function cmdRun(args: string[]): Promise<void> {
   const { positional, flags } = parseFlags(args);
   const fixtureName = positional[0];
-  if (!fixtureName) {
-    console.error(`usage: vda run <fixture> [--smoke] [--max-exchanges N] [--wall-minutes N]\n  [--designer-model M] [--stakeholder-model M] [--reader-model M] [--auditor-model M]\n  [--claude-auth subscription|api-key] [--codex-auth chatgpt|api-key] [--run-id ID]\nfixtures: ${listFixtures(repoRoot).join(", ")}`);
+  const targetFlag = flags.get("target");
+  if ((!fixtureName && !targetFlag) || (fixtureName && targetFlag)) {
+    console.error(`usage: vda run <fixture> [flags]         (test/demo path against a bundled fixture)\n       vda run --target <product-repo> [--fresh] [flags]   (anchored: artifacts deliver to the repo as a branch)\nflags: [--smoke] [--max-exchanges N] [--wall-minutes N]\n  [--designer-model M] [--stakeholder-model M] [--reader-model M] [--auditor-model M]\n  [--claude-auth subscription|api-key] [--codex-auth chatgpt|api-key] [--run-id ID]\nfixtures: ${listFixtures(repoRoot).join(", ")}`);
     process.exitCode = 2;
     return;
   }
-  const fixture = loadFixture(repoRoot, fixtureName);
+
+  let fixture; // FixtureInfo shape for both sources
+  let target: string | undefined;
+  let campaignMode: "greenfield" | "revision" = "greenfield";
+  let seedCorpusFrom: string | undefined;
+  if (targetFlag) {
+    fixture = loadTarget(targetFlag);
+    target = fixture.dir;
+    const fresh = flags.get("fresh") === "true";
+    campaignMode = resolveCampaignMode(target, fresh);
+    const corpus = existingCorpusDir(target);
+    if (campaignMode === "revision" && corpus) {
+      seedCorpusFrom = corpus;
+      console.log(`[vda] existing corpus detected at ${corpus} — entering harness-revision mode (use --fresh to opt out)`);
+    } else if (fresh && corpus) {
+      console.warn(`[vda] WARNING: --fresh on a target that already carries ${corpus} — this campaign will create a second, diverging design. The existing corpus stays untouched until you merge the delivery branch.`);
+    }
+  } else {
+    fixture = loadFixture(repoRoot, fixtureName as string);
+  }
+
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const runId = flags.get("run-id") ?? `${fixture.name}-${stamp}`;
   const runDir = join(runsRoot, runId);
@@ -164,7 +217,7 @@ async function cmdRun(args: string[]): Promise<void> {
     return;
   }
   mkdirSync(runDir, { recursive: true });
-  const workspace = assembleWorkspace(repoRoot, fixture, runDir);
+  const workspace = assembleWorkspace(repoRoot, fixture, runDir, { ...(seedCorpusFrom ? { seedCorpusFrom } : {}) });
   const config = buildConfig(fixture.name, runId, flags);
   const state: RunState = {
     runId,
@@ -173,13 +226,42 @@ async function cmdRun(args: string[]): Promise<void> {
     status: "running",
     exchanges: 0,
     seq: 0,
+    target,
+    campaignMode,
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     config,
   };
   saveState(runDir)(state);
-  console.log(`[vda] run ${runId} — fixture ${fixture.displayName}, workspace ${workspace}`);
+  console.log(`[vda] run ${runId} — ${target ? `target ${target} (${campaignMode})` : `fixture ${fixture.displayName}`}, workspace ${workspace}`);
   await execCampaign(runDir, state);
+}
+
+/**
+ * (Re-)deliver a completed target-anchored run's corpus to the product repo.
+ * Idempotent: updates the same validation-design/<runId> branch.
+ */
+function cmdDeliver(args: string[]): void {
+  const { positional } = parseFlags(args);
+  const runId = positional[0];
+  if (!runId) {
+    console.error("usage: vda deliver <runId>");
+    process.exitCode = 2;
+    return;
+  }
+  const runDir = join(runsRoot, runId);
+  const state = loadState(runDir);
+  if (!state.target) {
+    console.error(`run ${runId} is a fixture run (no --target); nothing to deliver. Artifacts: ${join(state.workspace, "validation-design")}`);
+    process.exitCode = 2;
+    return;
+  }
+  if (state.status !== "completed") {
+    console.error(`run ${runId} is ${state.status}; delivery expects a completed campaign (use vda resume)`);
+    process.exitCode = 2;
+    return;
+  }
+  tryDeliver(runDir, state);
 }
 
 async function cmdResume(args: string[]): Promise<void> {
@@ -334,11 +416,14 @@ async function main(): Promise<void> {
     case "report":
       cmdReport(rest);
       break;
+    case "deliver":
+      cmdDeliver(rest);
+      break;
     case "list":
       cmdList();
       break;
     default:
-      console.error("usage: vda <run|resume|readers|audit|report|list> ...");
+      console.error("usage: vda <run|resume|readers|audit|report|deliver|list> ...");
       process.exitCode = 2;
   }
 }
