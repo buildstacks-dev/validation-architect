@@ -9,6 +9,7 @@ import { runCampaign } from "./orchestrator.js";
 import { auditorPrompt, designerKickoff, stakeholderKickoff } from "./prompts.js";
 import { RambleWatcher } from "./ramble.js";
 import { ClaudeReaderRunner } from "./readers.js";
+import { loadRegistry, recordCampaign, recordDelivery, recordFidelity, renderRepos, repoStatuses } from "./registry.js";
 import { generateReport } from "./report.js";
 import { CodexStakeholder } from "./stakeholder.js";
 import { deliverArtifacts, existingCorpusDir, loadTarget, resolveCampaignMode } from "./target.js";
@@ -18,6 +19,8 @@ import { assembleWorkspace, ensureAuditSkill, ramblePath } from "./workspace.js"
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 const runsRoot = join(repoRoot, "runs");
+// The per-repo ledger (#8): written only by the completion paths below.
+const registryPath = join(runsRoot, "registry.json");
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -92,6 +95,14 @@ function auditSectionPresent(workspace: string): () => boolean {
   };
 }
 
+/** The enablement-bundle version installed: the delivered manifest's schema id. */
+function manifestSchemaOf(workspace: string): string | undefined {
+  const p = join(workspace, "validation-design", "case-catalog.yaml");
+  if (!existsSync(p)) return undefined;
+  const m = readFileSync(p, "utf8").match(/^schema:\s*(\S+)/m);
+  return m ? m[1] : undefined;
+}
+
 /**
  * Deliver a completed target-anchored run's corpus to the product repo as a
  * branch. Failure is reported, never fatal to the run record — `vda deliver`
@@ -108,6 +119,12 @@ function tryDeliver(runDir: string, state: RunState): void {
     state.delivery = { ...delivery, deliveredAt: new Date().toISOString() };
     state.updatedAt = new Date().toISOString();
     saveState(runDir)(state);
+    recordDelivery(
+      registryPath,
+      state.target,
+      { runId: state.runId, ...state.delivery },
+      manifestSchemaOf(state.workspace),
+    );
     console.log(
       `[vda] delivered to ${state.target} — branch ${delivery.branch} @ ${delivery.commit.slice(0, 12)}`,
     );
@@ -172,6 +189,15 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
   console.log(`[vda] campaign ${final.status}${final.statusReason ? ` (${final.statusReason})` : ""}`);
   console.log(`[vda] report: ${join(runDir, "report.md")}`);
   console.log(`[vda] artifacts: ${join(state.workspace, "validation-design")}`);
+  if (final.target) {
+    recordCampaign(registryPath, final.target, {
+      runId: final.runId,
+      mode: final.campaignMode ?? "greenfield",
+      status: final.status,
+      ...(final.audit?.verdict ? { verdict: final.audit.verdict } : {}),
+      at: new Date().toISOString(),
+    });
+  }
   if (final.status === "completed") {
     tryDeliver(runDir, final);
   } else {
@@ -417,6 +443,13 @@ async function cmdFidelity(args: string[]): Promise<void> {
   const outPath = flags.get("out") ?? join(runsRoot, "fidelity", `${basename(target)}-${stamp}.md`);
   mkdirSync(join(outPath, ".."), { recursive: true });
   writeFileSync(outPath, result.report);
+  recordFidelity(registryPath, target, {
+    at: new Date().toISOString(),
+    scope: result.scope?.label ?? "unknown",
+    status: result.status,
+    findings: result.findings.length,
+    blocking: result.findings.filter((f) => f.tier === "blocking").length,
+  });
   console.log(`[vda] fidelity report: ${outPath}`);
   console.log(`[vda] findings: ${result.findings.length}${result.findings.length > 0 ? ` (${result.findings.map((f) => `${f.id}:${f.tier}`).join(", ")})` : ""}`);
   if (result.violations.length > 0) {
@@ -436,6 +469,22 @@ function cmdReport(args: string[]): void {
   }
   const md = generateReport(join(runsRoot, runId));
   console.log(md);
+}
+
+/**
+ * The fleet staleness query (#8): which repos run a stale design, which have
+ * never had a fidelity audit, which have findings open. Extra paths are
+ * checked against the registry and reported UNKNOWN when absent — no green
+ * by absence.
+ */
+function cmdRepos(args: string[]): void {
+  const { positional, flags } = parseFlags(args);
+  const reg = loadRegistry(registryPath);
+  const staleDaysFlag = flags.get("stale-days");
+  const lines = repoStatuses(reg, positional.map((p) => resolve(p)), {
+    ...(staleDaysFlag !== undefined ? { staleDays: Number(staleDaysFlag) } : {}),
+  });
+  console.log(renderRepos(lines));
 }
 
 function cmdList(): void {
@@ -475,11 +524,14 @@ async function main(): Promise<void> {
     case "deliver":
       cmdDeliver(rest);
       break;
+    case "repos":
+      cmdRepos(rest);
+      break;
     case "list":
       cmdList();
       break;
     default:
-      console.error("usage: vda <run|resume|readers|audit|fidelity|report|deliver|list> ...");
+      console.error("usage: vda <run|resume|readers|audit|fidelity|report|deliver|repos|list> ...");
       process.exitCode = 2;
   }
 }

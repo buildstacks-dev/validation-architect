@@ -176,6 +176,14 @@ pnpm vda report <runId>       # regenerate report.md
 pnpm vda fidelity <target-repo> --wave 1
 pnpm vda fidelity <target-repo> --tickets HB-014,HB-015 --out fid.md
 
+# fleet ledger (offline): which repos run a stale design, which were never
+# fidelity-audited, which have findings open. Written only by the campaign/
+# delivery/fidelity completion paths — never hand-maintained. An absent
+# entry is UNKNOWN, loudly — no green by absence.
+pnpm vda repos                          # every registered target
+pnpm vda repos ~/code/myproduct         # explicit query (UNKNOWN if absent)
+pnpm vda repos --stale-days 7
+
 # deterministic design→implementation closure over a target repo
 # (ships as the `validation-trace` bin; intended for the product repo's CI)
 pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
@@ -279,6 +287,7 @@ runs/<runId>/
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
 | `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
 | `src/fidelity.ts` | fidelity audit: scope resolution, closure preflight, findings-only guard |
+| `src/registry.ts` | per-repo fleet ledger + staleness flags behind `vda repos` |
 | `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |
 | `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |

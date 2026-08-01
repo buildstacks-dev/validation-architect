@@ -28,6 +28,10 @@ and the anti-yes-loop design.
 - `pnpm vda deliver <runId>` — offline; (re-)lands a completed target run's
   corpus in the product repo as a `validation-design/<runId>` branch via a
   temp worktree (never touches the user's checkout).
+- `pnpm vda repos [paths...] [--stale-days N]` — offline; the fleet ledger
+  (`runs/registry.json`). Entries are written ONLY by the campaign/delivery/
+  fidelity completion paths — never hand-edit it; absent entry = UNKNOWN,
+  loudly, never healthy.
 
 ## Working rules
 
@@ -69,7 +73,7 @@ and the anti-yes-loop design.
 
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
-fixtures, target, catalog, trace, conventions, cli) · `fixtures/` three synthetic
+fixtures, target, catalog, trace, fidelity, registry, conventions, cli) · `fixtures/` three synthetic
 products (web app / backend daemon / agentic LLM) plus `operon`, the
 real-target pilot docs snapshot · `bin/validation-trace.js` the product-
 agnostic closure CLI · `skill/implement-harness-ticket/` the coding-agent
