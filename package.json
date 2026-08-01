@@ -1,5 +1,5 @@
 {
-  "name": "validation-design-agent",
+  "name": "validation-architect",
   "version": "0.1.0",
   "private": true,
   "description": "Two-agent autonomous validation-harness design: a Claude designer drives the validation-harness-design skill while a Codex stakeholder plays the domain-expert human, grounded in product docs and the human's rambling.txt.",

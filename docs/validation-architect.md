@@ -148,8 +148,10 @@ open findings. This extends issue #1's single-repo journey to fleet scale.
 "Validation architect" replaces "validation design agent" as the concept name:
 "design agent" undersells two of the three legs, and "architect" correctly
 implies blueprint authority plus inspection duty without implying
-construction. Repo/package renaming is a cosmetic decision deferred to the
-owner; nothing in this document depends on it.
+construction. **The repo and package were renamed to `validation-architect`
+on 2026-07-31** (owner decision; GitHub redirects preserve all prior links).
+The `vda` CLI command name is retained for now; renaming it is cosmetic churn
+across src/tests and may ride along with a later implementation session.
 
 ## Reconciliation with the existing tracker
 

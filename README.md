@@ -1,4 +1,8 @@
-# Validation-Design-Agent
+# Validation Architect
+
+*(Renamed from `validation-design-agent` 2026-07-31 — the re-scope is recorded in
+[docs/validation-architect.md](docs/validation-architect.md). The `vda` CLI name is
+kept for now.)*
 
 Two AI agents run a complete [validation-harness-design](skill/validation-harness-design/SKILL.md)
 campaign end to end — no human at the keyboard, but with a dedicated channel
