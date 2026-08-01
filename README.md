@@ -169,6 +169,13 @@ pnpm vda audit <runId>        # one post-hoc audit iteration of a COMPLETED
                               # audit-report-N.md, updates report.md
 pnpm vda report <runId>       # regenerate report.md
 
+# fidelity audit (spends Claude quota, one fresh session): do the citing
+# specs actually falsify their ratified seeds? Scoped per wave / ticket set;
+# REFUSES when validation-trace is red (fix closure before asking judgment);
+# findings only — a report containing a patch is a protocol violation.
+pnpm vda fidelity <target-repo> --wave 1
+pnpm vda fidelity <target-repo> --tickets HB-014,HB-015 --out fid.md
+
 # deterministic design→implementation closure over a target repo
 # (ships as the `validation-trace` bin; intended for the product repo's CI)
 pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
@@ -271,6 +278,7 @@ runs/<runId>/
 | `src/designer.ts` · `src/stakeholder.ts` · `src/readers.ts` · `src/auditor.ts` | provider adapters |
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
 | `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
+| `src/fidelity.ts` | fidelity audit: scope resolution, closure preflight, findings-only guard |
 | `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |
 | `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |

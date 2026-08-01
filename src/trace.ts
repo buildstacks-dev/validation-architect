@@ -56,6 +56,8 @@ export interface TraceResult {
   checks: TraceChecks;
   specs: SpecFileInfo[];
   report: string;
+  /** The parsed manifest (absent when the run failed before parsing it). */
+  manifest?: CaseCatalogManifest;
 }
 
 const DEFAULT_SPEC_SUFFIXES = [".test.ts", ".test.tsx", ".test.js", ".test.mjs", ".spec.ts"];
@@ -227,7 +229,7 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
     : new Map<string, string>();
 
   const report = renderTraceReport(manifest, cov, specs, checks, names);
-  return { ok: reds.length === 0, reds, checks, specs, report };
+  return { ok: reds.length === 0, reds, checks, specs, report, manifest };
 }
 
 function renderTraceReport(

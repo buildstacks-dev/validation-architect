@@ -1,0 +1,50 @@
+# Synthetic manifest for the fidelity audit's hermetic suite (product
+# "widgetd"). The tree is deliberately TRACE-GREEN: every family cited, the
+# landed ticket honest by closure's lights — and CF-W01-R's citing spec is
+# quietly weakened (tautological assertions, no seeded violation). Closure
+# cannot see that; the fidelity pass must.
+schema: validation-architect/case-catalog/v1
+product: widgetd
+conventions:
+  tests_root: tests
+  spec_suffixes:
+    - .test.ts
+families:
+  - id: CF-W01-S
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: STD
+    ticket: HB-001
+    wave: "0"
+  - id: CF-W01-R
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: refusal
+    risk: E1
+    ticket: HB-001
+    wave: "0"
+  - id: CF-W02
+    section: Boundary matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: E2
+    ticket: HB-002
+    wave: "1"
+tickets:
+  - id: HB-001
+    name: Widget lifecycle suite
+    wave: "0"
+    status: landed
+    families:
+      - CF-W01-S
+      - CF-W01-R
+  - id: HB-002
+    name: Widget boundary double
+    wave: "1"
+    status: pending
+    families:
+      - CF-W02

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { TRACEABILITY_CONVENTIONS } from "./conventions.js";
+import type { FidelityScope } from "./fidelity.js";
 import type { CampaignMode, FixtureInfo, ReaderPersonaId } from "./types.js";
 
 export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "greenfield"): string {
@@ -224,6 +225,72 @@ AUD-103: REGRESSION — <evidence the fix broke something else; name the artifac
 ## Output format (strict — the environment parses it)
 
 First a "Disposition verification" section: one AUD-1xx verdict line per round-1 finding as specified above. Then, only if any exist, a "New blocking findings" section with AUD-2xx header lines plus evidence. Then "What I checked". No preamble — the report only.`;
+}
+
+/**
+ * The fidelity audit rubric (issue #7): a fresh-context judgment pass over a
+ * PRODUCT REPO (not a campaign workspace), scoped to a wave / ticket set.
+ * Closure has already been proven deterministically by the trace CLI before
+ * this prompt is built — the auditor judges whether the citing specs actually
+ * falsify their ratified seeds. Findings only: the no-patches rule is
+ * enforced here AND in the report-format guard (fidelity.ts); keep both
+ * halves, like the audit loop's convergence rules.
+ */
+export function fidelityAuditorPrompt(scope: FidelityScope, product?: string): string {
+  const familyLines = scope.families
+    .map(({ family, files }) => {
+      const meta = [
+        family.ticket ? `ticket ${family.ticket}` : "no owning ticket",
+        family.oracle ? `oracle: ${family.oracle}` : undefined,
+        family.risk ? `risk: ${family.risk}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const cites = files.length > 0 ? files.join(", ") : "(no citing spec — declared pending)";
+      return `- ${family.id} (${meta}) — citing specs: ${cites}`;
+    })
+    .join("\n");
+  const ticketLine = scope.tickets.map((t) => `${t.id} [${t.status}]`).join(", ");
+
+  return `You are an independent FIDELITY auditor with a fresh context, examining a product repository${product ? ` ("${product}")` : ""} — not a design-campaign workspace.
+
+The repo carries a ratified validation-design corpus (under validation-design/) and an implemented (or partially implemented) test tree. A deterministic closure check (the validation-trace CLI) has ALREADY passed: every scoped family's citations resolve. Your job is the one question closure cannot answer: do the citing specs actually falsify their ratified seeds, or has the case been quietly weakened on its way into code?
+
+## Scope — exhaustive over this sample, nothing outside it
+
+Audit scope: ${scope.label} (${ticketLine}).
+
+${familyLines}
+
+For each scoped family: read its catalog row in validation-design/case-catalog.md (and any contract/invariant the row cites), then open each citing spec listed above and judge the assertions against the ratified text. Families with no citing spec are declared pending — skip them; absence is the trace CLI's business, not yours. Do not audit families outside the scope table.
+
+## Rubric — the four fidelity axes
+
+a. **Seed coverage.** Every enumeration item the catalog row (or its cited contract clause) names has a real assertion in some citing spec. An item silently absent from every citing spec is a finding.
+b. **Negative-control reality.** The detector can actually fire: a seeded violation would fail the test. A test whose assertions cannot fail (constant-pass, assert-on-setup-only, tautology), or a "negative control" that never plants the violation, is a finding — blocking tier, because closure now overstates the harness.
+c. **Oracle match.** The assertion kind matches the row's declared oracle (a "refusal" oracle exercised only by state inspection, a "state" oracle checked only via logs, etc.).
+d. **No quiet narrowing.** The implemented case has not been weakened relative to the ratified seed text: narrowed input domain, loosened tolerance, dropped failure mode, a skipped/it.todo carrying the citation while the manifest counts the family covered.
+
+## Ground rules (hard)
+
+1. Read-only. You never edit a file, never run code, never install anything.
+2. FINDINGS ONLY — never propose a patch. No diff blocks, no "apply this change", no rewritten test bodies. Naming the gap ("the CF-X spec never plants a seeded duplicate, so the detector cannot fire") is your whole deliverable; remediation belongs to the repo's coding agents via the implement-harness-ticket skill.
+3. Never relitigate ratified decisions: prunes, blocked cells, and recorded decisions are facts to audit against. A pruned family missing tests is CORRECT, not a finding.
+4. Never audit taste. Test structure, naming, and style are out of scope unless they genuinely mislead (a citation on an unrelated test body is axis-d substance, not style).
+5. Evidence or it does not exist: every finding quotes the ratified text AND the spec text it fails against, with file paths.
+
+## Output format (strict — the environment parses it)
+
+First line exactly: \`mode: fidelity\`. Then a Markdown report. Every finding MUST begin with a header line, alone on its line:
+
+AUD-901 (blocking) — <spec or catalog file> — <the specific fidelity gap>
+
+- IDs are AUD-901, AUD-902, … (the 9xx range is reserved for fidelity passes; campaign audits own 1xx/2xx).
+- Tier: blocking (a scoped promise is unprotected while closure claims otherwise — includes every axis-b finding) / significant (weakening that leaves partial protection) / minor (worth recording; never style).
+- Below each header: the catalog/contract quote, the spec quote, and why the second fails the first.
+- End with a "What I checked" section: every scoped family, the files opened for it, and the axes applied. Mandatory even with zero findings — and zero findings on a freshly implemented wave is possible but suspicious; never manufacture findings, never suppress real ones.
+
+Begin: read the scoped catalog rows, then the citing specs, then write the report. No preamble — the report only.`;
 }
 
 export function auditReportMessage(iteration: number, reportText: string): string {

@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ClaudeAuditorRunner } from "./auditor.js";
 import { ClaudeDesigner } from "./designer.js";
+import { runFidelityAudit } from "./fidelity.js";
 import { listFixtures, loadFixture } from "./fixtures.js";
 import { runCampaign } from "./orchestrator.js";
 import { auditorPrompt, designerKickoff, stakeholderKickoff } from "./prompts.js";
@@ -373,6 +374,58 @@ async function cmdAudit(args: string[]): Promise<void> {
   console.log(`[vda] report.md regenerated`);
 }
 
+/**
+ * Fidelity audit (issue #7): a standalone judgment pass over a PRODUCT REPO,
+ * scoped per wave or ticket set. Live — spends Claude quota (one fresh
+ * session). Refuses when the trace CLI is red: fix closure before asking for
+ * judgment. Findings only — a report containing a patch is flagged as a
+ * protocol violation. Not part of any campaign state machine.
+ */
+async function cmdFidelity(args: string[]): Promise<void> {
+  const { positional, flags } = parseFlags(args);
+  const targetRoot = positional[0];
+  if (!targetRoot) {
+    console.error(`usage: vda fidelity <target-repo> [--wave W | --tickets HB-001,HB-002]\n  [--manifest path] [--tests path] [--out report.md]\n  [--auditor-model M] [--claude-auth subscription|api-key]`);
+    process.exitCode = 2;
+    return;
+  }
+  const target = resolve(targetRoot);
+  const auditor = new ClaudeAuditorRunner({
+    model: flags.get("auditor-model") ?? "claude-fable-5",
+    authMode: (flags.get("claude-auth") ?? "subscription") as ClaudeAuthMode,
+  });
+  const wave = flags.get("wave");
+  const ticketsFlag = flags.get("tickets");
+  const manifestPath = flags.get("manifest");
+  const testsRoot = flags.get("tests");
+  console.log(`[vda] fidelity audit of ${target} (${wave !== undefined ? `wave ${wave}` : ticketsFlag ? `tickets ${ticketsFlag}` : "all waves"}; fresh context, live Claude session)`);
+  const result = await runFidelityAudit(auditor, target, {
+    ...(wave !== undefined ? { wave } : {}),
+    ...(ticketsFlag ? { tickets: ticketsFlag.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+    ...(manifestPath !== undefined ? { manifestPath } : {}),
+    ...(testsRoot !== undefined ? { testsRoot } : {}),
+  });
+
+  if (result.status === "refused-closure") {
+    console.error("[vda] REFUSED: closure is red — fix these before asking for judgment:");
+    for (const r of result.reds) console.error(`  - ${r}`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outPath = flags.get("out") ?? join(runsRoot, "fidelity", `${basename(target)}-${stamp}.md`);
+  mkdirSync(join(outPath, ".."), { recursive: true });
+  writeFileSync(outPath, result.report);
+  console.log(`[vda] fidelity report: ${outPath}`);
+  console.log(`[vda] findings: ${result.findings.length}${result.findings.length > 0 ? ` (${result.findings.map((f) => `${f.id}:${f.tier}`).join(", ")})` : ""}`);
+  if (result.violations.length > 0) {
+    console.error("[vda] PROTOCOL VIOLATION — the report contains remediation content (findings only is the contract):");
+    for (const v of result.violations) console.error(`  - ${v}`);
+    process.exitCode = 1;
+  }
+}
+
 function cmdReport(args: string[]): void {
   const { positional } = parseFlags(args);
   const runId = positional[0];
@@ -413,6 +466,9 @@ async function main(): Promise<void> {
     case "audit":
       await cmdAudit(rest);
       break;
+    case "fidelity":
+      await cmdFidelity(rest);
+      break;
     case "report":
       cmdReport(rest);
       break;
@@ -423,7 +479,7 @@ async function main(): Promise<void> {
       cmdList();
       break;
     default:
-      console.error("usage: vda <run|resume|readers|audit|report|deliver|list> ...");
+      console.error("usage: vda <run|resume|readers|audit|fidelity|report|deliver|list> ...");
       process.exitCode = 2;
   }
 }

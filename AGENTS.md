@@ -19,8 +19,12 @@ and the anti-yes-loop design.
 - `pnpm vda run <fixture> [--smoke]` /
   `pnpm vda run --target <product-repo> [--fresh]` · `resume` · `readers` ·
   `audit` · `report` · `list` — **live, spends subscription quota on BOTH
-  providers** (`readers`/`audit` spend Claude only). Never run a live
-  campaign casually; a full run is hours of wall clock.
+  providers** (`readers`/`audit`/`fidelity` spend Claude only). Never run a
+  live campaign casually; a full run is hours of wall clock.
+- `pnpm vda fidelity <target-repo> [--wave W | --tickets ...]` — live (one
+  fresh Claude session) judgment pass over a product repo; refuses while
+  `validation-trace` is red; findings only (the no-patches rule is enforced
+  in the prompt AND the report-format guard — keep both halves).
 - `pnpm vda deliver <runId>` — offline; (re-)lands a completed target run's
   corpus in the product repo as a `validation-design/<runId>` branch via a
   temp worktree (never touches the user's checkout).
