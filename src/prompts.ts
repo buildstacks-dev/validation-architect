@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { TRACEABILITY_CONVENTIONS } from "./conventions.js";
 import type { FixtureInfo, ReaderPersonaId } from "./types.js";
 
 export function designerKickoff(fixture: FixtureInfo): string {
@@ -15,8 +16,17 @@ Read that file now and follow it as the canonical workflow, reading its referenc
 
 - Scope mode: product. Target: production ${fixture.displayName}.
 - The ratified product and architecture documents are in ./docs/ — they are the source of product truth. There is no incumbent test suite; this is a greenfield design (no coexistence posture needed).
-- The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, harness-backlog.md, agents-md-contribution.md).
+- The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md).
 - Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is specified in harness-backlog.md, not built. Catalog derivation is design work, not implementation: case-catalog.md must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
+
+## Machine-readable catalog + AGENTS.md conventions (orchestrator requirements)
+
+In addition to the skill's Phase 6/8 deliverables:
+
+1. Emit \`validation-design/case-catalog.yaml\` alongside \`case-catalog.md\` in the same step. One entry per family: id, layers, oracle, risk, prune/blocked status + reason, owning backlog ticket, wave. Schema id: \`validation-architect/case-catalog/v1\`. The markdown catalog remains the human artifact; the YAML is what the \`validation-trace\` CLI consumes. The two MUST agree (family ids, prune tokens, blocked-by) — disagreement is a corpus bug, and the environment rejects campaign completion while they disagree.
+2. Include the following block VERBATIM in \`agents-md-contribution.md\` (under its own heading). These conventions are normative; the product repo's CI will enforce them via the trace CLI:
+
+${TRACEABILITY_CONVENTIONS}
 
 ## Your counterpart
 
@@ -246,6 +256,12 @@ export function readerTestRequiredMessage(): string {
 
 export function auditSectionRequiredMessage(): string {
   return `[Environment: CAMPAIGN-COMPLETE rejected — validation-design/ratification-package.md does not yet contain an "Audit" heading. Write the Audit section now (verdict, every finding by tier with its disposition, unresolved disputes and deferrals for the human), then emit <<CAMPAIGN-COMPLETE>> again.]`;
+}
+
+export function catalogAgreementRequiredMessage(problems: string[]): string {
+  return `[Environment: CAMPAIGN-COMPLETE rejected — the case-catalog manifest does not agree with case-catalog.md (or is missing/unparseable). Fix the disagreement, then emit <<CAMPAIGN-COMPLETE>> again. Findings:
+
+${problems.map((p) => `- ${p}`).join("\n")}]`;
 }
 
 export function designerEmptyTurnNudge(): string {

@@ -162,6 +162,12 @@ pnpm vda audit <runId>        # one post-hoc audit iteration of a COMPLETED
                               # run: fresh auditor, no feedback loop; writes
                               # audit-report-N.md, updates report.md
 pnpm vda report <runId>       # regenerate report.md
+
+# deterministic design→implementation closure over a target repo
+# (ships as the `validation-trace` bin; intended for the product repo's CI)
+pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
+pnpm trace generate <case-catalog.md> <harness-backlog.md> \
+  [--product name] [--tests-root path] [-o case-catalog.yaml]
 ```
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
@@ -224,9 +230,12 @@ runs/<runId>/
 | `src/orchestrator.ts` | the relay loop, markers, readers, audit stage, checkpointing |
 | `src/designer.ts` · `src/stakeholder.ts` · `src/readers.ts` · `src/auditor.ts` | provider adapters |
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
+| `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
+| `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
 | `skill/` | vendored copies of validation-harness-design and validation-harness-audit |
-| `fixtures/` | the three synthetic products |
+| `fixtures/` | three synthetic products + the `operon` real-target pilot |
 | `test/` | offline suite (fake adapters, no tokens) |
+| `bin/validation-trace.js` | package bin for the product-agnostic trace CLI |

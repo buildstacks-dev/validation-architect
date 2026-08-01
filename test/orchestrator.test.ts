@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { serializeManifest, type CaseCatalogManifest } from "../src/catalog.js";
 import { runCampaign, type OrchestratorDeps } from "../src/orchestrator.js";
 import { RambleWatcher } from "../src/ramble.js";
 import { Transcript, readTranscript } from "../src/transcript.js";
@@ -588,5 +589,68 @@ describe("runCampaign audit stage", () => {
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("aborted");
     expect(final.statusReason).toContain("Audit section");
+  });
+
+  it("rejects CAMPAIGN-COMPLETE when case-catalog.md exists but the manifest disagrees", async () => {
+    mkdirSync(join(dir, "validation-design"), { recursive: true });
+    writeFileSync(
+      join(dir, "validation-design", "case-catalog.md"),
+      [
+        "# Case catalog",
+        "",
+        "## 1. Journey matrix",
+        "",
+        "| Cell | Case family | Layer | Oracle | Risk |",
+        "|---|---|---|---|---|",
+        "| CF-X01-S | happy path | 2 | state | STD |",
+        "",
+      ].join("\n"),
+    );
+    // Manifest invents a different family — agreement must fire.
+    const bad: CaseCatalogManifest = {
+      schema: "validation-architect/case-catalog/v1",
+      families: [{ id: "CF-WRONG", section: "Journey matrix", status: "implementable" }],
+      tickets: [],
+    };
+    writeFileSync(join(dir, "validation-design", "case-catalog.yaml"), serializeManifest(bad));
+
+    let fixed = false;
+    const { deps } = makeDeps(
+      [
+        "Package done.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) => {
+          if (!incoming.includes("case-catalog") && !incoming.includes("does not agree")) {
+            return "unexpected\n<<AWAITING-HUMAN>>";
+          }
+          // Repair: rewrite the manifest to match the markdown.
+          const good: CaseCatalogManifest = {
+            schema: "validation-architect/case-catalog/v1",
+            families: [{ id: "CF-X01-S", section: "Journey matrix", status: "implementable", layers: "2", oracle: "state", risk: "STD" }],
+            tickets: [],
+          };
+          writeFileSync(join(dir, "validation-design", "case-catalog.yaml"), serializeManifest(good));
+          fixed = true;
+          return "Manifest repaired.\n<<CAMPAIGN-COMPLETE>>";
+        },
+      ],
+      [],
+      [],
+    );
+    const state = makeState(makeConfig(), { readersRan: true });
+    state.audit = {
+      iteration: 2,
+      phase: "package",
+      windowExchanges: 0,
+      findings: [],
+      dispositions: {},
+      verdict: "clean",
+    };
+    state.pending = { to: "designer", text: "[Environment: write the Audit section]" };
+
+    const final = await runCampaign(deps, state, kickoffs);
+    expect(final.status).toBe("completed");
+    expect(fixed).toBe(true);
+    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
+    expect(notes.some((n) => n.note?.includes("catalog agreement"))).toBe(true);
   });
 });

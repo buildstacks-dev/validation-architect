@@ -5,12 +5,14 @@ import {
   parseVerifications,
   renderDispositionRecord,
 } from "./audit.js";
+import { workspaceCatalogProblems } from "./catalog.js";
 import { parseMarker, stripMarkers } from "./markers.js";
 import {
   auditPackageMessage,
   auditReportMessage,
   auditSectionRequiredMessage,
   auditorPrompt,
+  catalogAgreementRequiredMessage,
   designerEmptyTurnNudge,
   rambleRefreshNote,
   readerReportMessage,
@@ -28,6 +30,8 @@ import type {
   RunState,
   StakeholderAgent,
 } from "./types.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-agent"];
 
@@ -277,6 +281,29 @@ export async function runCampaign(
           state.pending = { to: "designer", text: auditSectionRequiredMessage() };
           persist();
           continue;
+        }
+        // Manifest ↔ markdown agreement (issue #4): when the campaign produced
+        // a catalog, the machine-readable companion must exist and agree. Skip
+        // when neither is present (short scripted tests that pre-set auditDone).
+        if (existsSync(join(state.workspace, "validation-design", "case-catalog.md"))) {
+          const catalogProblems = workspaceCatalogProblems(state.workspace);
+          if (catalogProblems.length > 0) {
+            state.completionRejections = (state.completionRejections ?? 0) + 1;
+            if (state.completionRejections > 2) {
+              state.status = "aborted";
+              state.statusReason = "case-catalog.yaml does not agree with case-catalog.md";
+              persist();
+              return state;
+            }
+            transcript.note(
+              "orchestrator",
+              `CAMPAIGN-COMPLETE rejected: catalog agreement — ${catalogProblems.join("; ")}`,
+            );
+            log("rejected CAMPAIGN-COMPLETE (case-catalog manifest disagrees with the markdown catalog)");
+            state.pending = { to: "designer", text: catalogAgreementRequiredMessage(catalogProblems) };
+            persist();
+            continue;
+          }
         }
         // phase "package" with the Audit section written, or "done" (pre-set).
         state.audit.phase = "done";

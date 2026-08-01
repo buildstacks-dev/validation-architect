@@ -61,6 +61,7 @@ and the anti-yes-loop design.
 
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
-fixtures, cli) · `fixtures/` three synthetic products (web app / backend
-daemon / agentic LLM) plus `operon`, the real-target pilot docs snapshot ·
-`runs/` gitignored campaign outputs.
+fixtures, catalog, trace, conventions, cli) · `fixtures/` three synthetic
+products (web app / backend daemon / agentic LLM) plus `operon`, the
+real-target pilot docs snapshot · `bin/validation-trace.js` the product-
+agnostic closure CLI · `runs/` gitignored campaign outputs.
