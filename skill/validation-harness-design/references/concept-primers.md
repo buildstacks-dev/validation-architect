@@ -12,7 +12,7 @@ These are source material, not scripts. Compress to a few short paragraphs in de
 
 Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the skill supplies, not a concept elicited from the human. Every later phase uses its vocabulary for placement.
 
-**What it is.** Five validation layers, each defined by the question it answers — "what can be false?" — never by the technology inside it. Two axes generate them: *is the verdict deterministic?* and *does the test touch the real world?*
+**What it is.** Six validation layers, each defined by the question it answers — "what can be false?" — never by the technology inside it. Three axes generate them: *is the verdict deterministic?*, *does the test touch the real world?*, and *is the oracle mechanical or human?* Layers 1–5 have mechanical oracles. Layer 6 is the only lane whose oracle is a human-ratified rubric.
 
 | # | Layer | Question it answers | Verdict | Spend / side effects | Cadence |
 |---|---|---|---|---|---|
@@ -21,6 +21,7 @@ Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the s
 | 3 | Live system (sandbox) | Can the real world break the seams? | Nondeterministic, binary | Real, bounded, disposable | Pre-merge / pre-release |
 | 4 | Eval / qualification | Can the model be wrong while the machinery is right? | Statistical, threshold over N runs | Token cost, separately authorized | Prompt/model change · nightly · release |
 | 5 | Ops hardening | Can time, load, or an adversary hurt you? | Mixed | Production-shaped | Pre-GA, then recurring |
+| 6 | Outcome acceptance (`L-ACC`) | Given realistic input, is the output work a human would accept? | Multi-axis score against a ratified rubric; inconclusive by default | Real, bounded by per-campaign human authorization | Triggered only — never scheduled |
 
 **Why it exists as a separate concept.** The classical unit/integration/system/E2E stack assumed every layer was roughly free and deterministic, so the names carved along code organization. Once a system contains a model (nondeterministic verdicts) and autonomy (real side effects, real spend), those assumptions fail and the stack must be re-cut along the two axes that now dominate cost. Layer 2 is the pivotal cell: the only place **composition** (where most risk lives) meets **determinism** (what makes a test cheap enough for every commit). A well-designed hermetic layer is what makes iteration fast; a missing one forces every composition question up to layer 3, where each answer costs real time and money.
 
@@ -38,8 +39,9 @@ Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the s
 | 3 | Staging smoke + payment-vendor test mode | End-to-end run on disposable repos with capped spend |
 | 4 | Empty lane — declared with a reason, never deleted | Golden sets, judge meta-evals, release qualification campaigns |
 | 5 | Pen test + load test at the contention point | + soak, missed-tick reconciliation, cost integrity under retries |
+| 6 | Usually declared empty: output is mechanically specified | Realistic end-to-end work product scored on a human-ratified rubric |
 
-**The four layer rules** (operating-rule rank; see SKILL.md): prove it a layer down; layers may be empty, never silently absent; evidence is not a regression suite (layer-3/4 findings deposit layer-1/2 detectors in the same change); security is split, not a layer (invariants in layer 1 from day one, assurance in layer 5).
+**The six layer rules** (operating-rule rank; see SKILL.md): prove it a layer down; layers may be empty, never silently absent; evidence is not a regression suite (layer-3/4 findings deposit layer-1/2 detectors in the same change); security is split, not a layer (invariants in layer 1 from day one, assurance in layer 5); guardrails are not lane work (anything a scan or exit status can falsify lands at layer 1/2 with a negative control, never in the layer-6 lane); the instrument is measured a layer down (a layer-6 grader's quality is a layer-4 judge-calibration site).
 
 **Common confusions — name these explicitly:**
 
@@ -50,6 +52,8 @@ Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the s
 | "Evals come after the other layers are green" | Layer 4 sits *beside* layers 1–3 for every model-touching surface, from the first golden set on. It never replaces them. |
 | "Security testing is a late phase" | Only the assurance half is late (layer 5). Security invariants are layer-1 content from day one. |
 | "A green live run proves the system works" | It proves that run. Evidence is not a regression suite; deterministic defects it finds must land as layer-1/2 detectors. |
+| "A passing eval proves the user will accept the work" | Layer 4 qualifies a model call statistically. Layer 6 scores the complete work product against a human-ratified rubric; missing rubric, calibration, or campaign evidence makes the verdict inconclusive. |
+| "Layer 6 owns its preflight and leakage checks" | Mechanical campaign guardrails belong at layers 1–2 with negative controls. Only the rubric's scored axes belong in `L-ACC`; the grader itself is calibrated at layer 4. |
 
 **Grounding heuristic (beat 2).** Take one check the human already cares about and walk it down the stack: "could a layer-2 test falsify this? A layer-1 test?" Stop at the cheapest layer that can, and say why the layers above it are not needed for this check.
 

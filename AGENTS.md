@@ -3,7 +3,7 @@
 ## What this repo is
 
 An orchestrator that runs a full validation-harness-design campaign between
-two AI agents — a Claude **designer** driving the vendored skill
+two AI agents — a Claude **designer** driving this repo's design skill
 (`skill/validation-harness-design/`) and a Codex **stakeholder** playing the
 product owner, grounded in fixture docs plus the human's `rambling.txt` —
 then gates completion behind an independent **auditor**: fresh Claude
@@ -16,10 +16,27 @@ and the anti-yes-loop design.
 ## Commands
 
 - `pnpm install` · `pnpm typecheck` · `pnpm test` — offline, no tokens.
-- `pnpm vda run <fixture> [--smoke]` · `resume` · `readers` · `audit` ·
-  `report` · `list` — **live, spends subscription quota on BOTH providers**
-  (`readers`/`audit` spend Claude only). Never run a live campaign casually;
-  a full run is hours of wall clock.
+  Requires corepack so the `packageManager` pin takes effect (`npm install -g
+  corepack && corepack enable`, once per Node version — Node 25+ does not bundle
+  it). `pnpm --version` must report the pinned version; if it reports the ambient
+  one, `pnpm-workspace.yaml` will be read by the wrong pnpm and every command
+  fails on `packages field missing or empty`.
+- `pnpm vda run <fixture> [--smoke]` /
+  `pnpm vda run --target <product-repo> [--fresh]` · `resume` · `readers` ·
+  `audit` · `report` · `list` — **live, spends subscription quota on BOTH
+  providers** (`readers`/`audit`/`fidelity` spend Claude only). Never run a
+  live campaign casually; a full run is hours of wall clock.
+- `pnpm vda fidelity <target-repo> [--wave W | --tickets ...]` — live (one
+  fresh Claude session) judgment pass over a product repo; refuses while
+  `validation-trace` is red; findings only (the no-patches rule is enforced
+  in the prompt AND the report-format guard — keep both halves).
+- `pnpm vda deliver <runId>` — offline; (re-)lands a completed target run's
+  corpus in the product repo as a `validation-design/<runId>` branch via a
+  temp worktree (never touches the user's checkout).
+- `pnpm vda repos [paths...] [--stale-days N]` — offline; the fleet ledger
+  (`runs/registry.json`). Entries are written ONLY by the campaign/delivery/
+  fidelity completion paths — never hand-edit it; absent entry = UNKNOWN,
+  loudly, never healthy.
 
 ## Working rules
 
@@ -44,10 +61,13 @@ and the anti-yes-loop design.
   at blocking tier; never a third iteration) are what guarantee the audit
   stage terminates. They are enforced in the auditor prompts AND in the
   orchestrator's parsing; keep both halves.
-- **The vendored skills are upstream's.** `skill/validation-harness-design/`
-  and `skill/validation-harness-audit/` are copies from the Operon repo's
-  `.claude/skills/`; fix bugs upstream and re-copy, don't fork them silently
-  here.
+- **The skills live here.** `skill/validation-harness-design/`,
+  `skill/validation-harness-audit/` and `skill/implement-harness-ticket/` are
+  this repo's own artifacts, not copies of anything upstream. Change them here.
+  They are a contract pair: the design skill defines the artifact set and the
+  audit skill measures conformance against it, so a change to one that the
+  other must know about lands in the same commit, with both `VERSION` and
+  `CHANGELOG.md` updated.
 - **Resumability is a contract.** Every orchestrator change must keep the
   `state.json` pending-message invariant: any crash point resumes via
   `vda resume` without repeating or dropping a turn. This covers the audit
@@ -61,5 +81,8 @@ and the anti-yes-loop design.
 
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
-fixtures, cli) · `fixtures/` three synthetic products (web app / backend
-daemon / agentic LLM) · `runs/` gitignored campaign outputs.
+fixtures, target, catalog, trace, fidelity, registry, conventions, cli) · `fixtures/` three synthetic
+products (web app / backend daemon / agentic LLM) plus `operon`, the
+real-target pilot docs snapshot · `bin/validation-trace.js` the product-
+agnostic closure CLI · `skill/implement-harness-ticket/` the coding-agent
+enablement skill · `runs/` gitignored campaign outputs.

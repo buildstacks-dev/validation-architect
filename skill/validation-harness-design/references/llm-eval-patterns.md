@@ -13,6 +13,8 @@
 
 Never blend the layers: a schema failure is a bug ticket; a quality-threshold failure is an eval investigation. They have different owners, costs, and response playbooks.
 
+Do not blend layer 4 with outcome acceptance (`L-ACC`) either. Layer 4 qualifies one model call (or its trajectory) statistically against a golden set. Layer 6 asks whether the complete end-to-end work product is something a human would accept, using realistic input and a separately ratified multi-axis rubric. Passing layer 4 does not answer layer 6; a layer-6 grader's own quality is calibrated here at layer 4, and an uncalibrated grader makes the outcome campaign inconclusive.
+
 ## Golden set format (per call site)
 
 Commit as data, one directory per call site:
@@ -52,6 +54,8 @@ The judge is measured on two seeded sets, never on live traffic first:
 - **Must-pass set:** clean inputs of comparable difficulty. Metric: false-positive rate.
 
 Report both — a judge that flags everything has a perfect catch rate and is useless. Thresholds per criticality tier; re-run the meta-eval on any judge prompt/model change before its verdicts count. Until calibrated, judge verdicts are advisory. This is the same trust-boundary principle as agent self-reports: an unvalidated evaluator must not feed promotion, canary, or quality metrics.
+
+For a layer-6 grader, calibrate **each rubric axis against the exact evidence that axis reads** and enforce that the grader is disjoint from every producer of that evidence. Its self-report/summary is never evidence for an axis auditing the work; claim honesty may instead be its own scored subject. Calibration failure, missing evidence, or a changed read set yields `inconclusive`, not a best-effort score.
 
 ## Trajectory assertions (agentic loops)
 

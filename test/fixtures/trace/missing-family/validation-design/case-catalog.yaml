@@ -1,0 +1,68 @@
+# Synthetic manifest for the trace CLI's hermetic suite (product "widgetd").
+schema: validation-architect/case-catalog/v1
+product: widgetd
+conventions:
+  tests_root: tests
+  spec_suffixes:
+    - .test.ts
+families:
+  - id: CF-W01-S
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: STD
+    ticket: HB-001
+    wave: "0"
+  - id: CF-W01-R
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: refusal
+    risk: E1
+    ticket: HB-001
+    wave: "0"
+  - id: CF-W01-A
+    section: Journey matrix
+    status: pruned
+    prune: PRUNE-na
+    reason: "PRUNE-na (single surface)"
+  - id: CF-W02
+    section: Boundary matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: E2
+    covers:
+      - ok
+      - to
+    ticket: HB-002
+    wave: "1"
+  - id: CF-W03
+    section: Boundary matrix
+    status: blocked
+    blocked_by: F-XX-001
+    reason: "real round-trip: BLOCKED:F-XX-001"
+  # SEEDED VIOLATION: an implementable family with no citing spec AND no
+  # owning ticket/wave — forward closure must turn red (undeclared gap).
+  - id: CF-W04-S
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: STD
+tickets:
+  - id: HB-001
+    name: Widget lifecycle suite
+    wave: "0"
+    status: landed
+    families:
+      - CF-W01-S
+      - CF-W01-R
+      - CF-W01-A
+  - id: HB-002
+    name: Widget boundary double
+    wave: "1"
+    status: pending
+    families:
+      - CF-W02

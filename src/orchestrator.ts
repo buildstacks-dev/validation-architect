@@ -1,19 +1,24 @@
 import {
   computeVerdict,
   parseDispositions,
-  parseFindings,
-  parseVerifications,
   renderDispositionRecord,
+  validateAuditReport,
 } from "./audit.js";
+import { workspaceCatalogProblems } from "./catalog.js";
 import { parseMarker, stripMarkers } from "./markers.js";
 import {
   auditPackageMessage,
   auditReportMessage,
   auditSectionRequiredMessage,
+  auditWindowRequiredMessage,
+  auditedCoreChangedMessage,
   auditorPrompt,
+  corpusGateRequiredMessage,
   designerEmptyTurnNudge,
+  ownerDocsMessage,
   rambleRefreshNote,
   readerReportMessage,
+  readerRereviewRequiredMessage,
   readerTestRequiredMessage,
 } from "./prompts.js";
 import type { RambleWatcher } from "./ramble.js";
@@ -22,12 +27,16 @@ import type {
   AgentTurn,
   AuditorRunner,
   AuditState,
+  CompletionGate,
   DesignerAgent,
   ReaderPersonaId,
   ReaderRunner,
   RunState,
   StakeholderAgent,
 } from "./types.js";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
 
 const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-agent"];
 
@@ -83,6 +92,109 @@ function freshAuditState(): AuditState {
   return { iteration: 0, phase: "window", windowExchanges: 0, findings: [], dispositions: {} };
 }
 
+const OWNER_BRIEFING_SECTIONS = [
+  "What this product can break",
+  "The promises",
+  "The seams",
+  "What we deliberately will NOT test",
+  "The decisions on your desk",
+  "What is still unknown",
+  "What gets built, in what order",
+] as const;
+
+function readCorpusFile(workspace: string, name: string): string | undefined {
+  const path = join(workspace, "validation-design", name);
+  if (!existsSync(path)) return undefined;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** Deterministic structural/staleness checks for the two owner-facing views. */
+export function ownerDocumentProblems(workspace: string): string[] {
+  const problems: string[] = [];
+  const briefing = readCorpusFile(workspace, "owner-briefing.md");
+  const ownerBacklog = readCorpusFile(workspace, "owner-backlog.md");
+  const harnessBacklog = readCorpusFile(workspace, "harness-backlog.md");
+
+  if (!briefing?.trim()) {
+    problems.push("validation-design/owner-briefing.md is missing or blank");
+  } else {
+    if (!/(?:non[- ]normative|not (?:a |the )?(?:second )?source of truth)/i.test(briefing)) {
+      problems.push("owner-briefing.md does not declare that it is non-normative / not a second source of truth");
+    }
+    for (const section of OWNER_BRIEFING_SECTIONS) {
+      const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("NOT", "(?:NOT|not)");
+      if (!new RegExp(`^#{1,6}\\s+(?:\\d+[.)]\\s*)?${escaped}(?:[,—:-].*)?$`, "im").test(briefing)) {
+        problems.push(`owner-briefing.md is missing section "${section}"`);
+      }
+    }
+  }
+
+  if (!ownerBacklog?.trim()) {
+    problems.push("validation-design/owner-backlog.md is missing or blank");
+  } else {
+    if (!/(?:non[- ]normative|not (?:a |the )?(?:second )?source of truth)/i.test(ownerBacklog)) {
+      problems.push("owner-backlog.md does not declare its non-normative status");
+    }
+    if (!/(?:backlog revision|generated from[^\n]*harness-backlog\.md|harness-backlog\.md[^\n]*revision)/i.test(ownerBacklog)) {
+      problems.push("owner-backlog.md does not name the harness-backlog revision it was generated from");
+    }
+  }
+
+  if (!harnessBacklog?.trim()) {
+    problems.push("validation-design/harness-backlog.md is missing or blank");
+  } else if (ownerBacklog) {
+    const expected = new Set((harnessBacklog.match(/\bHB-\d+\b/gi) ?? []).map((id) => id.toUpperCase()));
+    const represented = new Set((ownerBacklog.match(/\bHB-\d+\b/gi) ?? []).map((id) => id.toUpperCase()));
+    const missing = [...expected].filter((id) => !represented.has(id));
+    if (missing.length > 0) {
+      problems.push(`owner-backlog.md omits harness backlog tickets: ${missing.join(", ")}`);
+    }
+  }
+  return problems;
+}
+
+function fingerprintCorpus(workspace: string, excludedRootEntries: ReadonlySet<string>): string {
+  const root = join(workspace, "validation-design");
+  const hash = createHash("sha256");
+  if (!existsSync(root)) return hash.update("validation-design:missing").digest("hex");
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (dir === root && excludedRootEntries.has(entry.name)) continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile()) {
+        hash.update(relative(root, path));
+        hash.update("\0");
+        hash.update(readFileSync(path));
+        hash.update("\0");
+      }
+    }
+  };
+  visit(root);
+  return hash.digest("hex");
+}
+
+/** Digest the whole reader-facing corpus, excluding orchestrator-owned audit output. */
+export function corpusFingerprint(workspace: string): string {
+  return fingerprintCorpus(workspace, new Set(["audit"]));
+}
+
+/**
+ * Digest only the design core that the independent auditor freezes. The
+ * final package and owner views are intentionally written after audit and
+ * receive their own structural + fresh-reader gates.
+ */
+export function auditedCoreFingerprint(workspace: string): string {
+  return fingerprintCorpus(
+    workspace,
+    new Set(["audit", "ratification-package.md", "owner-briefing.md", "owner-backlog.md"]),
+  );
+}
+
 /**
  * The designer↔stakeholder loop, plus the audit stage. Driven entirely by
  * `state.pending` so a crashed or interrupted run resumes exactly where it
@@ -108,6 +220,91 @@ export async function runCampaign(
     state.seq = transcript.nextSeq();
     state.updatedAt = new Date(now()).toISOString();
     saveState(state);
+  };
+
+  const clearGate = (gate: CompletionGate) => {
+    if (!state.gateRejections) return;
+    delete state.gateRejections[gate];
+    if (Object.keys(state.gateRejections).length === 0) state.gateRejections = undefined;
+  };
+
+  /**
+   * Queue the corrective message before recording an abort. On explicit
+   * resume that exact message/iteration is retried, and the gate receives a
+   * fresh budget instead of immediately re-aborting on legacy attempts.
+   */
+  const rejectGate = (
+    gate: CompletionGate,
+    next: NonNullable<RunState["pending"]>,
+    reason: string,
+    note: string,
+  ): boolean => {
+    state.pending = next;
+    state.gateRejections ??= {};
+    const attempts = (state.gateRejections[gate] ?? 0) + 1;
+    state.gateRejections[gate] = attempts;
+    transcript.note("orchestrator", note);
+    log(note);
+    if (attempts > 2) {
+      state.status = "aborted";
+      state.statusReason = reason;
+      // `vda resume` explicitly reopens an aborted run. Preserve `pending`
+      // and reset only this exhausted gate so the correction can succeed.
+      state.gateRejections[gate] = 0;
+    }
+    persist();
+    return state.status === "aborted";
+  };
+
+  const deterministicCorpusProblems = (): { catalog: string[]; owner: string[] } => ({
+    catalog: workspaceCatalogProblems(state.workspace),
+    owner: ownerDocumentProblems(state.workspace),
+  });
+
+  /** Queue a designer repair before any reader/auditor may observe the corpus. */
+  const gateCorpus = (): boolean => {
+    const problems = deterministicCorpusProblems();
+    if (problems.catalog.length === 0) clearGate("catalog");
+    if (problems.owner.length === 0) clearGate("owner-docs");
+    if (problems.catalog.length === 0 && problems.owner.length === 0) return false;
+    state.readerReviewFingerprint = undefined;
+    const gate: CompletionGate = problems.catalog.length > 0 ? "catalog" : "owner-docs";
+    const all = [...problems.catalog, ...problems.owner];
+    rejectGate(
+      gate,
+      { to: "designer", text: corpusGateRequiredMessage(all) },
+      `designer repeatedly failed the deterministic ${gate} corpus gate`,
+      `deterministic corpus gate rejected: ${all.join("; ")}`,
+    );
+    return true;
+  };
+
+  const runFreshReaders = async (finalOwnerReview: boolean) => {
+    log(
+      finalOwnerReview
+        ? "running final owner-corpus reader review (3 fresh contexts)"
+        : "running phase-8 reader test (3 fresh contexts)",
+    );
+    const reports = await Promise.all(
+      READER_PERSONAS.map(async (persona) => ({
+        persona,
+        text: await withRetry(
+          `reader ${persona}`,
+          log,
+          () => readers.run(persona, state.workspace),
+          retryDelayMs,
+        ),
+      })),
+    );
+    for (const report of reports) {
+      transcript.append({ role: `reader:${report.persona}`, text: report.text });
+    }
+    state.readersRan = true;
+    const fingerprint = corpusFingerprint(state.workspace);
+    state.readerReviewFingerprint = fingerprint;
+    if (finalOwnerReview && state.audit) state.audit.finalReviewFingerprint = fingerprint;
+    state.pending = { to: "designer", text: readerReportMessage(reports, finalOwnerReview) };
+    clearGate("reader-test");
   };
 
   /** Recorded unresolved = open or disputed; what the package message surfaces to the human. */
@@ -168,19 +365,70 @@ export async function runCampaign(
 
     if (pending.to === "auditor") {
       const iteration: number = pending.iteration;
+      const audit = state.audit ?? (state.audit = freshAuditState());
+      // Record the exact continuation before the corpus gate persists a
+      // designer-repair detour. A crash at that save point must resume back
+      // into this auditor iteration rather than treating an empty audit
+      // window as complete.
+      audit.resumeIteration = iteration;
+      if (gateCorpus()) {
+        if (state.status === "aborted") return state;
+        continue;
+      }
+      if (
+        iteration === 1 &&
+        (!state.readerReviewFingerprint || state.readerReviewFingerprint !== corpusFingerprint(state.workspace))
+      ) {
+        state.readerReviewFingerprint = undefined;
+        audit.resumeIteration = iteration;
+        const aborted = rejectGate(
+          "reader-test",
+          { to: "designer", text: readerRereviewRequiredMessage() },
+          "designer refused to re-run readers over the corpus entering audit",
+          "independent audit blocked: the current corpus was not the corpus reviewed by fresh readers",
+        );
+        if (aborted) return state;
+        continue;
+      }
+      audit.resumeIteration = undefined;
+      const expectedRoundOneIds = audit.findings
+        .filter((finding) => finding.iteration === 1)
+        .map((finding) => finding.id);
+      const auditedCoreAtStart = auditedCoreFingerprint(state.workspace);
       log(`running independent audit iteration ${iteration} (fresh context)`);
       const reportText = await withRetry(
         `auditor iteration ${iteration}`,
         log,
-        () => auditor.run(auditorPrompt(iteration), state.workspace),
+        () => auditor.run(auditorPrompt(iteration, audit.reportProblems ?? []), state.workspace),
         retryDelayMs,
       );
       transcript.append({ role: "auditor", text: reportText, note: `audit-iteration-${iteration}` });
+      const validation = validateAuditReport(reportText, iteration, expectedRoundOneIds, {
+        requireBlindSource:
+          iteration !== 2 && existsSync(join(state.workspace, "TARGET-SNAPSHOT.md")),
+      });
+      if (auditedCoreFingerprint(state.workspace) !== auditedCoreAtStart) {
+        validation.problems.push("audited core corpus changed while the auditor was running");
+      }
+      if (validation.problems.length > 0) {
+        audit.reportProblems = validation.problems;
+        const attempt = (state.gateRejections?.["audit-report"] ?? 0) + 1;
+        deps.saveAuditFile(`audit-report-${iteration}-rejected-${attempt}.md`, reportText);
+        const aborted = rejectGate(
+          "audit-report",
+          { to: "auditor", iteration },
+          `auditor iteration ${iteration} repeatedly returned a blank or malformed report`,
+          `audit iteration ${iteration} rejected: ${validation.problems.join("; ")}`,
+        );
+        if (aborted) return state;
+        continue;
+      }
+      audit.reportProblems = undefined;
+      clearGate("audit-report");
       deps.saveAuditFile(`audit-report-${iteration}.md`, reportText);
-
-      const audit = state.audit ?? (state.audit = freshAuditState());
       audit.iteration = iteration;
-      let found = parseFindings(reportText, iteration);
+      audit.auditedCoreFingerprint = auditedCoreAtStart;
+      let found = validation.findings;
       if (iteration >= 2) {
         // Iteration-2 scope rule (the convergence guarantee): new findings are
         // admissible only at blocking tier — enforced in the auditor prompt
@@ -194,7 +442,7 @@ export async function runCampaign(
         }
         found = found.filter((f) => f.tier === "blocking");
         // Round-1 findings the verifier judged NOT-FIXED / REGRESSION reopen.
-        for (const v of parseVerifications(reportText)) {
+        for (const v of validation.verifications) {
           if (v.verdict === "VERIFIED") continue;
           if (!audit.findings.some((f) => f.id === v.id)) continue;
           audit.dispositions[v.id] = { kind: "reopened", note: `${v.verdict}: ${v.note}` };
@@ -224,32 +472,117 @@ export async function runCampaign(
       transcript.append({ role: "designer", text: turn.text, marker, usage: turn.usage });
       log(`designer [${marker ?? "no-marker"}]: ${preview(turn.text)}`);
 
-      // Disposition lines are honored wherever the designer emits them while
-      // the audit is open (window or package phase).
-      if (state.audit && state.audit.phase !== "done") {
-        for (const d of parseDispositions(turn.text)) {
-          state.audit.dispositions[d.id] = { kind: d.kind, note: d.note };
+      // Dispositions are mutable only inside the bounded feedback window.
+      // Once the verdict/package phase begins, its inputs are frozen: later
+      // package or owner-doc prose cannot silently relabel a finding while
+      // retaining the already-computed verdict.
+      const emittedDispositions = parseDispositions(turn.text);
+      if (state.audit?.phase === "window") {
+        for (const d of emittedDispositions) {
+          const previous = state.audit.dispositions[d.id];
+          const finding = state.audit.findings.find((candidate) => candidate.id === d.id);
+          if (
+            state.audit.iteration >= MAX_AUDIT_ITERATIONS &&
+            (previous?.kind === "reopened" || (finding?.iteration === 2 && d.kind === "fixed"))
+          ) {
+            transcript.note(
+              "orchestrator",
+              `${d.id} terminal verifier outcome is authoritative; ignored designer disposition ${d.kind}`,
+            );
+            continue;
+          }
+          const unchanged = previous?.kind === d.kind && previous.note === d.note;
+          state.audit.dispositions[d.id] = {
+            kind: d.kind,
+            note: d.note,
+            ...(unchanged && previous?.confirmed
+              ? {
+                  confirmed: true,
+                  ...(previous.confirmationNote ? { confirmationNote: previous.confirmationNote } : {}),
+                }
+              : {}),
+            ...(d.kind === "disputed" &&
+            unchanged &&
+            previous?.arbitrated
+              ? {
+                  arbitrated: true,
+                  ...(previous.arbitrationNote ? { arbitrationNote: previous.arbitrationNote } : {}),
+                }
+              : {}),
+          };
         }
+      } else if (state.audit && state.audit.phase !== "done" && emittedDispositions.length > 0) {
+        transcript.note(
+          "orchestrator",
+          `ignored ${emittedDispositions.length} disposition change(s) outside the audit feedback window`,
+        );
       }
 
-      if (marker === "CAMPAIGN-COMPLETE") {
-        if (!state.readersRan) {
-          // Guardrails enforce invariants: the adversarial review is not
-          // optional, and a flag in the report is not a gate.
-          state.completionRejections = (state.completionRejections ?? 0) + 1;
-          if (state.completionRejections > 2) {
-            state.status = "aborted";
-            state.statusReason = "designer refused the reader test after repeated rejections";
-            persist();
-            return state;
-          }
-          transcript.note("orchestrator", "CAMPAIGN-COMPLETE rejected: reader test has not run");
-          log("rejected premature CAMPAIGN-COMPLETE (no reader test yet)");
-          state.pending = { to: "designer", text: readerTestRequiredMessage() };
+      const terminalAudit = state.audit;
+      const coreIsFrozen =
+        terminalAudit !== undefined &&
+        (terminalAudit.iteration >= MAX_AUDIT_ITERATIONS ||
+          (terminalAudit.iteration === 1 &&
+            terminalAudit.findings.length === 0 &&
+            terminalAudit.phase !== "window"));
+      if (coreIsFrozen && terminalAudit) {
+        if (!terminalAudit.auditedCoreFingerprint) {
+          // Safe migration for active pre-fingerprint state: do not bless the
+          // current bytes retroactively. Restart the bounded audit over them.
+          transcript.note(
+            "orchestrator",
+            "active audit state predates audited-core fingerprints; restarting independent audit at iteration 1",
+          );
+          state.audit = freshAuditState();
+          state.pending = { to: "auditor", iteration: 1 };
           persist();
           continue;
         }
+        if (auditedCoreFingerprint(state.workspace) !== terminalAudit.auditedCoreFingerprint) {
+          const aborted = rejectGate(
+            "audited-core",
+            { to: "designer", text: auditedCoreChangedMessage() },
+            "designer repeatedly changed the frozen core corpus after the terminal audit",
+            "post-audit core mutation rejected: terminal auditor did not review the current core corpus",
+          );
+          if (aborted) return state;
+          continue;
+        }
+        clearGate("audited-core");
+      }
+
+      if (marker === "CAMPAIGN-COMPLETE") {
+        // Both catalogs and the owner-facing views are unconditional corpus
+        // requirements. This check runs before every completion transition,
+        // including legacy/pre-set `audit.phase = done` state.
+        if (gateCorpus()) {
+          if (state.status === "aborted") return state;
+          continue;
+        }
+        if (!state.readersRan) {
+          const aborted = rejectGate(
+            "reader-test",
+            { to: "designer", text: readerTestRequiredMessage() },
+            "designer refused the reader test after repeated rejections",
+            "CAMPAIGN-COMPLETE rejected: reader test has not run",
+          );
+          if (aborted) return state;
+          continue;
+        }
         if (!state.audit) {
+          const fingerprint = corpusFingerprint(state.workspace);
+          if (state.readerReviewFingerprint !== fingerprint) {
+            state.readerReviewFingerprint = undefined;
+            const aborted = rejectGate(
+              "reader-test",
+              { to: "designer", text: readerRereviewRequiredMessage() },
+              "designer refused to re-run readers after changing the reviewed corpus",
+              "CAMPAIGN-COMPLETE rejected: corpus changed after its reader test",
+            );
+            if (aborted) return state;
+            continue;
+          }
+          clearGate("reader-test");
           // Same shape as the reader gate: completion is not accepted until an
           // independent audit has run against the finished corpus.
           state.audit = freshAuditState();
@@ -260,25 +593,89 @@ export async function runCampaign(
           continue;
         }
         if (state.audit.phase === "window") {
+          const missing = state.audit.findings
+            .filter((finding) => !state.audit?.dispositions[finding.id])
+            .map((finding) => finding.id);
+          const unarbitrated = state.audit.findings
+            .filter((finding) => {
+              const disposition = state.audit?.dispositions[finding.id];
+              return disposition?.kind === "disputed" && disposition.arbitrated !== true;
+            })
+            .map((finding) => finding.id);
+          const unconfirmed = state.audit.findings
+            .filter((finding) => {
+              const disposition = state.audit?.dispositions[finding.id];
+              return (
+                disposition !== undefined &&
+                disposition.kind !== "reopened" &&
+                disposition.confirmed !== true
+              );
+            })
+            .map((finding) => finding.id);
+          if (missing.length > 0 || unconfirmed.length > 0 || unarbitrated.length > 0) {
+            const aborted = rejectGate(
+              "audit-window",
+              { to: "designer", text: auditWindowRequiredMessage(missing, unconfirmed, unarbitrated) },
+              "designer repeatedly tried to close an incomplete audit feedback window",
+              `audit window rejected: missing dispositions [${missing.join(", ")}], unconfirmed dispositions [${unconfirmed.join(", ")}], unarbitrated disputes [${unarbitrated.join(", ")}]`,
+            );
+            if (aborted) return state;
+            continue;
+          }
+          clearGate("audit-window");
+          if (state.audit.resumeIteration !== undefined) {
+            const iteration = state.audit.resumeIteration;
+            state.audit.resumeIteration = undefined;
+            state.pending = { to: "auditor", iteration };
+            persist();
+            continue;
+          }
           advanceFromWindow(state.audit);
           persist();
           continue;
         }
         if (state.audit.phase === "package" && !deps.auditSectionPresent()) {
-          state.completionRejections = (state.completionRejections ?? 0) + 1;
-          if (state.completionRejections > 2) {
-            state.status = "aborted";
-            state.statusReason = "designer never wrote the ratification-package Audit section";
-            persist();
-            return state;
-          }
-          transcript.note("orchestrator", "CAMPAIGN-COMPLETE rejected: ratification-package.md has no Audit section");
-          log("rejected CAMPAIGN-COMPLETE (Audit section missing from ratification package)");
-          state.pending = { to: "designer", text: auditSectionRequiredMessage() };
+          const aborted = rejectGate(
+            "audit-section",
+            { to: "designer", text: auditSectionRequiredMessage() },
+            "designer never wrote the ratification-package Audit section",
+            "CAMPAIGN-COMPLETE rejected: ratification-package.md has no Audit section",
+          );
+          if (aborted) return state;
+          continue;
+        }
+        clearGate("audit-section");
+        if (state.audit.phase === "package") {
+          state.audit.phase = "owner-docs";
+          state.pending = { to: "designer", text: ownerDocsMessage() };
+          transcript.note("orchestrator", "audit package accepted; requesting owner-briefing.md and owner-backlog.md");
+          log("gated CAMPAIGN-COMPLETE: owner-facing documents required");
           persist();
           continue;
         }
-        // phase "package" with the Audit section written, or "done" (pre-set).
+        if (state.audit.phase === "owner-docs") {
+          // gateCorpus above proved structure and catalog agreement. These
+          // final versions still need a fresh-context review after the audit.
+          state.audit.phase = "final-review";
+          await runFreshReaders(true);
+          persist();
+          continue;
+        }
+        if (state.audit.phase === "final-review") {
+          const fingerprint = corpusFingerprint(state.workspace);
+          if (
+            !state.audit.finalReviewFingerprint ||
+            state.audit.finalReviewFingerprint !== fingerprint
+          ) {
+            transcript.note(
+              "orchestrator",
+              "final owner-corpus review invalidated by substantive corpus changes; re-running fresh readers",
+            );
+            await runFreshReaders(true);
+            persist();
+            continue;
+          }
+        }
         state.audit.phase = "done";
         state.status = "completed";
         state.pending = undefined;
@@ -286,20 +683,14 @@ export async function runCampaign(
         return state;
       }
       if (marker === "REQUEST-READER-TEST") {
-        log("running phase-8 reader test (3 fresh contexts)");
-        const reports = await Promise.all(
-          READER_PERSONAS.map(async (p) => ({
-            persona: p,
-            text: await withRetry(`reader ${p}`, log, () => readers.run(p, state.workspace), retryDelayMs),
-          })),
-        );
-        for (const r of reports) {
-          transcript.append({ role: `reader:${r.persona}`, text: r.text });
+        if (gateCorpus()) {
+          if (state.status === "aborted") return state;
+          continue;
         }
-        // Reader round-trips don't count as exchanges: they are environment
-        // services to the designer, not stakeholder conversation.
-        state.readersRan = true;
-        state.pending = { to: "designer", text: readerReportMessage(reports) };
+        const finalOwnerReview =
+          state.audit?.phase === "owner-docs" || state.audit?.phase === "final-review";
+        if (state.audit?.phase === "owner-docs") state.audit.phase = "final-review";
+        await runFreshReaders(finalOwnerReview);
         persist();
         continue;
       }
@@ -361,6 +752,35 @@ export async function runCampaign(
       );
       transcript.append({ role: "stakeholder", text: turn.text, usage: turn.usage });
       log(`stakeholder: ${preview(turn.text)}`);
+      if (
+        state.audit?.phase === "window" &&
+        /^\s*CONFIRMED\s*:/im.test(turn.text) &&
+        !/^\s*(?:OBJECTION|GATE-REFUSED)\s*:/im.test(turn.text)
+      ) {
+        // Confirmation applies only to exact machine-readable dispositions
+        // the stakeholder actually received, never an ID-only "please
+        // confirm" summary that hides the kind or rationale.
+        const presentedIds = new Set(parseDispositions(pending.text).map((disposition) => disposition.id));
+        const responseIds = new Set(
+          (turn.text.match(/\bAUD-\d+\b/gi) ?? []).map((id) => id.toUpperCase()),
+        );
+        const discussedIds =
+          responseIds.size === 0
+            ? presentedIds
+            : new Set([...presentedIds].filter((id) => responseIds.has(id)));
+        for (const id of discussedIds) {
+          const disposition = state.audit.dispositions[id];
+          if (!disposition || disposition.kind === "reopened") continue;
+          disposition.confirmed = true;
+          disposition.confirmationNote = turn.text.trim();
+          transcript.note("orchestrator", `${id} disposition confirmation persisted from stakeholder CONFIRMED ruling`);
+          if (disposition.kind === "disputed") {
+            disposition.arbitrated = true;
+            disposition.arbitrationNote = turn.text.trim();
+            transcript.note("orchestrator", `${id} dispute arbitration persisted from stakeholder CONFIRMED ruling`);
+          }
+        }
+      }
       state.exchanges += 1;
       if (state.audit?.phase === "window") state.audit.windowExchanges += 1;
       if (state.exchanges >= state.config.maxExchanges) {

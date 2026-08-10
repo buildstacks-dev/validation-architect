@@ -8,7 +8,7 @@ The skill treats project criticality as the governing input. It does not apply o
 
 This skill is one half of a lifecycle pair:
 
-- **[validation-harness-design](https://github.com/buildstacks-dev/validation-harness-design)** — designs the harness at design time, before code exists (and redesigns it when the architecture moves): a reconciled system map, falsifiable invariants, a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with golden sets, a traced case catalog, a proposed agent-instructions section routing future coding agents to the artifacts, and `validation-policy.yaml` declaring five validation layers with gates, thresholds, artifact locations, and any harness-coexistence constraints.
+- **[validation-harness-design](https://github.com/buildstacks-dev/validation-harness-design)** — designs the harness at design time, before code exists (and redesigns it when the architecture moves): a reconciled system map, falsifiable invariants, a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with golden sets, `acceptance/` when outcome acceptance is active, both case-catalog surfaces, a proposed agent-instructions section routing future coding agents to the artifacts, and `validation-policy.yaml` declaring six validation layers with gates, thresholds, artifact locations, and any harness-coexistence constraints.
 - **validation-harness-audit** (this skill) — measures what was actually built: against the declared policy when one exists, and against the criticality the system actually carries either way. Produces a reproducible evidence package and a scoped release verdict.
 
 The loop is **design → build → audit → revise**. Case-level findings (a missing test, a weak oracle) are remediated here in `harden` mode; structural findings (a boundary map that contradicts the architecture, a mis-placed validation lane) are routed back to validation-harness-design's `harness-revision` mode. Both skills share the C0–C4 criticality scale defined in `references/criticality-model.md`.
@@ -22,7 +22,7 @@ The workflow can:
 - Establish intended use and system boundary.
 - Classify system, component, and change criticality.
 - Reconstruct the behavioral and operational validation contract — or ingest the ratified one from `validation-policy.yaml` and companions.
-- Evaluate the strength of existing tests and non-test evidence, including five-layer lane conformance against the declared policy — gate reality, honest-fake integrity, adapter conformance, case-catalog traceability, agent-instructions routing, and coexistence integrity.
+- Evaluate the strength of existing tests and non-test evidence, including six-layer lane conformance against the declared policy — gate reality, honest-fake integrity, adapter conformance, outcome-acceptance integrity, case-catalog traceability, agent-instructions routing, and coexistence integrity.
 - Build a risk-ranked validation plan.
 - Add tests, harnesses, CI gates, and limited testability improvements.
 - Run an independent or role-separated verification pass.

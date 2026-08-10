@@ -17,7 +17,7 @@ before the campaign may close:
   ratified docs and the human's `rambling.txt`, mounted read-only over the
   shared workspace.
 - **Auditor** — a FRESH Claude session per audit iteration (like the readers,
-  not a persistent third seat) runs the vendored
+  not a persistent third seat) runs the
   [validation-harness-audit](skill/validation-harness-audit/SKILL.md) skill in
   its design-conformance capacity against the finished corpus. Read-only over
   the workspace (`docs/`, `rambling.txt`, `validation-design/`); it never sees
@@ -143,12 +143,26 @@ decision, all open findings, and the questions only a real human can answer.
 
 ## Usage
 
+**Prerequisites.** pnpm is pinned by `packageManager` in `package.json`, and corepack is what makes that pin take effect. Node 25+ no longer bundles corepack, so it is one install per Node version:
+
+```bash
+npm install -g corepack && corepack enable
+```
+
+Without it your ambient pnpm runs instead of the pinned one, and the two disagree about `pnpm-workspace.yaml` — the pinned pnpm 11 requires a `packages:` key that older pnpm does not, so the same repo works on one machine and fails on another. `pnpm --version` should report the version `packageManager` names.
+
 ```bash
 pnpm install
 pnpm test          # offline suite, no tokens
 pnpm typecheck
 
-# full autonomous campaign (spends real subscription quota on both sides)
+# the production journey: anchor to a product repo (see "Developer journey")
+pnpm vda run --target ~/code/myproduct            # greenfield or auto-revision
+pnpm vda run --target ~/code/myproduct --fresh    # force from-scratch (warns)
+pnpm vda deliver <runId>                          # re-deliver the corpus branch
+
+# fixture campaigns — the test/demo path for exercising the skill surface
+# (spends real subscription quota on both sides)
 pnpm vda run lumen-webapp
 pnpm vda run relay-backend
 pnpm vda run docsmith-agent
@@ -158,11 +172,46 @@ pnpm vda run lumen-webapp --smoke
 
 pnpm vda list
 pnpm vda resume <runId>       # continue an aborted/crashed/interrupted run
+# legacy target state only: offline, explicit re-anchor on current clean HEAD
+pnpm vda resume <runId> --recover-target-base current
+pnpm vda resume <runId>       # inspect first, then start the live reconciliation
 pnpm vda audit <runId>        # one post-hoc audit iteration of a COMPLETED
                               # run: fresh auditor, no feedback loop; writes
                               # audit-report-N.md, updates report.md
 pnpm vda report <runId>       # regenerate report.md
+
+# fidelity audit (spends Claude quota, one fresh session): do the citing
+# specs actually falsify their ratified seeds? Scoped per wave / ticket set;
+# REFUSES when validation-trace is red (fix closure before asking judgment);
+# also refuses a dirty checkout, audits a detached captured HEAD/tree, and
+# invalidates the result if the checkout moves; findings only — no patches.
+pnpm vda fidelity <target-repo> --wave 1
+pnpm vda fidelity <target-repo> --tickets HB-014,HB-015 --out fid.md
+
+# fleet ledger (offline): which repos run a stale design, which were never
+# fidelity-audited, which have findings open. Written only by the campaign/
+# delivery/fidelity completion paths — never hand-maintained. An absent
+# entry is UNKNOWN, loudly — no green by absence.
+pnpm vda repos                          # every registered target
+pnpm vda repos ~/code/myproduct         # explicit query (UNKNOWN if absent)
+pnpm vda repos --stale-days 7
+
+# deterministic design→implementation closure over a target repo
+# from this source checkout
+pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
+pnpm trace generate <case-catalog.md> <harness-backlog.md> \
+  [--product name] [--tests-root path] [-o case-catalog.yaml]
+
+# in a product repo: the packed/released package runs compiled JavaScript and
+# has no runtime dependency on tsx or this source checkout
+pnpm add --save-dev --save-exact validation-architect@0.1.0
+pnpm exec validation-trace . \
+  --manifest validation-design/case-catalog.yaml \
+  --tests <tests-root>
 ```
+
+Before a registry release, replace `validation-architect@0.1.0` with the exact
+`.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
 `--designer-model` / `--stakeholder-model` / `--reader-model` ·
@@ -178,22 +227,89 @@ and the verification rubric are reserved for the in-campaign iteration 2.
 api-key`), the Codex side uses the ChatGPT login from `codex login`
 (`--codex-auth api-key` switches to OPENAI_API_KEY).
 
+## Developer journey
+
+The product repo is first-class; VDA is a tool invoked against it. Install
+once, then:
+
+1. **First run (greenfield).** `pnpm vda run --target <product-repo>`. The
+   target must be a clean Git checkout with a committed `docs/` tree. VDA
+   pins its HEAD and tree digests, clones that exact revision without a
+   remote under the campaign workspace, and exposes source, configuration,
+   docs, and readable history to the confined designer/auditor. The campaign
+   therefore cannot silently move to a newer checkout while it runs. It runs
+   under `runs/<runId>/` as usual, but
+   on completion the durable spec — the whole `validation-design/` corpus —
+   and its `validation-design/enablement/` handoff are **delivered to the product repo** as a branch
+   (`validation-design/<runId>`), committed via a temporary worktree so your
+   checkout is never touched. Campaign residue (transcript, `state.json`,
+   `report.md`) stays VDA-local.
+2. **Ratify & land.** Review the branch like any change — open a PR from it;
+   the ratification package is a natural PR description. Merging is the
+   human ratification moment.
+3. **Iterate (revision).** Re-running `vda run --target` against a repo that
+   already carries `validation-design/validation-policy.yaml` auto-detects
+   the corpus, mounts it as the baseline, and kicks the designer off in the
+   skill's `harness-revision` mode. Every delivery embeds
+   `source-provenance.json`; the next revision receives the prior/current
+   SHAs, a source/config path summary, and a unified diff, then reopens only
+   affected concepts with surgical edits and retired IDs preserved — never a
+   from-scratch Phase 0. `--fresh` opts out, with a warning that it creates a
+   second, diverging design.
+4. **Install enablement, then use agents as callers.** Follow the delivered
+   `validation-design/enablement/INSTALL.md`: pin this package (which supplies
+   the compiled `validation-trace` bin), install the bundled
+   `implement-harness-ticket` skill in the repo's supported skill location,
+   land the ratified `agents-md-contribution.md`, and review/copy the included
+   CI template. The delivery branch does not silently rewrite a product
+   package manifest, standing agent instructions, or active CI workflow.
+   Those instructions route structural changes back into VDA's
+   `harness-revision` mode. Installing enablement never authorizes a live
+   `L-ACC` campaign.
+
+If startup fails because the target is dirty, commit or stash its changes
+before spending live quota. If delivery later fails (for example, the pinned
+commit is unavailable), the campaign record is still intact — fix the repo
+and `pnpm vda deliver <runId>`;
+re-delivery idempotently updates the same branch. Fixture runs (`vda run
+<fixture>`) skip delivery entirely: fixtures exercise the skill surface,
+they are not the production journey.
+
+State files from before immutable target snapshots are never silently bound to
+whatever HEAD happens to be current. If a legacy workspace already contains a
+valid no-remote `target-source/` plus `TARGET-SNAPSHOT.md`, `resume`/`deliver`
+recover that exact identity automatically. Otherwise commit or stash the
+target, then run `pnpm vda resume <runId> --recover-target-base current`. This
+first command is offline: it leaves the old workspace untouched, creates a new
+frozen workspace at current HEAD, preserves the legacy corpus/ramble and prior
+pending turn, removes stale audit/owner final surfaces, resets provider
+sessions plus reader/audit evidence, and reopens even a formerly completed
+run. Inspect it, then run ordinary `pnpm vda resume <runId>` to perform the
+mandatory source-grounding reconciliation. A recovered delivery uses a new
+`validation-design/<runId>-recovered-<sha>` branch rather than rewriting an
+incompatible legacy branch.
+
 ## Fixtures
 
 Three synthetic products of deliberately different shapes, so the skill's
-whole surface gets exercised:
+whole surface gets exercised — plus one real target:
 
 | Fixture | Shape | Exercises |
 | --- | --- | --- |
 | `lumen-webapp` | C2 multi-tenant web app (expenses, Stripe payouts) | money paths, state machines, UI-as-adapter, Phase 5 declared empty |
 | `relay-backend` | C3 delivery daemon (webhooks, ordering, DLQ) | failure domains, leader failover, time events, no UI at all |
 | `docsmith-agent` | C3 agentic LLM product (triage, drafts, judge) | Phase 5 in full: evals, judge calibration, trajectory, guardrail-vs-eval |
+| `operon` | real target — agentic org runtime (docs snapshot, `operon-2026-07-31`) | the production pilot; no seeded expectations by design |
 
-Each fixture ships ratified `docs/`, a `rambling.txt` with **seeded
+Each synthetic fixture ships ratified `docs/`, a `rambling.txt` with **seeded
 doc-vs-ramble conflicts** (a fact conflict the docs must win, a values
 conflict that must surface as an open finding, and a directive that must be
 recorded rather than obeyed), and a `fixture.yaml` holding expected outcomes
-for our own checks — fixture.yaml never reaches the agents.
+for our own checks — fixture.yaml never reaches the agents. The `operon`
+fixture is different in kind: a real product's docs plus the owner's actual
+(channeled) rambling.txt, marked `real_target: true` and deliberately free of
+seeded conflicts or an expected tier — a live target must not carry an answer
+key.
 
 ## Run layout
 
@@ -205,8 +321,8 @@ runs/<runId>/
   report.md            # gate discipline, phases, audit section, usage, artifacts
   audit-report-N.md    # each audit iteration's report (also copied below)
   workspace/           # the shared world
-    .claude/skills/validation-harness-design/   # vendored skill (designer)
-    .claude/skills/validation-harness-audit/    # vendored skill (auditor)
+    .claude/skills/validation-harness-design/   # design skill, copied in for the run
+    .claude/skills/validation-harness-audit/    # audit skill, copied in for the run
     docs/  rambling.txt                          # stakeholder's ground truth
     validation-design/                           # the designer's artifacts
       audit/                                     # audit reports + disposition record
@@ -219,9 +335,21 @@ runs/<runId>/
 | `src/orchestrator.ts` | the relay loop, markers, readers, audit stage, checkpointing |
 | `src/designer.ts` · `src/stakeholder.ts` · `src/readers.ts` · `src/auditor.ts` | provider adapters |
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
+| `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
+| `src/fidelity.ts` | fidelity audit: scope resolution, closure preflight, findings-only guard |
+| `src/registry.ts` | per-repo fleet ledger + staleness flags behind `vda repos` |
+| `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |
+| `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
+| `src/enablement.ts` · `enablement/` | materialized product-repo handoff: builder skill, compiled-CLI install, CI template, exact conventions |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
-| `skill/` | vendored copies of validation-harness-design and validation-harness-audit |
-| `fixtures/` | the three synthetic products |
+| `skill/` | this repo's design + audit skills, plus `implement-harness-ticket` (Enable leg) |
+| `fixtures/` | three synthetic products + the `operon` real-target pilot |
 | `test/` | offline suite (fake adapters, no tokens) |
+| `bin/validation-trace.js` · `tsconfig.build.json` | production package bin and narrow compiled build for the product-agnostic trace CLI |
+
+## License
+
+This repository and its published package are **UNLICENSED**. No open-source
+license or permission grant is implied by package publication.

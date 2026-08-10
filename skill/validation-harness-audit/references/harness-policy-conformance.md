@@ -1,12 +1,12 @@
 # Harness Policy Conformance
 
-Read this reference when the repository carries artifacts produced by the companion skill **validation-harness-design**: `validation-policy.yaml` (product and module files), `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, golden-set directories, `case-catalog.md`, `harness-backlog.md`, or `agents-md-contribution.md`. The policy's `artifacts:` block names where they live.
+Read this reference when the repository carries artifacts produced by the companion skill **validation-harness-design**: `validation-policy.yaml` (product and module files), `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, golden-set directories, `acceptance/`, `case-catalog.md`, `case-catalog.yaml`, `harness-backlog.md`, `harness-state.yaml`, or `agents-md-contribution.md`. The policy's `artifacts:` block names where they live.
 
 These artifacts were confirmed by a human at design time. They are the declared harness — the baseline this audit diffs the built system against. The schema authority for the policy file is the design skill's `references/policy-and-inheritance.md`; this file describes the consuming side only. When both skills evolve, the design skill's layout wins and this file follows it.
 
-## 1. The five-layer taxonomy
+## 1. The six-layer taxonomy
 
-Every check the design skill places lands in one of five validation layers, defined by the question each answers — never by the technology inside it:
+Every check the design skill places lands in one of six validation layers, defined by the question each answers — never by the technology inside it:
 
 | # | Layer | Question it answers | Verdict | Spend / side effects | Cadence |
 |---|---|---|---|---|---|
@@ -15,24 +15,30 @@ Every check the design skill places lands in one of five validation layers, defi
 | 3 | Live system (sandbox) | Can the real world break the seams? | Nondeterministic, binary | Real, bounded, disposable | Pre-merge / pre-release |
 | 4 | Eval / qualification | Can the model be wrong while the machinery is right? | Statistical, threshold over N runs | Token cost, separately authorized | Prompt/model change · nightly · release qualification |
 | 5 | Ops hardening | Can time, load, or an adversary hurt you? | Mixed | Production-shaped | Pre-GA, then recurring |
+| 6 | Outcome acceptance (`L-ACC`) | Given realistic input, is the output work a human would accept? | Multi-axis scored against a ratified rubric; inconclusive by default | Real, bounded by per-campaign human authorization | Triggered only |
 
 "Hermetic" means sealed against **all** nondeterminism — clock, randomness, network — not merely mocked externals; locally controlled real software (a containerized database) can be inside the seal, a vendor API never is. "Sandbox" means everything is real but disposable and spend-bounded.
 
-The four layer rules the audit enforces:
+Layers 1-5 all have mechanical oracles; layer 6's oracle is a human-ratified rubric, which is why a scored outcome cannot be folded into a pass/fail lane. Layer 6 is also the lane most often silently absent — a harness can conform across layers 1-5 and still have no answer to whether the output is any good.
+
+The six layer rules the audit enforces:
 
 1. **Prove it a layer down.** A check placed at an expensive layer that a cheaper layer could falsify is a placement finding.
 2. **Lanes may be empty, never silently absent.** A declared-empty lane with a reason is a decision; an undeclared-absent lane is a finding.
 3. **Evidence is not a regression suite.** A green live run or eval campaign proves that run. Every deterministic defect it surfaced must have deposited a layer-1/2 detector in the same change.
 4. **Security is split.** Security invariants (tenancy, authorization, deny-by-default) are layer-1 content from day one; layer 5 holds the assurance half (threat model, secret handling, abuse surfaces).
+5. **Guardrails are not lane work.** Anything about a layer-6 campaign that a scan, a set comparison, or an exit status can falsify belongs at layer 1/2 with a negative control. A scored axis in the lane that a mechanical check could have settled is a placement finding.
+6. **The instrument is measured a layer down.** A layer-6 grader's quality is a layer-4 judge-calibration site. An uncalibrated grader emitting a score is a blocking finding.
 
 ## 2. What each artifact is
 
-- `validation-policy.yaml` — machine-readable contract: criticality tier map (C0–C4, same scale as `criticality-model.md`), the five layer lanes with `status: active` or `status: empty` plus reason, gate requirements (blocking/advisory/waived) with declared frequencies, thresholds, golden-set locations, CI cost tiering, ops-hardening obligations, tooling selection with rejected alternatives, an `artifacts:` block naming companion-artifact locations, an optional `coexistence:` block (§3), and a `modules:` registry of child policies.
+- `validation-policy.yaml` — machine-readable contract: criticality tier map (C0–C4, same scale as `criticality-model.md`), the six layer lanes with `status: active` or `status: empty` plus reason, a `module_map:` with `deep-pass-done` / `deep-pass-pending` / `deliberately-shallow` per module, per-family execution lanes including the named inner-loop command, gate requirements (blocking/advisory/waived) with declared frequencies, thresholds, golden-set locations, CI cost tiering, ops-hardening obligations, tooling selection with rejected alternatives, an `artifacts:` block naming companion-artifact locations, an optional `coexistence:` block (§3), and a `modules:` registry of child policies.
 - `system-map.md` — the reconciled derivation surface: behavioral view (actor → stimulus → journey → state transition → effect → observation), structural view (state ownership, dependencies, consistency, failure domains), the reconciliation of the two, supported entry/observation surfaces, and open product-truth/architecture findings.
 - `invariants.md` — falsifiable statements with namespaced IDs (`OPERON-INV-003`, `LL-INV-007`), enforcement classification (test, runtime guardrail, or both), adversarial seed cases, inherited-vs-new marking. Retired invariants keep their IDs with `retired: <date, reason>`.
 - `boundary-map.md` — the architectural seams, each with journey intersections, an enumerated failure-mode list (timeout, partial success, retry, duplicate delivery, stale read, version skew, crash-mid-step), a per-boundary **honest-fake column** carrying the controlled-seam specification — the success and failure semantics the boundary double must reproduce as scriptable behavior, plus the unproven real semantics that each retain a named live-sandbox obligation — and a layer placement (hermetic vs live-sandbox by the honest-fake test).
 - `contracts/` — one file per boundary: valid inputs, output guarantees, error behavior, idempotency, ordering/latency. Where several interfaces expose one behavior, the core contract is written once and each adapter carries a thin conformance contract plus one cross-surface agreement check.
 - `llm-eval-plan.md` + golden sets — per-call-site split into a deterministic contract layer (schema, budgets, retry/fallback handling — layers 1–2) and a statistical quality layer (committed golden set, rubric, threshold over N runs — layer 4), plus judge meta-evals and trajectory assertions where applicable.
+- `acceptance/` — when `L-ACC` is active: the human-ratified rubric, realistic scenario briefs, sealed-plant policy, separate campaign-invariant registry, per-axis grader read sets/independence rules, intermediate-gate semantics, campaign authorization shape, and incomplete/inconclusive terminals. Its mechanical guardrails belong at layers 1–2; the grader is calibrated at layer 4.
 - `case-catalog.md` — traced case families derived from journeys, state machines, invariants, boundaries, contracts, interface adapters, model sites, and operational obligations, each with risk, layer, oracle, and source IDs. The design contract requires **matrix closure** at design time: every derivation-matrix cell (source artifact × derivation row) carries a traced case or a named risk-pruning reason.
 - `harness-backlog.md` — the ticket-shaped build plan, starting from the walking skeleton (each skeleton test paired with its negative control, plus harness self-tests and — under coexistence — the isolated root's additive CI lane). Expansion gates are scoped per layer; every ticket names its executor.
 - `agents-md-contribution.md` — the proposed section for the repository's agent-instructions file (`AGENTS.md`/`CLAUDE.md`) that routes future coding agents to these artifacts: consult contracts and acceptance criteria on feature changes, deposit cases per the derivation grammar, deposit each bug fix's detector, never weaken gates, re-enter `harness-revision` on structural mismatch.
@@ -52,7 +58,7 @@ The four layer rules the audit enforces:
 
 Run these checks in Phase 4 whenever the artifacts exist; each failure is a finding with normal severity mapping:
 
-1. **Lane presence.** Every one of the five lanes is either active with evidence or declared empty with a reason. Undeclared absence is a finding.
+1. **Lane presence.** Every one of the six lanes is either active with evidence or declared empty with a reason. Undeclared absence is a finding.
 2. **Gate reality.** Every gate the policy marks blocking actually blocks in CI at the declared frequency, on the audited revision. Compare policy against actual CI configuration and recent runs, not against intention.
 3. **Frequency drift.** Declared cadences (per-commit, prompt-change, nightly, pre-release) match what actually triggers. A nightly eval that has not run in a month is a finding even if its config exists.
 4. **Invariant enforcement.** Each non-retired invariant has its classified enforcement in place: a test that would fail on violation, a fail-closed runtime guardrail, or both. An invariant enforceable only by model goodwill is a finding.
@@ -70,6 +76,7 @@ Run these checks in Phase 4 whenever the artifacts exist; each failure is a find
 16. **Derivation closure.** The case catalog reaches matrix closure: every derivation-matrix cell (source artifact × derivation row) carries a traced case or a named risk-pruning reason. A silent empty cell is a finding. An expansion gate that references conditions outside the layer it gates — a catalog or layer-1/2 implementation frozen behind a missing live target, an unpassed eval threshold, or unauthorized CI — is a **structural** finding: the harness has designed itself into a stall.
 17. **Negative controls.** Sample detector families and confirm each proves it can fire: a seeded violation (mutated fixture, planted defect, misbehaving double script) that the detector catches, landed red-then-green. A detector with no negative control anywhere in its family is a finding; walking-skeleton tests are not exempt.
 18. **Harness self-testing.** The harness's own machinery is under test: fixtures have self-tests, scanners and sweeps fail on an empty walk rather than passing, and policy loaders, CI configuration, and dispatch/registry surfaces are pinned by tests. A load-bearing guard with no test of its own is a finding.
+19. **Outcome-acceptance integrity.** For active `L-ACC`: the rubric is human-ratified and tighten-only; every scored row maps to a rubric axis and every mechanical guardrail maps down to a layer-1/2 detector with a negative control; scenario input is realistic and held constant; planted answers are unreachable from producer and grader; per-axis producer↔grader disjointness is enforced in code; self-report is a scored subject, never evidence; campaign invariants are separate from product invariants; the intermediate gate is durably resolved before downstream spend; preflight runs pre-mutation/pre-spend; each live run has fresh human authorization and no irreversible effect; the release relationship is explicit; and ceiling exhaustion, skipped work, missing calibration, or an unratified threshold yields `incomplete` / `inconclusive`, never pass. An uncalibrated grader emitting a score is blocking.
 
 ## 5. Findings routing
 

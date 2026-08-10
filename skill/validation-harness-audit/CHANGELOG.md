@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.1
+
+Completes consumption of the six-layer design contract introduced in 0.6.0.
+
+- Adds `acceptance/`, `case-catalog.yaml`, and `harness-state.yaml` everywhere the design corpus is discovered or treated as authoritative.
+- Corrects the conformance checklist and standalone reviewer prompt from five to six lanes and adds the complete `L-ACC` integrity check: rubric ratification, realistic inputs, sealed answers, per-axis independence, self-report handling, campaign-invariant separation, staged gates, authorization, release relationship, and fail-closed incomplete/inconclusive outcomes.
+- Keeps the audit/design contract pair versioned together with design 0.6.1.
+
+## 0.6.0
+
+Consumes the expanded design contract (design 0.6.0). Conformance checks added for everything that skill now declares.
+
+- **Six layer lanes**, with layer 6 (outcome acceptance) called out as the one most often silently absent — a policy that never declares it either way is a finding.
+- **Layer-6 integrity checks:** ratified tighten-only rubric; scored axes are the only lane rows; grader independence enforced in code per axis; sealed answer key unreachable from both the system under test and the grader; self-report graded as subject, never consumed as evidence; campaign invariants in a separate registry; grader calibrated at layer 4. An uncalibrated grader emitting a score is blocking.
+- **Enumeration currency.** For every guard that enumerates a class, confirm the enumeration still covers every member in the source today. A class that grew a member the guard never learned about is a live hole no test failure will surface.
+- **Module-map commitment** and unqualified-closure claims; **execution-lane assignment** including a real inner-loop command; **rollups recomputed** from the rows they summarize; **coverage-verdict discipline** (mechanism named, oversight distinguished from documented tradeoff); and **re-entry health** where `harness-state.yaml` exists.
+- **Phase 0 — blind derivation.** In `assess`/`full`, when a ratified corpus exists, derive the non-prunable properties from source *before* reading the corpus, then unblind and diff. Every other phase measures the built system against the declared policy, which makes the policy the yardstick and therefore the blind spot: a claim the policy never made produces no non-conformance. This is the only mechanism by which an audit reaches a missing claim. Its output is a structural finding about the design (routed to `harness-revision`), never a harden-backlog item, and the finding classes are kept visibly separate so an owner can tell "the build drifted from the design" from "the design may not describe the system." Governing rule 11 amended to carve out exactly this.
+- Two new layer rules mirrored in `references/harness-policy-conformance.md`.
+
+## 0.5.0
+
+Enablement promotions from the validation-architect re-scope (2026-08-01).
+
+- New `fidelity` mode: per-wave / per-ticket judgment pass over a product repo whose deterministic closure (`validation-trace`) is already green. Four axes (seed coverage, negative-control reality, oracle match, no quiet narrowing); findings only — never propose a patch. Distinct from campaign-scale design-conformance audit and from `verify`/`harden`.
+- Design-time artifact list updated to include `case-catalog.yaml` and the owner documents (`owner-briefing.md`, `owner-backlog.md`).
+
 ## 0.4.0
 
 Aligned with validation-harness-design 0.4.0 (the rightsizing revision derived from the first full brownfield campaign).

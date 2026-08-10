@@ -44,6 +44,8 @@ export class CodexStakeholder implements StakeholderAgent {
         workingDirectory: this.opts.workspace,
         skipGitRepoCheck: true,
         approvalPolicy: "never" as const,
+        networkAccessEnabled: false,
+        webSearchMode: "disabled" as const,
       };
       this.thread = this.opts.resumeThreadId
         ? this.codex.resumeThread(this.opts.resumeThreadId, options)

@@ -1,25 +1,41 @@
 {
   "name": "validation-architect",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Two-agent autonomous validation-harness design: a Claude designer drives the validation-harness-design skill while a Codex stakeholder plays the domain-expert human, grounded in product docs and the human's rambling.txt.",
+  "license": "UNLICENSED",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "packageManager": "pnpm@11.10.0",
+  "bin": {
+    "validation-trace": "./bin/validation-trace.js"
+  },
+  "files": [
+    "bin/validation-trace.js",
+    "dist/catalog.js",
+    "dist/trace.js",
+    "dist/trace-cli.js",
+    "enablement/**",
+    "skill/implement-harness-ticket/SKILL.md"
+  ],
   "scripts": {
     "vda": "tsx src/cli.ts",
+    "trace": "tsx src/trace-cli.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:package": "node scripts/package-smoke.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.220",
-    "@openai/codex-sdk": "0.146.0",
     "yaml": "^2.8.0"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",

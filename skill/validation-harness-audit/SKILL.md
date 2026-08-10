@@ -24,9 +24,9 @@ The assurance conclusion must always be scoped to a defined system, revision, en
 
 validation-harness-design and this skill form one loop over the life of a product: **design → build → audit → revise**.
 
-- **Design time.** validation-harness-design produces the durable harness spec: a reconciled system map (`system-map.md`), falsifiable invariants (`invariants.md`), a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with committed golden sets, a traced case catalog (`case-catalog.md`), a proposed agent-instructions section (`agents-md-contribution.md`) that routes future coding agents to these artifacts, and `validation-policy.yaml` — the machine-readable declaration of the five validation layers (invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening), gates, thresholds, obligations, artifact locations, and any harness-coexistence constraints.
+- **Design time.** validation-harness-design produces the durable harness spec: a reconciled system map (`system-map.md`), falsifiable invariants (`invariants.md`), a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with committed golden sets, outcome-acceptance artifacts (`acceptance/`) when `L-ACC` is active, a traced case catalog (`case-catalog.md` + machine-readable `case-catalog.yaml`), owner-facing documents (`owner-briefing.md`, `owner-backlog.md`), run-state metadata (`harness-state.yaml`), a proposed agent-instructions section (`agents-md-contribution.md`) that routes future coding agents to these artifacts and the traceability conventions, and `validation-policy.yaml` — the machine-readable declaration of the six validation layers (invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening, outcome acceptance), the module map with a status per module, per-family execution lanes, gates, thresholds, obligations, artifact locations, and any harness-coexistence constraints.
 - **Audit time (this skill).** Measure what was actually built against what was declared, and against the criticality the system actually carries. The policy file is the diff surface: a validation lane the policy declares empty with a reason is a decision; a lane that is simply absent is a finding.
-- **Findings routing.** Case-level gaps — a missing test, a weak oracle, an unexercised failure mode — are remediated here in `harden` mode. Structural findings — a boundary map that contradicts the architecture, a mis-placed lane, invariants that no longer describe the system — are routed to validation-harness-design's `harness-revision` mode; do not pile case fixes onto a wrongly shaped harness.
+- **Findings routing.** Case-level gaps — a missing test, a weak oracle, an unexercised failure mode — are remediated here in `harden` mode. Structural findings — a boundary map that contradicts the architecture, a mis-placed lane, invariants that no longer describe the system, or a Phase-0 blind derivation surfacing a property the policy never claimed — are routed to validation-harness-design's `harness-revision` mode; do not pile case fixes onto a wrongly shaped harness.
 - **Shared discipline.** Golden sets are authored before prompt tuning, never after; audit corpora and holdouts are never rewritten to match fixes; every deterministic defect surfaced by a live run or eval campaign deposits a deterministic detector in the same change.
 
 When no design artifacts exist, reconstruct the validation contract from repository evidence (Phase 3) — and a standing recommendation of any such audit is to adopt validation-harness-design so the next audit has a declared baseline to measure against.
@@ -43,7 +43,7 @@ When no design artifacts exist, reconstruct the validation contract from reposit
 8. **Unknowns remain unknown.** Never turn missing evidence into a favorable assumption.
 9. **Time or budget does not lower criticality.** It may leave the assurance target unmet.
 10. **Do not silently alter intended behavior.** Separate validation hardening, testability refactors, defect corrections, and behavioral changes.
-11. **Audit the declared harness before re-deriving one.** When ratified design artifacts exist (`validation-policy.yaml`, `invariants.md`, boundary map, contracts, eval plans), they are the authoritative claims baseline: challenge them, diff conformance against them, and reuse their namespaced IDs. Do not silently reconstruct a parallel contract beside them.
+11. **Audit the declared harness before re-deriving one — but derive the floors blind first.** When ratified design artifacts exist (`validation-policy.yaml`, `invariants.md`, boundary map, contracts, eval plans), they are the authoritative claims baseline: challenge them, diff conformance against them, and reuse their namespaced IDs. Do not silently reconstruct a parallel contract beside them. The one exception is Phase 0's bounded blind derivation of the non-prunable properties, run *before* the corpus is read: it is the only mechanism by which an audit can surface a claim the policy never made, and its output is a structural finding about the design rather than a parallel contract.
 12. **Vocabulary is calibrated, never assumed.** Define each term of art — claim, oracle, sensitivity evidence, holdout, independence level, validation lane, assurance target, criticality tier — in one plain-language clause on first use in conversation and in the charter, then calibrate depth to the user's displayed fluency: brief for practitioners, fuller for users new to assurance vocabulary. The human is the acceptance authority, and a person cannot meaningfully accept risk stated in vocabulary they do not understand — so the release assessment restates the verdict, every blocker, and every residual risk in plain language.
 
 ## Modes
@@ -55,9 +55,10 @@ Resolve the mode from the user’s request. Explicit mode wins.
 - `design`: Produce the assurance strategy and validation plan without modifying production or test code.
 - `harden`: Implement approved validation improvements and limited testability changes.
 - `verify`: Independently evaluate a defined revision and evidence package without implementing fixes.
+- `fidelity`: Per-wave / per-ticket judgment pass over a product repo that already carries a ratified design corpus and an implemented (or partially implemented) test tree. Answers the one question deterministic closure cannot: do the citing specs actually falsify their ratified seeds, or has the case been quietly weakened? Findings only — never propose a patch, never edit a file. See [Fidelity mode](#fidelity-mode) below.
 - `full`: Profile, assess, design, harden, independently verify, and report.
 
-Default to `assess` when the user asks to review or audit. Use `full` when the user asks to improve, harden, reach production-grade validation, or execute the complete lifecycle. Do not make repository changes unless the selected mode permits them.
+Default to `assess` when the user asks to review or audit. Use `full` when the user asks to improve, harden, reach production-grade validation, or execute the complete lifecycle. Use `fidelity` when the user (or the validation-architect CLI) asks for a per-wave / per-PR fidelity audit. Do not make repository changes unless the selected mode permits them — `fidelity` never does.
 
 `design` mode plans remediation for a system that already exists. For a harness that does not exist yet — a new product, feature, or module with no code — use validation-harness-design instead.
 
@@ -109,6 +110,26 @@ Before running project scripts:
 
 Optional helpers are available under `scripts/`. Their use is not mandatory when the repository already has a superior evidence workflow.
 
+## Phase 0 — Blind derivation (before reading the design artifacts)
+
+**Run this in `assess` and `full` mode whenever ratified design artifacts exist.** It is the only part of an audit that can reach a *missing* claim, and it must happen before Phase 1 ingests the corpus, because it cannot be un-run once the auditor has read the answer.
+
+Every other phase measures the built system against the declared policy. That makes the policy the yardstick — and therefore the blind spot. An audit anchored to the policy can prove the harness conforms to it, can prove gates really block, can prove detectors really fire, and still cannot tell you that an invariant the policy never states is being violated in production. A missing claim produces no non-conformance, because nothing is measuring against it.
+
+The corrective is a derivation the corpus cannot anchor:
+
+1. **Pick the properties.** The non-prunable ones — the policy's floor invariants, or whatever the owner names as highest-consequence. Two or three, not all of them; this is a differential probe, not a re-design.
+2. **Blind yourself to the answer.** Do not read, list, or grep the design corpus, the test tree, or any archived suite. Read the product: source, docs, research notes, configuration, git history. Note without following any reference to a claim ID or corpus path you encounter in a file you *are* reading.
+3. **Take the property in the owner's words, not the corpus's.** A ratified invariant statement usually enumerates its own violation surface; handing it over gives away most of the answer. Use a plain-language statement of the property instead — high-level and deliberately not enumerated.
+4. **Derive from source with the design skill's Phase-6 method:** choose and defend the counting unit, walk source to sink, and close over the substrate with an inventory in which every element is either a case or safe-by-construction with the mechanism named.
+5. **Then unblind and diff.** Compare the derived set against the ratified set in both directions, and record the audit trail of what you read so the blind is checkable after the fact.
+
+**The diff produces a distinct class of finding.** A derived case with no counterpart in the ratified corpus is not a conformance gap — the harness may implement its policy perfectly. It is evidence that **the policy itself may be incomplete**, which is a structural finding routed to validation-harness-design's `harness-revision` mode, never to the harden backlog. Label these separately in the evidence package; an owner reading a conformance report must be able to see at a glance which findings say "the build drifted from the design" and which say "the design may not describe the system."
+
+**Calibrate what comes back, and do not take it at face value.** Verify each claimed gap against the source before reporting it, and expect three kinds in the pile: a real oversight; a guard that exists in a shape the derivation did not look for (a property held by *placement* rather than by *screening*, say); and a deliberate tradeoff the source already reasoned about in an adjacent comment or defect reference. Only the first is a defect. The third is a product-truth finding for ratification. Reporting all three as gaps burns owner trust faster than missing them would.
+
+Skip this phase in `verify` and `fidelity` mode, which have narrower scopes by construction, and in any audit where no design corpus exists — there, Phase 3's reconstruction already *is* an unanchored derivation.
+
 ## Phase 1 — Discover the system
 
 Build an evidence-grounded system map. Inspect at least:
@@ -123,7 +144,7 @@ Build an evidence-grounded system map. Inspect at least:
 - External dependencies and failure behavior.
 - Observability, alerting, runbooks, rollback, and recovery mechanisms.
 - Existing tests, fixtures, mocks, test environments, CI gates, skipped tests, flakes, and coverage reports.
-- Harness-design artifacts when present: `validation-policy.yaml` (product and module files), `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, golden-set directories, `case-catalog.md`, `harness-backlog.md`, and `agents-md-contribution.md` — the policy's `artifacts:` block names their locations.
+- Harness-design artifacts when present: `validation-policy.yaml` (product and module files), `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, golden-set directories, `acceptance/`, `case-catalog.md`, `case-catalog.yaml`, `harness-backlog.md`, `harness-state.yaml`, owner documents, and `agents-md-contribution.md` — the policy's `artifacts:` block names their locations.
 - Prior incidents, defect notes, changelogs, deprecations, or compatibility commitments when present.
 
 Produce a system map that distinguishes:
@@ -177,7 +198,7 @@ Never use an unscoped target such as “production ready.”
 Create a catalog of claims that must hold. Gather sources in this order, while checking freshness and contradictions:
 
 1. Explicit approved requirements, safety/security policies, and contractual obligations.
-2. Ratified harness-design artifacts when present — `validation-policy.yaml`, `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, `case-catalog.md` (see [references/harness-policy-conformance.md](references/harness-policy-conformance.md)). These were human-confirmed at design time: classify their claims `authoritative`, keep their namespaced IDs (for example `OPERON-INV-003`) as claim IDs in the traceability matrix, and record any contradiction with observed behavior as a finding rather than silently preferring either side.
+2. Ratified harness-design artifacts when present — `validation-policy.yaml`, `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, `acceptance/`, `case-catalog.md`, and `case-catalog.yaml` (see [references/harness-policy-conformance.md](references/harness-policy-conformance.md)). These were human-confirmed at design time: classify their claims `authoritative`, keep their namespaced IDs (for example `OPERON-INV-003`) as claim IDs in the traceability matrix, and record any contradiction with observed behavior as a finding rather than silently preferring either side.
 3. Public interfaces, schemas, protocols, compatibility commitments, and user documentation.
 4. Data constraints, architectural invariants, operational controls, and threat or hazard analyses.
 5. Existing tests and prior incident-derived requirements.
@@ -224,7 +245,7 @@ Also assess non-test evidence such as static analysis, formal models, reviews, r
 
 When a `validation-policy.yaml` exists, additionally audit lane conformance ([references/harness-policy-conformance.md](references/harness-policy-conformance.md)):
 
-- Map the evidence inventory onto the five declared layers. An undeclared-absent lane is a finding; a declared-empty lane with a reason is a decision.
+- Map the evidence inventory onto the six declared layers. An undeclared-absent lane is a finding; a declared-empty lane with a reason is a decision. Layer 6 (outcome acceptance, `L-ACC`) is the one most often silently absent — a harness whose layers 1–5 all conform can still have no answer to "is the output any good," and a policy that never declares the lane either way is a finding, not an omission.
 - Check gate reality: every gate the policy marks blocking actually blocks in CI at the declared frequency. A gate silently skipped to save CI minutes is a finding.
 - Check the tighten-only rule across module policies, and that every waiver is explicit, owned, and unexpired.
 - Check the evidence-deposit rule: deterministic defects surfaced by live-sandbox runs or eval campaigns deposited layer-1/2 detectors in the same change.
@@ -235,6 +256,13 @@ When a `validation-policy.yaml` exists, additionally audit lane conformance ([re
 - Check derivation closure: the catalog reaches matrix closure (every source-artifact × derivation-row cell traced or risk-pruned by name; a silent empty cell is a finding), and no expansion gate references conditions outside the layer it gates — a catalog or layer-1/2 implementation frozen behind a missing live target, eval threshold, or CI authorization is a structural finding.
 - Check negative controls and harness self-testing: sampled detector families each prove they can fire against a seeded violation, and the harness's own machinery (fixtures, scanners, policy loaders, CI config) is under test — a scanner that passes on an empty walk is a finding.
 - Under a declared `coexistence:` posture, confirm protected incumbent paths and gates are untouched, CI integration with the incumbent stayed additive, the isolated root's own additive CI lane exists and runs, and no cutover occurred without its declared evidence.
+- Check **layer-6 integrity** where the lane is non-empty: the rubric is human-ratified and tighten-only; its scored axes are the only lane rows while its mechanical guardrails sit at layer 1/2 with negative controls; grader independence is enforced in code per axis rather than by convention; the sealed answer key is unreachable from both the system under test and the grader's input path; the system's self-report is graded as a *subject* and never consumed as *evidence* for the axes auditing it; campaign invariants live in a registry separate from the product invariants; and the grader's own quality is calibrated at layer 4. An uncalibrated grader emitting a score, or a threshold-dependent verdict reported as pass/fail while its threshold is unratified, is a blocking finding.
+- Check **enumeration currency** (the substrate-drift channel): for every guard that enumerates a class — an allow-list, a path regex, a matcher over adapters, stores, surfaces, or effect sites — confirm the enumeration still covers every member that exists in the source today. A class that grew a member the guard never learned about is a **live hole that no test failure will ever surface**, because the frozen case list cannot see it. Sample the classes named in the invariant inventories and diff them against the code; a gap here is a blocking finding, not a maintenance note.
+- Check the **module-map commitment**: every entry carries `deep-pass-done`, `deep-pass-pending`, or `deliberately-shallow` with a reason, and no closure or completeness claim is stated unqualified anywhere while a module is `deep-pass-pending` — such a claim must read "complete at product granularity."
+- Check **execution-lane assignment**: every case family names its lane, the `inner-loop` lane names an actual command, and the blocking lanes match what CI really runs. A family with no lane runs at whatever cadence someone assumed.
+- Check that **rollups are derived, not authored**: recompute every count, summary line, and status total from the rows it claims to summarize. A summary that disagrees with its own table is a finding at the tier of whatever it understates — a rollup reporting fewer gaps than its rows contain is the never-green-by-absence failure aimed at the reader.
+- Check **coverage-verdict discipline**: `enforced` verdicts name a mechanism (an unnamed one is `unclear`, never `enforced`), and gap verdicts distinguish an oversight from a deliberate, documented tradeoff. A tradeoff the source already reasoned about — an adjacent comment, a defect reference, a design-doc line — is a product-truth finding for ratification, not a defect to fix.
+- Where `harness-state.yaml` exists, check re-entry health: the recorded source revision, per-artifact staleness, and inventory digests are current, and a re-run against an unchanged tree converges to zero proposed changes. A state file staler than the artifacts it claims to describe means the harness has stopped being re-derived, and every inventory under it should be treated as unverified.
 
 Coverage is a navigation signal. It is not a release claim and must not be used as the primary assurance metric.
 
@@ -406,12 +434,28 @@ The work is complete only when:
 9. Residual risks, unknowns, assumptions, and acceptance authority are explicit.
 10. Another reviewer can reproduce the conclusion from the retained artifacts.
 
+## Fidelity mode
+
+A scoped, findings-only judgment pass. Distinct from campaign-scale design-conformance audit and from `verify`/`harden`: the product repo already has a ratified corpus and citing specs; a deterministic closure check (`validation-trace`) has already passed; this mode asks whether those specs are faithful to the ratified seeds.
+
+**Preconditions.** Refuse (do not invent findings about missing files) when closure is red — fix closure before asking for judgment. Scope is exhaustive within a wave or an explicit ticket set; do not audit families outside the scope.
+
+**Rubric — four axes.** For each scoped implementable family with citing specs:
+
+1. **Seed coverage.** Every enumeration item the catalog row (or its cited contract clause) names has a real assertion in some citing spec.
+2. **Negative-control reality.** The detector can actually fire: a seeded violation would fail the test. A constant-pass, assert-on-setup-only, tautology, or a "negative control" that never plants the violation is a finding — **blocking** tier by rule, because closure now overstates the harness.
+3. **Oracle match.** The assertion kind matches the row's declared oracle.
+4. **No quiet narrowing.** The implemented case has not been weakened relative to the ratified seed text (narrowed input domain, loosened tolerance, dropped failure mode, a skipped/`it.todo` carrying the citation while the catalog counts the family covered).
+
+**Hard rules.** Read-only; **findings only — never propose a patch**, never emit a diff, never rewrite a test body. Never relitigate ratified prunes, blocked cells, or recorded decisions. Never audit taste. Evidence quotes the ratified text AND the spec text, with file paths. Output uses the same `AUD-xxx (tier) — <path> — <claim>` headers as other modes (the `AUD-9xx` range is reserved for fidelity passes when an orchestrator assigns iteration numbers). End with a "What I checked" coverage section listing every scoped family — mandatory even at zero findings. Remediation belongs to the product repo's coding agents (via `implement-harness-ticket`); structural findings re-enter validation-harness-design's `harness-revision` mode.
+
 ## Invocation examples
 
 - `Use $validation-harness-audit in assess mode. Determine whether this CLI has sufficient validation for local use on real repositories.`
 - `Use $validation-harness-audit in full mode. Harden this multi-tenant service for the stated production target.`
 - `Use $validation-harness-audit in verify mode against commit <sha> and the existing .validation evidence package.`
 - `Use $validation-harness-audit in assess mode. Diff the built harness against validation-policy.yaml and report lane conformance.`
+- `Use $validation-harness-audit in fidelity mode scoped to Wave 1. Findings only — do not edit any file.`
 - `Profile this flight-control repository, but do not edit or run hardware-facing commands.`
 
 For environments without skill support, use [STANDALONE_REVIEWER_PROMPT.md](STANDALONE_REVIEWER_PROMPT.md).

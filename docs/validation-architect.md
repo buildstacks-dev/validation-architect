@@ -1,10 +1,10 @@
 # Validation Architect — re-architecture of the validation-design-agent
 
 Status: **direction ratified by the owner 2026-07-31** (chat decision, Operon
-workstream). This document is the decision record; implementation is tracked in
-the GitHub issues that reference it. Until an issue lands, treat the current
-code and README as the accurate description of behavior — this document
-describes where the system is going, not where it is.
+workstream). This document is the decision record. The current README remains
+authoritative for commands; the enablement surface below is now distributed as
+one versioned package plus a product-repo handoff rather than as unrelated
+promises.
 
 ## The decision in one paragraph
 
@@ -62,6 +62,14 @@ anchored to the product repo, artifacts delivered as a branch/PR,
 The blueprints made executable by *others*. The architect ships, per designed
 repo:
 
+The pieces are delivered coherently in two places. The installable
+`validation-architect` package contains the compiled `validation-trace` bin,
+the `implement-harness-ticket` skill, and reviewed CI template source. Each
+target delivery also materializes `validation-design/enablement/` with that
+skill, the CI template, the exact conventions, and version-pinned install
+instructions. The branch intentionally does not edit the product's package
+manifest, standing agent file, or live CI workflow without owner review.
+
 - **A machine-readable case-catalog manifest** (`case-catalog.yaml` or a
   section of `validation-policy.yaml`): family IDs, layers, risk tiers,
   prune/blocked status, owning backlog ticket. The markdown catalog stays the
@@ -105,7 +113,7 @@ itself:
   tests against the ratified seeds/clauses, and judges whether the
   implementation encodes the design intent — is the negative control real,
   is the oracle the one the row demands, was the case quietly narrowed.
-  This is the existing vendored `validation-harness-audit` skill's charter
+  This is the existing `validation-harness-audit` skill's charter
   ("measures what was actually built") run at a new, smaller cadence:
   per-wave or per-PR, scoped to just-landed tickets, alongside the existing
   campaign-scale audit. Output is **findings only** — issues filed against
@@ -131,7 +139,7 @@ itself:
 
 | Kind | What |
 | --- | --- |
-| Exposed artifacts (built per design, consumed by others) | design corpus · catalog manifest · conventions in AGENTS.md contribution · trace CLI + CI lane config · `implement-harness-ticket` skill · owner-briefing / owner-backlog / trace report |
+| Exposed artifacts (built per design, consumed by others) | design corpus · `validation-design/enablement/` handoff · catalog manifest · conventions in AGENTS.md contribution · compiled trace CLI + CI lane config · `implement-harness-ticket` skill · owner-briefing / owner-backlog / trace report |
 | Agent work (judgment, per-invocation) | design + revision campaigns · fidelity audits (per-wave and campaign-scale) · interpreting drift the deterministic tier can't classify |
 | The product repo's job (never the architect's) | implementing tickets · running CI · fixing findings |
 

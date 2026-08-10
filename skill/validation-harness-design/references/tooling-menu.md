@@ -4,7 +4,7 @@ Read during Phase 7. Present options per layer with the tradeoffs that actually 
 
 **Module scope:** the parent product's existing stack is the default. Divergence must be justified — a second runner or a second eval framework doubles the CI surface a future audit has to reason about, and halves the chance anyone maintains either.
 
-Layer numbering follows the taxonomy in SKILL.md — invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening — plus a cross-layer CI section.
+Layer numbering follows the taxonomy in SKILL.md — invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening, outcome acceptance — plus a cross-layer CI section.
 
 ## Layer 1 — Invariant / contract runner
 
@@ -57,6 +57,15 @@ Obligations are fixed in Phase 6 (tier- and shape-gated); tooling is mostly disc
 - **Soak:** a long-running instance on the layer-3 sandbox target with assertions over its telemetry (state growth, missed-tick recovery, cost integrity under retries). Use the fake clock to accelerate what can be accelerated; some failure modes only exist in real elapsed time.
 - **Secret hygiene:** a scanner in CI (gitleaks or equivalent) — cheap, boring, non-negotiable at C2+.
 
+## Layer 6 — Outcome acceptance (`L-ACC`)
+
+Choose a **campaign runner**, not another per-commit test framework. It must preserve ratified realistic inputs, seal planted answers from producer and grader, enforce per-axis producer↔grader disjointness, record the intermediate gate before downstream spend, retain every arm's evidence, and represent skipped work, ceiling exhaustion, missing calibration, or an unratified threshold as `incomplete` / `inconclusive` — never green.
+
+- Prefer a repository-owned runner and plain-file rubric/scenario manifests under `acceptance/`; the evidence must outlive any hosted dashboard.
+- Reuse the layer-4 judge calibration harness for grader quality and the product's layer-3 provider contracts for transport. Layer 6 never certifies its own instrument.
+- Require fresh, explicit human authorization for each campaign: target, scenario set, spend/time ceiling, and permitted external effects. Never schedule this lane.
+- Put every mechanically decidable preflight, authorship walk, leakage scan, set comparison, and budget cutoff in layers 1–2 with a seeded negative control. Only human-rubric axes are scored in `L-ACC`.
+
 ## Cross-layer — CI host and cost tiering
 
 Whatever the repo already uses. What matters is not the host but that the tiering from Phase 5 is encoded there and in the policy file:
@@ -66,6 +75,7 @@ Whatever the repo already uses. What matters is not the host but that the tierin
 - **On judge change:** judge meta-evals.
 - **Pre-merge / pre-release:** layer-3 sandbox smokes; scale test at the contention point.
 - **Pre-GA, then recurring:** layer-5 obligations on their declared schedule.
+- **Explicitly triggered, per authorized campaign only:** layer-6 outcome acceptance. Its declared release relationship determines whether a completed, conclusive campaign blocks release.
 
 Encode the trigger conditions in the policy file, not only in CI config — otherwise "saving CI minutes" silently removes a gate and nothing records that it happened.
 

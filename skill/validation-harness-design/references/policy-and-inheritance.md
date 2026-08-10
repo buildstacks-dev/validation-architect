@@ -39,9 +39,13 @@ artifacts:
   boundary_map: ./boundary-map.md
   contracts: ./contracts/
   case_catalog: ./case-catalog.md
+  case_catalog_manifest: ./case-catalog.yaml
   harness_backlog: ./harness-backlog.md
   llm_eval_plan: ./llm-eval-plan.md
   golden_sets: ./golden-sets/
+  acceptance: ./acceptance/
+  harness_state: ./harness-state.yaml
+  agent_instructions: ./agents-md-contribution.md
 
 # Optional: use while a replacement harness is intentionally isolated.
 coexistence:
@@ -58,7 +62,7 @@ invariants:
     enforcement: [runtime_guardrail, test]
     applies_to: [work-source, learning-loop]
 
-layers:                        # all five lanes declared; an empty lane carries a reason — never silently absent
+layers:                        # all six lanes declared; an empty lane carries a reason — never silently absent
   invariant_contract: {status: active}
   hermetic_system:    {status: active}
   live_sandbox:       {status: active, targets: [sandbox-repo], spend_bound: per_run_cap}
@@ -66,6 +70,16 @@ layers:                        # all five lanes declared; an empty lane carries 
   # a product with no model call sites declares instead:
   # eval_qualification: {status: empty, reason: "no model call sites"}
   ops_hardening:      {status: active, obligations: [threat_model, contention_scale, soak]}
+  outcome_acceptance:
+    status: active
+    rubric: ./acceptance/rubric.yaml
+    scenarios: ./acceptance/scenarios/
+    campaign_invariants: ./acceptance/campaign-invariants.yaml
+    cadence: triggered_only
+    authorization: per_campaign_human
+    release_relationship: disclosed_assurance # or release_gate
+  # A product with mechanically specified outputs declares instead:
+  # outcome_acceptance: {status: empty, reason: "no human-judged work product"}
 
 gates:
   invariant_contract: {requirement: blocking, frequency: per_commit}
@@ -75,6 +89,7 @@ gates:
   llm_quality:        {requirement: blocking, frequency: [prompt_change, model_change, nightly]}
   judge_meta_eval:    {requirement: blocking, frequency: judge_change}
   ops_hardening:      {requirement: blocking, frequency: [pre_ga, recurring]}
+  outcome_acceptance: {requirement: advisory, frequency: triggered_only, inconclusive_by_default: true}
 
 tooling:
   runner: <selected>

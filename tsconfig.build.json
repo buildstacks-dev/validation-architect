@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/catalog.ts", "src/trace.ts", "src/trace-cli.ts"],
+  "exclude": ["test/**", "fixtures/**", "runs/**"]
+}

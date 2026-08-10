@@ -58,6 +58,14 @@ export type AuditDispositionKind = "fixed" | "disputed" | "deferred" | "reopened
 export interface AuditDisposition {
   kind: AuditDispositionKind;
   note: string;
+  /** Stakeholder confirmed this exact kind + rationale in the feedback window. */
+  confirmed?: boolean | undefined;
+  /** Persisted confirmation evidence; cleared whenever the disposition changes. */
+  confirmationNote?: string | undefined;
+  /** A disputed disposition is not closed until the stakeholder confirms it. */
+  arbitrated?: boolean | undefined;
+  /** Persisted stakeholder evidence for the arbitration, so resume cannot lose it. */
+  arbitrationNote?: string | undefined;
 }
 
 export type AuditVerdict = "clean" | "clean-with-disputes" | "reservations";
@@ -67,23 +75,55 @@ export type AuditVerdict = "clean" | "clean-with-disputes" | "reservations";
  * resumes exactly. Phases: an auditor run is represented by
  * `pending.to === "auditor"` (not a phase); "window" = the capped feedback
  * window after an audit report; "package" = awaiting the designer's
- * ratification-package Audit section; "done" = final CAMPAIGN-COMPLETE
- * acceptable.
+ * ratification-package Audit section; "owner-docs" = awaiting structurally
+ * valid owner-briefing.md + owner-backlog.md; "final-review" = the final
+ * owner-facing corpus has been read by fresh readers and must remain
+ * unchanged; "done" = final CAMPAIGN-COMPLETE acceptable.
  */
 export interface AuditState {
   /** Audit reports produced so far (0–2). */
   iteration: number;
-  phase: "window" | "package" | "done";
+  phase: "window" | "package" | "owner-docs" | "final-review" | "done";
   /** Stakeholder turns consumed inside the current feedback window. */
   windowExchanges: number;
   findings: AuditFinding[];
   /** Latest disposition per finding id. */
   dispositions: Record<string, AuditDisposition>;
   verdict?: AuditVerdict | undefined;
+  /** Problems from the latest malformed auditor response, used by a retry prompt. */
+  reportProblems?: string[] | undefined;
+  /** Auditor iteration interrupted by a deterministic/reader repair detour. */
+  resumeIteration?: number | undefined;
+  /** Fingerprint reviewed by the mandatory post-audit fresh-reader pass. */
+  finalReviewFingerprint?: string | undefined;
+  /** Stable core corpus read by the most recently accepted auditor pass. */
+  auditedCoreFingerprint?: string | undefined;
 }
 
 export type ClaudeAuthMode = "subscription" | "api-key";
 export type CodexAuthMode = "chatgpt" | "api-key";
+
+/** How the designer kickoff scopes the campaign (issue #1). */
+export type CampaignMode = "greenfield" | "revision";
+
+/** Exact clean Git identity captured before work that consumes product source. */
+export interface TargetRevision {
+  commit: string;
+  sourceTree: string;
+  capturedAt: string;
+  /** Capture helpers reject dirty trees, so a trusted revision is always clean. */
+  dirty: false;
+}
+
+/**
+ * Immutable product-repo revision captured when a target campaign starts.
+ * The snapshot path is relative to the run workspace so state remains
+ * relocatable.
+ */
+export interface TargetBase extends TargetRevision {
+  docsTree?: string | undefined;
+  snapshot: string;
+}
 
 export interface RunConfig {
   fixture: string;
@@ -124,6 +164,16 @@ export interface TranscriptEntry {
 
 export type RunStatus = "running" | "completed" | "aborted" | "failed";
 
+/** Independent retry budgets for completion/audit gates. */
+export type CompletionGate =
+  | "reader-test"
+  | "catalog"
+  | "audit-report"
+  | "audit-window"
+  | "audit-section"
+  | "audited-core"
+  | "owner-docs";
+
 /** Persisted after every turn so a run can be resumed after crash/auth loss. */
 export interface RunState {
   runId: string;
@@ -146,10 +196,14 @@ export interface RunState {
     | undefined;
   /** Set once the Phase-8 reader test has run; gates CAMPAIGN-COMPLETE. */
   readersRan?: boolean | undefined;
+  /** Digest of the exact non-audit corpus seen by the latest reader pass. */
+  readerReviewFingerprint?: string | undefined;
   /** Audit-stage state machine; absent until the first gated CAMPAIGN-COMPLETE. */
   audit?: AuditState | undefined;
-  /** Premature CAMPAIGN-COMPLETE rejections issued (bounded, then abort). */
+  /** @deprecated Pre-0.2 shared counter; ignored so old state cannot poison a different gate. */
   completionRejections?: number | undefined;
+  /** Per-gate consecutive rejection counts; a successful gate resets only itself. */
+  gateRejections?: Partial<Record<CompletionGate, number>> | undefined;
   /**
    * Consecutive designer turns with no relayable content (bounded, then
    * abort). A tool-call-only designer turn yields an empty result; relaying
@@ -157,6 +211,30 @@ export interface RunState {
    */
   emptyDesignerTurns?: number | undefined;
   rambleMtimeMs?: number | undefined;
+  /**
+   * Absolute path of the target product repo when the run is anchored to one
+   * (issue #1). Absent for fixture runs — the test/demo path.
+   */
+  target?: string | undefined;
+  /** Frozen target revision/source snapshot used by designer, auditor, and delivery. */
+  targetBase?: TargetBase | undefined;
+  /** One-time fresh-kickoff directive used when explicitly re-anchoring legacy target state. */
+  sourceRecoveryDirective?: string | undefined;
+  /** Kickoff scope chosen at run start; "revision" when the target already carried a corpus. */
+  campaignMode?: CampaignMode | undefined;
+  /** Recovery-only branch override; avoids rewriting an incompatible legacy delivery branch. */
+  deliveryBranch?: string | undefined;
+  /** Set once artifacts have been delivered to the target repo as a branch. */
+  delivery?: {
+    branch: string;
+    commit: string;
+    deliveredAt: string;
+    /** Absent only on state files written before target revisions were pinned. */
+    baseCommit?: string | undefined;
+    sourceTree?: string | undefined;
+    /** Exact delivered validation-design/ tree; absent on legacy state files. */
+    corpusTree?: string | undefined;
+  } | undefined;
   startedAt: string;
   updatedAt: string;
   config: RunConfig;

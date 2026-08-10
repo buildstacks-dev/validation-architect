@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.1
+
+Completes the six-layer contract introduced in 0.6.0 across every load-bearing consumer.
+
+- Propagates `L-ACC` through the concept primer, question bank, tooling menu, LLM judge-calibration guidance, policy example, derivation grammar, walking-skeleton/backlog guidance, durable artifact lists, and ongoing evidence-deposit rule.
+- Adds `acceptance/` to the builder's enumeration chain and makes layer-6 placement explicit: scored rubric axes stay in outcome acceptance, while campaign guardrails and negative controls stay at layers 1–2 and the grader is calibrated at layer 4.
+- Keeps the design/audit contract pair versioned together with audit 0.6.1.
+
+## 0.6.0
+
+Derived from a blind-derivation experiment against a brownfield product (Cormidia, 2026-08-09): the same invariants were re-derived from source by an agent with no access to the ratified answer, and the results were verified against the code. Two invariants produced an order of magnitude more falsification surface than their ratified seed lists, including live holes in a non-prunable invariant. Every change below traces to something that experiment surfaced.
+
+- **Layer 6 — outcome acceptance (`L-ACC`).** The taxonomy's generator is amended from two axes to three: layers 1-5 all have mechanical oracles, and a scored outcome against a human-ratified rubric cannot be folded into a pass/fail lane. Extracted from a product that hit this wall and built the lane itself. Adds ten design obligations (ratified rubric, realistic input as a controlled variable, sealed answer key, per-axis grader independence in code, the self-report rule, campaign invariants in their own registry, staged arms with an intermediate gate, preflight refusals, a declared release relationship, hard boundaries) and the `acceptance/` deliverable.
+- **Two new layer rules.** *Guardrails are not lane work* — anything a scan or exit status can falsify lands at layer 1/2 with a negative control, never in the expensive lane. *The instrument is measured a layer down* — a layer-6 grader's quality is a layer-4 judge-calibration site.
+- **Invariant violation surfaces move from Phase 2 to Phase 6.** Phase 2 now sketches two or three violation paths as a falsifiability check on the *statement* and explicitly forbids treating them as the case list. The exhaustive derivation is agent-alone, source-grounded, and gains a method: choose and defend the counting unit, walk source to sink, and close over the substrate with an inventory. The human ratifies the statement and its tier; enumerating how the code can make it false is not where human attention pays.
+- **Coverage verdicts carry a mechanism and a considered-flag.** `enforced` names its mechanism or it is `unclear`; a gap distinguishes an oversight from a deliberate documented tradeoff, which is a product-truth finding rather than a defect.
+- **Sourcing channel 4 — substrate drift.** When a new instance of an already-enumerated class appears, every inventory over that class is re-derived and every enumerating guard re-checked. The only channel triggered by the shape of the change rather than by a human or an incident noticing.
+- **The module map becomes a commitment.** Per-module status (`deep-pass-done` / `deep-pass-pending` / `deliberately-shallow`), and closure is reported as *complete-at-product-granularity* while any pass is pending. Adds the derive-at-substrate-granularity / ratify-at-module-granularity split.
+- **Execution lanes per case family** (`inner-loop` / `per-commit` / `triggered` / `release` / `scheduled`), with the layer supplying the default and the inner-loop lane naming an actual command.
+- **Re-entry and steady state.** Interaction mode is detected from whether a ratified policy exists, not asked; a steady-state run does not re-teach or re-confirm settled decisions. Run state moves to `harness-state.yaml`, separate from the ratified policy; staleness comes from a source diff rather than a calendar; and a re-run against an unchanged product converges to zero changes and zero questions.
+- **Operating rule 18 — rollups are derived, never authored.** A hand-written total drifts from its own table and always in the flattering direction.
+
+## 0.5.0
+
+Enablement promotions from the validation-architect re-scope (2026-08-01), so the skill carries what the orchestrator previously enforced alone.
+
+- Phase 6 + deliverable 7: emit `case-catalog.yaml` (schema `validation-architect/case-catalog/v1`) alongside `case-catalog.md` at matrix closure; the two must agree; regenerate when the markdown catalog or backlog family claims change.
+- Phase 8 deliverables 11–12: `owner-briefing.md` (ratification-moment narrative, fixed section shape) and `owner-backlog.md` (living consequence-language companion per wave/ticket); both non-normative by construction. Adversarial reader test extended to cover them.
+- Deliverable 10 (`agents-md-contribution.md`): routes coding agents to update both catalog surfaces, lists the normative traceability conventions the `validation-trace` CLI enforces, and names the `implement-harness-ticket` skill as the standard implementation path.
+
 ## 0.4.0
 
 Rightsizing revision, derived from the first full brownfield application (Operon, 2026-07-29/30, `parallel-greenfield`): the campaign produced strong artifacts and found two real C3 production defects, but stalled at 74 executable tests because a single global expansion gate froze catalog growth behind out-of-layer conditions (live target, eval threshold, CI authorization).
