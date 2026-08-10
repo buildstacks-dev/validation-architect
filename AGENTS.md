@@ -46,6 +46,22 @@ and the anti-yes-loop design.
   checks compare campaign output against; leaking it invalidates the
   fixture. The `fixtures.test.ts` integrity checks (conflict species,
   directive-in-ramble) must keep passing after any fixture edit.
+- **The designer is confined by code, not prompts.** Issue #10 hazard 1: the
+  smoke designer left `runs/<runId>/workspace`, ran `git checkout main` in the
+  real product checkout, and created `research/` + `tmp/` there — with the
+  kickoff already forbidding it. A prompt the model has violated is not
+  enforcement. Every designer tool call now passes `evaluateDesignerToolUse`
+  (`src/designer.ts`): Read/Grep/Glob workspace-wide, Edit/Write only beneath
+  `validation-design/`, Bash statically confined to the workspace and denied
+  fail-closed whenever a destination cannot be determined (`$`, substitution,
+  `cd`, heredocs, interpreters). The policy is enforced via the SDK's
+  PreToolUse hook — which fires in every permission mode — plus `canUseTool`,
+  with an OS sandbox (scoped reads/writes, no network) behind it, and every
+  denial is recorded in the transcript. Never hand a seat
+  `bypassPermissions`: it short-circuits `canUseTool` before it is consulted
+  (verified against the installed SDK). The negative controls in
+  `test/designer.test.ts` must stay red-capable — seeded escapes deny while
+  ordinary in-workspace work (git status, artifact writes) still passes.
 - **Prompts are load-bearing.** `src/prompts.ts` and
   `personas/product-owner.md` encode the provenance model
   ([rambling]/[simulated]/[doc]/[PROPOSED], never [stated]) and the
