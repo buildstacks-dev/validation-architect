@@ -391,7 +391,8 @@ Authoritative case-catalog.yaml shape (validation-architect/case-catalog/v1) —
 - top level: schema (exact id above), families (non-empty list), tickets (list; required even when empty).
 - every family: unique string id; section; status exactly one of "implementable" (normal covered family) | "pruned" | "blocked". implementable additionally requires layers and risk; pruned requires prune (token); blocked requires blocked_by.
 - every ticket: unique string id; wave (string); status exactly "pending" | "landed"; families (list, may be empty) citing only family ids that exist in the families list.
-- cross-checks after parsing: family ids, prune tokens, blocked_by and statuses must agree with case-catalog.md; ticket ownership/status must agree with harness-backlog.md.`
+- cross-checks after parsing: family ids, prune tokens, blocked_by and statuses must agree with case-catalog.md; ticket ownership/status must agree with harness-backlog.md.
+- case-catalog.md parsing convention: a markdown table DECLARES families only when its header row has a Layer column; tables without one (closure ledgers, evidence registers) are ignored by the parser, so enumerate freely there. Family-id cells in declaration tables must parse cleanly (a single id, an explicit list, or a brace form — not prose).`
     : "";
   // A brownfield reconciliation can produce four-digit problem counts
   // (observed: 1638). Dumping them all into one environment message would

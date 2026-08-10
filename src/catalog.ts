@@ -247,6 +247,14 @@ export function parseCatalogMarkdown(md: string): ParsedCatalog {
   for (const { cells, section, headers } of tableRows(md)) {
     const rawCell = cells[0] ?? "";
     if (!rawCell.includes("CF-")) continue;
+    // Only tables with a Layer column DECLARE families. Enumerating tables —
+    // closure-statement ledgers, evidence registers — legitimately re-mention
+    // family ids without declaring them (the 0.6.x skill requires a closure
+    // section that does exactly this); without this rule every such mention
+    // is a false duplicate/unparseable finding. A real declaration table that
+    // loses its Layer header is still caught: its families disappear from the
+    // markdown view and every one surfaces as a manifest↔markdown mismatch.
+    if (!headers.some((h) => h.includes("layer"))) continue;
     const { ids, covers } = expandCellId(rawCell);
     if (ids.length === 0) {
       problems.push(`unparseable cell id "${stripMd(rawCell)}" (section "${section}")`);
@@ -549,8 +557,12 @@ export function checkCatalogAgreement(manifest: CaseCatalogManifest, catalogMd: 
         `family ${id}: blocked-by disagrees (manifest "${mf.blocked_by ?? ""}", markdown "${md.blocked_by ?? ""}")`,
       );
     }
-    const a = [...(mf.blocked_remainder ?? [])].sort().join(",");
-    const b = [...(md.blocked_remainder ?? [])].sort().join(",");
+    // YAML hands us a bare string for a single-element list; spreading a
+    // string spreads its characters, so normalize to a list first.
+    const asList = (value: unknown): string[] =>
+      value == null ? [] : Array.isArray(value) ? value.map((entry) => String(entry)) : [String(value)];
+    const a = asList(mf.blocked_remainder).sort().join(",");
+    const b = asList(md.blocked_remainder).sort().join(",");
     if (a !== b) out.push(`family ${id}: blocked remainder disagrees (manifest "${a}", markdown "${b}")`);
 
     // YAML auto-typing can hand us arrays/numbers/booleans where the schema
