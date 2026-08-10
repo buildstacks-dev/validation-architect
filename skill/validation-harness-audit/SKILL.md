@@ -26,7 +26,7 @@ validation-harness-design and this skill form one loop over the life of a produc
 
 - **Design time.** validation-harness-design produces the durable harness spec: a reconciled system map (`system-map.md`), falsifiable invariants (`invariants.md`), a boundary map with per-boundary honest-fake specifications, per-boundary contracts, LLM eval plans with committed golden sets, a traced case catalog (`case-catalog.md` + machine-readable `case-catalog.yaml`), owner-facing documents (`owner-briefing.md`, `owner-backlog.md`), a proposed agent-instructions section (`agents-md-contribution.md`) that routes future coding agents to these artifacts and the traceability conventions, and `validation-policy.yaml` — the machine-readable declaration of the six validation layers (invariant/contract, hermetic system, live sandbox, eval/qualification, ops hardening, outcome acceptance), the module map with a status per module, per-family execution lanes, gates, thresholds, obligations, artifact locations, and any harness-coexistence constraints.
 - **Audit time (this skill).** Measure what was actually built against what was declared, and against the criticality the system actually carries. The policy file is the diff surface: a validation lane the policy declares empty with a reason is a decision; a lane that is simply absent is a finding.
-- **Findings routing.** Case-level gaps — a missing test, a weak oracle, an unexercised failure mode — are remediated here in `harden` mode. Structural findings — a boundary map that contradicts the architecture, a mis-placed lane, invariants that no longer describe the system — are routed to validation-harness-design's `harness-revision` mode; do not pile case fixes onto a wrongly shaped harness.
+- **Findings routing.** Case-level gaps — a missing test, a weak oracle, an unexercised failure mode — are remediated here in `harden` mode. Structural findings — a boundary map that contradicts the architecture, a mis-placed lane, invariants that no longer describe the system, or a Phase-0 blind derivation surfacing a property the policy never claimed — are routed to validation-harness-design's `harness-revision` mode; do not pile case fixes onto a wrongly shaped harness.
 - **Shared discipline.** Golden sets are authored before prompt tuning, never after; audit corpora and holdouts are never rewritten to match fixes; every deterministic defect surfaced by a live run or eval campaign deposits a deterministic detector in the same change.
 
 When no design artifacts exist, reconstruct the validation contract from repository evidence (Phase 3) — and a standing recommendation of any such audit is to adopt validation-harness-design so the next audit has a declared baseline to measure against.
@@ -43,7 +43,7 @@ When no design artifacts exist, reconstruct the validation contract from reposit
 8. **Unknowns remain unknown.** Never turn missing evidence into a favorable assumption.
 9. **Time or budget does not lower criticality.** It may leave the assurance target unmet.
 10. **Do not silently alter intended behavior.** Separate validation hardening, testability refactors, defect corrections, and behavioral changes.
-11. **Audit the declared harness before re-deriving one.** When ratified design artifacts exist (`validation-policy.yaml`, `invariants.md`, boundary map, contracts, eval plans), they are the authoritative claims baseline: challenge them, diff conformance against them, and reuse their namespaced IDs. Do not silently reconstruct a parallel contract beside them.
+11. **Audit the declared harness before re-deriving one — but derive the floors blind first.** When ratified design artifacts exist (`validation-policy.yaml`, `invariants.md`, boundary map, contracts, eval plans), they are the authoritative claims baseline: challenge them, diff conformance against them, and reuse their namespaced IDs. Do not silently reconstruct a parallel contract beside them. The one exception is Phase 0's bounded blind derivation of the non-prunable properties, run *before* the corpus is read: it is the only mechanism by which an audit can surface a claim the policy never made, and its output is a structural finding about the design rather than a parallel contract.
 12. **Vocabulary is calibrated, never assumed.** Define each term of art — claim, oracle, sensitivity evidence, holdout, independence level, validation lane, assurance target, criticality tier — in one plain-language clause on first use in conversation and in the charter, then calibrate depth to the user's displayed fluency: brief for practitioners, fuller for users new to assurance vocabulary. The human is the acceptance authority, and a person cannot meaningfully accept risk stated in vocabulary they do not understand — so the release assessment restates the verdict, every blocker, and every residual risk in plain language.
 
 ## Modes
@@ -109,6 +109,26 @@ Before running project scripts:
 8. Record exact commands, versions, exit codes, and relevant outputs. Do not claim a check was run when it was only inspected or recommended.
 
 Optional helpers are available under `scripts/`. Their use is not mandatory when the repository already has a superior evidence workflow.
+
+## Phase 0 — Blind derivation (before reading the design artifacts)
+
+**Run this in `assess` and `full` mode whenever ratified design artifacts exist.** It is the only part of an audit that can reach a *missing* claim, and it must happen before Phase 1 ingests the corpus, because it cannot be un-run once the auditor has read the answer.
+
+Every other phase measures the built system against the declared policy. That makes the policy the yardstick — and therefore the blind spot. An audit anchored to the policy can prove the harness conforms to it, can prove gates really block, can prove detectors really fire, and still cannot tell you that an invariant the policy never states is being violated in production. A missing claim produces no non-conformance, because nothing is measuring against it.
+
+The corrective is a derivation the corpus cannot anchor:
+
+1. **Pick the properties.** The non-prunable ones — the policy's floor invariants, or whatever the owner names as highest-consequence. Two or three, not all of them; this is a differential probe, not a re-design.
+2. **Blind yourself to the answer.** Do not read, list, or grep the design corpus, the test tree, or any archived suite. Read the product: source, docs, research notes, configuration, git history. Note without following any reference to a claim ID or corpus path you encounter in a file you *are* reading.
+3. **Take the property in the owner's words, not the corpus's.** A ratified invariant statement usually enumerates its own violation surface; handing it over gives away most of the answer. Use a plain-language statement of the property instead — high-level and deliberately not enumerated.
+4. **Derive from source with the design skill's Phase-6 method:** choose and defend the counting unit, walk source to sink, and close over the substrate with an inventory in which every element is either a case or safe-by-construction with the mechanism named.
+5. **Then unblind and diff.** Compare the derived set against the ratified set in both directions, and record the audit trail of what you read so the blind is checkable after the fact.
+
+**The diff produces a distinct class of finding.** A derived case with no counterpart in the ratified corpus is not a conformance gap — the harness may implement its policy perfectly. It is evidence that **the policy itself may be incomplete**, which is a structural finding routed to validation-harness-design's `harness-revision` mode, never to the harden backlog. Label these separately in the evidence package; an owner reading a conformance report must be able to see at a glance which findings say "the build drifted from the design" and which say "the design may not describe the system."
+
+**Calibrate what comes back, and do not take it at face value.** Verify each claimed gap against the source before reporting it, and expect three kinds in the pile: a real oversight; a guard that exists in a shape the derivation did not look for (a property held by *placement* rather than by *screening*, say); and a deliberate tradeoff the source already reasoned about in an adjacent comment or defect reference. Only the first is a defect. The third is a product-truth finding for ratification. Reporting all three as gaps burns owner trust faster than missing them would.
+
+Skip this phase in `verify` and `fidelity` mode, which have narrower scopes by construction, and in any audit where no design corpus exists — there, Phase 3's reconstruction already *is* an unanchored derivation.
 
 ## Phase 1 — Discover the system
 

@@ -1,3 +1,13 @@
 # Per-repo pnpm configuration only — this is deliberately NOT a monorepo.
-allowBuilds:
-  esbuild: true
+#
+# pnpm >= 10 moved settings out of .npmrc and into this file, and pnpm >= 11
+# refuses every command when the file exists without a `packages:` key — including
+# `pnpm --version`. A single-package repo therefore declares the root as its one
+# package rather than omitting the key.
+packages:
+  - '.'
+
+# esbuild ships a postinstall that fetches its platform binary; pnpm blocks build
+# scripts by default and lists blocked packages on install.
+onlyBuiltDependencies:
+  - esbuild
