@@ -16,6 +16,11 @@ and the anti-yes-loop design.
 ## Commands
 
 - `pnpm install` · `pnpm typecheck` · `pnpm test` — offline, no tokens.
+  Requires corepack so the `packageManager` pin takes effect (`npm install -g
+  corepack && corepack enable`, once per Node version — Node 25+ does not bundle
+  it). `pnpm --version` must report the pinned version; if it reports the ambient
+  one, `pnpm-workspace.yaml` will be read by the wrong pnpm and every command
+  fails on `packages field missing or empty`.
 - `pnpm vda run <fixture> [--smoke]` /
   `pnpm vda run --target <product-repo> [--fresh]` · `resume` · `readers` ·
   `audit` · `report` · `list` — **live, spends subscription quota on BOTH

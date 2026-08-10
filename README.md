@@ -143,6 +143,14 @@ decision, all open findings, and the questions only a real human can answer.
 
 ## Usage
 
+**Prerequisites.** pnpm is pinned by `packageManager` in `package.json`, and corepack is what makes that pin take effect. Node 25+ no longer bundles corepack, so it is one install per Node version:
+
+```bash
+npm install -g corepack && corepack enable
+```
+
+Without it your ambient pnpm runs instead of the pinned one, and the two disagree about `pnpm-workspace.yaml` — the pinned pnpm 11 requires a `packages:` key that older pnpm does not, so the same repo works on one machine and fails on another. `pnpm --version` should report the version `packageManager` names.
+
 ```bash
 pnpm install
 pnpm test          # offline suite, no tokens
