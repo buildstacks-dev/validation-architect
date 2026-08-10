@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+Derived from a blind-derivation experiment against a brownfield product (Cormidia, 2026-08-09): the same invariants were re-derived from source by an agent with no access to the ratified answer, and the results were verified against the code. Two invariants produced an order of magnitude more falsification surface than their ratified seed lists, including live holes in a non-prunable invariant. Every change below traces to something that experiment surfaced.
+
+- **Layer 6 — outcome acceptance (`L-ACC`).** The taxonomy's generator is amended from two axes to three: layers 1-5 all have mechanical oracles, and a scored outcome against a human-ratified rubric cannot be folded into a pass/fail lane. Extracted from a product that hit this wall and built the lane itself. Adds ten design obligations (ratified rubric, realistic input as a controlled variable, sealed answer key, per-axis grader independence in code, the self-report rule, campaign invariants in their own registry, staged arms with an intermediate gate, preflight refusals, a declared release relationship, hard boundaries) and the `acceptance/` deliverable.
+- **Two new layer rules.** *Guardrails are not lane work* — anything a scan or exit status can falsify lands at layer 1/2 with a negative control, never in the expensive lane. *The instrument is measured a layer down* — a layer-6 grader's quality is a layer-4 judge-calibration site.
+- **Invariant violation surfaces move from Phase 2 to Phase 6.** Phase 2 now sketches two or three violation paths as a falsifiability check on the *statement* and explicitly forbids treating them as the case list. The exhaustive derivation is agent-alone, source-grounded, and gains a method: choose and defend the counting unit, walk source to sink, and close over the substrate with an inventory. The human ratifies the statement and its tier; enumerating how the code can make it false is not where human attention pays.
+- **Coverage verdicts carry a mechanism and a considered-flag.** `enforced` names its mechanism or it is `unclear`; a gap distinguishes an oversight from a deliberate documented tradeoff, which is a product-truth finding rather than a defect.
+- **Sourcing channel 4 — substrate drift.** When a new instance of an already-enumerated class appears, every inventory over that class is re-derived and every enumerating guard re-checked. The only channel triggered by the shape of the change rather than by a human or an incident noticing.
+- **The module map becomes a commitment.** Per-module status (`deep-pass-done` / `deep-pass-pending` / `deliberately-shallow`), and closure is reported as *complete-at-product-granularity* while any pass is pending. Adds the derive-at-substrate-granularity / ratify-at-module-granularity split.
+- **Execution lanes per case family** (`inner-loop` / `per-commit` / `triggered` / `release` / `scheduled`), with the layer supplying the default and the inner-loop lane naming an actual command.
+- **Re-entry and steady state.** Interaction mode is detected from whether a ratified policy exists, not asked; a steady-state run does not re-teach or re-confirm settled decisions. Run state moves to `harness-state.yaml`, separate from the ratified policy; staleness comes from a source diff rather than a calendar; and a re-run against an unchanged product converges to zero changes and zero questions.
+- **Operating rule 18 — rollups are derived, never authored.** A hand-written total drifts from its own table and always in the flattering direction.
+
 ## 0.5.0
 
 Enablement promotions from the validation-architect re-scope (2026-08-01), so the skill carries what the orchestrator previously enforced alone.

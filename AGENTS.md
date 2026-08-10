@@ -3,7 +3,7 @@
 ## What this repo is
 
 An orchestrator that runs a full validation-harness-design campaign between
-two AI agents — a Claude **designer** driving the vendored skill
+two AI agents — a Claude **designer** driving this repo's design skill
 (`skill/validation-harness-design/`) and a Codex **stakeholder** playing the
 product owner, grounded in fixture docs plus the human's `rambling.txt` —
 then gates completion behind an independent **auditor**: fresh Claude
@@ -56,10 +56,13 @@ and the anti-yes-loop design.
   at blocking tier; never a third iteration) are what guarantee the audit
   stage terminates. They are enforced in the auditor prompts AND in the
   orchestrator's parsing; keep both halves.
-- **The vendored skills are upstream's.** `skill/validation-harness-design/`
-  and `skill/validation-harness-audit/` are copies from the Operon repo's
-  `.claude/skills/`; fix bugs upstream and re-copy, don't fork them silently
-  here.
+- **The skills live here.** `skill/validation-harness-design/`,
+  `skill/validation-harness-audit/` and `skill/implement-harness-ticket/` are
+  this repo's own artifacts, not copies of anything upstream. Change them here.
+  They are a contract pair: the design skill defines the artifact set and the
+  audit skill measures conformance against it, so a change to one that the
+  other must know about lands in the same commit, with both `VERSION` and
+  `CHANGELOG.md` updated.
 - **Resumability is a contract.** Every orchestrator change must keep the
   `state.json` pending-message invariant: any crash point resumes via
   `vda resume` without repeating or dropping a turn. This covers the audit

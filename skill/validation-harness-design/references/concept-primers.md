@@ -39,7 +39,7 @@ Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the s
 | 4 | Empty lane — declared with a reason, never deleted | Golden sets, judge meta-evals, release qualification campaigns |
 | 5 | Pen test + load test at the contention point | + soak, missed-tick reconciliation, cost integrity under retries |
 
-**The four layer rules** (operating-rule rank; see SKILL.md): prove it a layer down; layers may be empty, never silently absent; evidence is not a regression suite (layer-3/4 findings deposit layer-1/2 detectors in the same change); security is split, not a layer (invariants in layer 1 from day one, assurance in layer 5).
+**The six layer rules** (operating-rule rank; see SKILL.md): prove it a layer down; layers may be empty, never silently absent; evidence is not a regression suite (layer-3/4 findings deposit layer-1/2 detectors in the same change); security is split, not a layer (invariants in layer 1 from day one, assurance in layer 5); guardrails are not lane work (anything a scan or exit status can falsify lands at layer 1/2 with a negative control, never in the layer-6 lane); the instrument is measured a layer down (a layer-6 grader's quality is a layer-4 judge-calibration site).
 
 **Common confusions — name these explicitly:**
 

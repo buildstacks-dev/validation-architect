@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+Consumes the expanded design contract (design 0.6.0). Conformance checks added for everything that skill now declares.
+
+- **Six layer lanes**, with layer 6 (outcome acceptance) called out as the one most often silently absent — a policy that never declares it either way is a finding.
+- **Layer-6 integrity checks:** ratified tighten-only rubric; scored axes are the only lane rows; grader independence enforced in code per axis; sealed answer key unreachable from both the system under test and the grader; self-report graded as subject, never consumed as evidence; campaign invariants in a separate registry; grader calibrated at layer 4. An uncalibrated grader emitting a score is blocking.
+- **Enumeration currency.** For every guard that enumerates a class, confirm the enumeration still covers every member in the source today. A class that grew a member the guard never learned about is a live hole no test failure will surface.
+- **Module-map commitment** and unqualified-closure claims; **execution-lane assignment** including a real inner-loop command; **rollups recomputed** from the rows they summarize; **coverage-verdict discipline** (mechanism named, oversight distinguished from documented tradeoff); and **re-entry health** where `harness-state.yaml` exists.
+- Two new layer rules mirrored in `references/harness-policy-conformance.md`.
+
 ## 0.5.0
 
 Enablement promotions from the validation-architect re-scope (2026-08-01).

@@ -4,9 +4,9 @@ Read this reference when the repository carries artifacts produced by the compan
 
 These artifacts were confirmed by a human at design time. They are the declared harness — the baseline this audit diffs the built system against. The schema authority for the policy file is the design skill's `references/policy-and-inheritance.md`; this file describes the consuming side only. When both skills evolve, the design skill's layout wins and this file follows it.
 
-## 1. The five-layer taxonomy
+## 1. The six-layer taxonomy
 
-Every check the design skill places lands in one of five validation layers, defined by the question each answers — never by the technology inside it:
+Every check the design skill places lands in one of six validation layers, defined by the question each answers — never by the technology inside it:
 
 | # | Layer | Question it answers | Verdict | Spend / side effects | Cadence |
 |---|---|---|---|---|---|
@@ -15,19 +15,24 @@ Every check the design skill places lands in one of five validation layers, defi
 | 3 | Live system (sandbox) | Can the real world break the seams? | Nondeterministic, binary | Real, bounded, disposable | Pre-merge / pre-release |
 | 4 | Eval / qualification | Can the model be wrong while the machinery is right? | Statistical, threshold over N runs | Token cost, separately authorized | Prompt/model change · nightly · release qualification |
 | 5 | Ops hardening | Can time, load, or an adversary hurt you? | Mixed | Production-shaped | Pre-GA, then recurring |
+| 6 | Outcome acceptance (`L-ACC`) | Given realistic input, is the output work a human would accept? | Multi-axis scored against a ratified rubric; inconclusive by default | Real, bounded by per-campaign human authorization | Triggered only |
 
 "Hermetic" means sealed against **all** nondeterminism — clock, randomness, network — not merely mocked externals; locally controlled real software (a containerized database) can be inside the seal, a vendor API never is. "Sandbox" means everything is real but disposable and spend-bounded.
 
-The four layer rules the audit enforces:
+Layers 1-5 all have mechanical oracles; layer 6's oracle is a human-ratified rubric, which is why a scored outcome cannot be folded into a pass/fail lane. Layer 6 is also the lane most often silently absent — a harness can conform across layers 1-5 and still have no answer to whether the output is any good.
+
+The six layer rules the audit enforces:
 
 1. **Prove it a layer down.** A check placed at an expensive layer that a cheaper layer could falsify is a placement finding.
 2. **Lanes may be empty, never silently absent.** A declared-empty lane with a reason is a decision; an undeclared-absent lane is a finding.
 3. **Evidence is not a regression suite.** A green live run or eval campaign proves that run. Every deterministic defect it surfaced must have deposited a layer-1/2 detector in the same change.
 4. **Security is split.** Security invariants (tenancy, authorization, deny-by-default) are layer-1 content from day one; layer 5 holds the assurance half (threat model, secret handling, abuse surfaces).
+5. **Guardrails are not lane work.** Anything about a layer-6 campaign that a scan, a set comparison, or an exit status can falsify belongs at layer 1/2 with a negative control. A scored axis in the lane that a mechanical check could have settled is a placement finding.
+6. **The instrument is measured a layer down.** A layer-6 grader's quality is a layer-4 judge-calibration site. An uncalibrated grader emitting a score is a blocking finding.
 
 ## 2. What each artifact is
 
-- `validation-policy.yaml` — machine-readable contract: criticality tier map (C0–C4, same scale as `criticality-model.md`), the five layer lanes with `status: active` or `status: empty` plus reason, gate requirements (blocking/advisory/waived) with declared frequencies, thresholds, golden-set locations, CI cost tiering, ops-hardening obligations, tooling selection with rejected alternatives, an `artifacts:` block naming companion-artifact locations, an optional `coexistence:` block (§3), and a `modules:` registry of child policies.
+- `validation-policy.yaml` — machine-readable contract: criticality tier map (C0–C4, same scale as `criticality-model.md`), the six layer lanes with `status: active` or `status: empty` plus reason, a `module_map:` with `deep-pass-done` / `deep-pass-pending` / `deliberately-shallow` per module, per-family execution lanes including the named inner-loop command, gate requirements (blocking/advisory/waived) with declared frequencies, thresholds, golden-set locations, CI cost tiering, ops-hardening obligations, tooling selection with rejected alternatives, an `artifacts:` block naming companion-artifact locations, an optional `coexistence:` block (§3), and a `modules:` registry of child policies.
 - `system-map.md` — the reconciled derivation surface: behavioral view (actor → stimulus → journey → state transition → effect → observation), structural view (state ownership, dependencies, consistency, failure domains), the reconciliation of the two, supported entry/observation surfaces, and open product-truth/architecture findings.
 - `invariants.md` — falsifiable statements with namespaced IDs (`OPERON-INV-003`, `LL-INV-007`), enforcement classification (test, runtime guardrail, or both), adversarial seed cases, inherited-vs-new marking. Retired invariants keep their IDs with `retired: <date, reason>`.
 - `boundary-map.md` — the architectural seams, each with journey intersections, an enumerated failure-mode list (timeout, partial success, retry, duplicate delivery, stale read, version skew, crash-mid-step), a per-boundary **honest-fake column** carrying the controlled-seam specification — the success and failure semantics the boundary double must reproduce as scriptable behavior, plus the unproven real semantics that each retain a named live-sandbox obligation — and a layer placement (hermetic vs live-sandbox by the honest-fake test).

@@ -58,7 +58,7 @@ invariants:
     enforcement: [runtime_guardrail, test]
     applies_to: [work-source, learning-loop]
 
-layers:                        # all five lanes declared; an empty lane carries a reason — never silently absent
+layers:                        # all six lanes declared; an empty lane carries a reason — never silently absent
   invariant_contract: {status: active}
   hermetic_system:    {status: active}
   live_sandbox:       {status: active, targets: [sandbox-repo], spend_bound: per_run_cap}

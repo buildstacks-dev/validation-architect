@@ -105,7 +105,7 @@ itself:
   tests against the ratified seeds/clauses, and judges whether the
   implementation encodes the design intent — is the negative control real,
   is the oracle the one the row demands, was the case quietly narrowed.
-  This is the existing vendored `validation-harness-audit` skill's charter
+  This is the existing `validation-harness-audit` skill's charter
   ("measures what was actually built") run at a new, smaller cadence:
   per-wave or per-PR, scoped to just-landed tickets, alongside the existing
   campaign-scale audit. Output is **findings only** — issues filed against

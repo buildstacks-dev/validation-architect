@@ -17,7 +17,7 @@ before the campaign may close:
   ratified docs and the human's `rambling.txt`, mounted read-only over the
   shared workspace.
 - **Auditor** — a FRESH Claude session per audit iteration (like the readers,
-  not a persistent third seat) runs the vendored
+  not a persistent third seat) runs the
   [validation-harness-audit](skill/validation-harness-audit/SKILL.md) skill in
   its design-conformance capacity against the finished corpus. Read-only over
   the workspace (`docs/`, `rambling.txt`, `validation-design/`); it never sees
@@ -271,8 +271,8 @@ runs/<runId>/
   report.md            # gate discipline, phases, audit section, usage, artifacts
   audit-report-N.md    # each audit iteration's report (also copied below)
   workspace/           # the shared world
-    .claude/skills/validation-harness-design/   # vendored skill (designer)
-    .claude/skills/validation-harness-audit/    # vendored skill (auditor)
+    .claude/skills/validation-harness-design/   # design skill, copied in for the run
+    .claude/skills/validation-harness-audit/    # audit skill, copied in for the run
     docs/  rambling.txt                          # stakeholder's ground truth
     validation-design/                           # the designer's artifacts
       audit/                                     # audit reports + disposition record
@@ -293,7 +293,7 @@ runs/<runId>/
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
-| `skill/` | vendored design + audit skills, plus `implement-harness-ticket` (Enable leg) |
+| `skill/` | this repo's design + audit skills, plus `implement-harness-ticket` (Enable leg) |
 | `fixtures/` | three synthetic products + the `operon` real-target pilot |
 | `test/` | offline suite (fake adapters, no tokens) |
 | `bin/validation-trace.js` | package bin for the product-agnostic trace CLI |
