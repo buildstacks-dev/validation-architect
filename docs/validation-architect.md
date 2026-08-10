@@ -20,7 +20,8 @@ test code.
 ## Why the re-scope
 
 Three observations from the first production campaign (`operon-2026-07-31`,
-against the Operon repo) drove this:
+against the Operon repo — the pilot product, since renamed Cormidia) drove
+this:
 
 1. **The lifecycle has no owner.** The design corpus is produced once, then
    the product repo's coding agents implement it over weeks under AGENTS.md
