@@ -18,16 +18,15 @@ interface FixtureMeta {
 }
 
 // The three synthetic eval fixtures carry seeded conflicts and expected
-// outcomes; operon is a real target (docs snapshot of the pilot repo) and
-// deliberately has none — the campaign derives everything itself.
+// outcomes for our own checks. Real targets are never checked in — they are
+// paths passed to --target.
 const EVAL_FIXTURES = ["lumen-webapp", "relay-backend", "docsmith-agent"];
 
 describe("fixtures", () => {
-  it("ships the three eval product types plus the operon real target", () => {
+  it("ships exactly the three eval product types", () => {
     expect(listFixtures(repoRoot).sort()).toEqual([
       "docsmith-agent",
       "lumen-webapp",
-      "operon",
       "relay-backend",
     ]);
   });
@@ -64,32 +63,6 @@ describe("fixtures", () => {
       });
     });
   }
-
-  describe("operon (real target)", () => {
-    const dir = join(repoRoot, "fixtures", "operon");
-    const meta = parse(readFileSync(join(dir, "fixture.yaml"), "utf8")) as {
-      display_name: string;
-      real_target?: boolean;
-      seeded_conflicts?: unknown;
-      expected_tier?: unknown;
-    };
-
-    it("loads with docs and rambling present", () => {
-      const info = loadFixture(repoRoot, "operon");
-      expect(info.displayName).toBe("Operon");
-      expect(info.hasRambling).toBe(true);
-      expect(existsSync(join(dir, "docs", "README.md"))).toBe(true);
-      expect(existsSync(join(dir, "docs", "AGENTS.md"))).toBe(true);
-    });
-
-    it("declares itself a real target with no seeded expectations", () => {
-      expect(meta.real_target).toBe(true);
-      // A real target must not carry an answer key: seeding conflicts or an
-      // expected tier here would turn a live product into a rigged eval.
-      expect(meta.seeded_conflicts).toBeUndefined();
-      expect(meta.expected_tier).toBeUndefined();
-    });
-  });
 
   it("exactly one fixture exercises the LLM eval phase", () => {
     const withLlm = EVAL_FIXTURES.filter((n) => {

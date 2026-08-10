@@ -106,7 +106,7 @@ For module modes, ingest the parent before eliciting anything. Locate and read: 
 
 Then establish, and confirm:
 
-- **ID namespacing.** Parent and module invariants/contracts carry distinct prefixes (`OPERON-INV-003`, `LL-INV-007`) so a later audit can trace which layer a conformance failure belongs to.
+- **ID namespacing.** Parent and module invariants/contracts carry distinct prefixes (`ACME-INV-003`, `LL-INV-007`) so a later audit can trace which layer a conformance failure belongs to.
 - **Inheritance set.** Which parent invariants constrain this module. These are referenced, not restated (rule 10). The module may add new ones or tighten inherited ones; it may never weaken one.
 - **The parent seam is a mandatory boundary.** The interface between module and the rest of the product is enumerated in Phase 3 without exception, and is usually the single highest-value boundary in the map — it carries the module's contract to everything else.
 - **Contradiction handling.** If the module's design conflicts with a parent invariant or contract, record it as a finding and escalate to the human. Never resolve it silently in either direction.

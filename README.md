@@ -292,24 +292,21 @@ incompatible legacy branch.
 ## Fixtures
 
 Three synthetic products of deliberately different shapes, so the skill's
-whole surface gets exercised — plus one real target:
+whole surface gets exercised:
 
 | Fixture | Shape | Exercises |
 | --- | --- | --- |
 | `lumen-webapp` | C2 multi-tenant web app (expenses, Stripe payouts) | money paths, state machines, UI-as-adapter, Phase 5 declared empty |
 | `relay-backend` | C3 delivery daemon (webhooks, ordering, DLQ) | failure domains, leader failover, time events, no UI at all |
 | `docsmith-agent` | C3 agentic LLM product (triage, drafts, judge) | Phase 5 in full: evals, judge calibration, trajectory, guardrail-vs-eval |
-| `operon` | real target — agentic org runtime (docs snapshot, `operon-2026-07-31`) | the production pilot; no seeded expectations by design |
 
 Each synthetic fixture ships ratified `docs/`, a `rambling.txt` with **seeded
 doc-vs-ramble conflicts** (a fact conflict the docs must win, a values
 conflict that must surface as an open finding, and a directive that must be
 recorded rather than obeyed), and a `fixture.yaml` holding expected outcomes
-for our own checks — fixture.yaml never reaches the agents. The `operon`
-fixture is different in kind: a real product's docs plus the owner's actual
-(channeled) rambling.txt, marked `real_target: true` and deliberately free of
-seeded conflicts or an expected tier — a live target must not carry an answer
-key.
+for our own checks — fixture.yaml never reaches the agents. Real targets are
+never checked in as fixtures: a real product is a path passed to
+`vda run --target`, and a live target must not carry an answer key.
 
 ## Run layout
 
@@ -345,7 +342,7 @@ runs/<runId>/
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
 | `skill/` | this repo's design + audit skills, plus `implement-harness-ticket` (Enable leg) |
-| `fixtures/` | three synthetic products + the `operon` real-target pilot |
+| `fixtures/` | three synthetic products (the deterministic offline corpus) |
 | `test/` | offline suite (fake adapters, no tokens) |
 | `bin/validation-trace.js` · `tsconfig.build.json` | production package bin and narrow compiled build for the product-agnostic trace CLI |
 

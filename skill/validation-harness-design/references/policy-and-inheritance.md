@@ -25,7 +25,7 @@ work-source/
 ```yaml
 schema_version: 1
 scope: product
-product: operon
+product: acme
 default_tier: C2
 
 tiers:
@@ -57,7 +57,7 @@ coexistence:
   cutover_requires: [equivalence_evidence, rollback_plan, human_ratification]
 
 invariants:
-  - id: OPERON-INV-001
+  - id: ACME-INV-001
     statement: "No work item is leased by more than one worker at a time."
     enforcement: [runtime_guardrail, test]
     applies_to: [work-source, learning-loop]
@@ -113,14 +113,14 @@ extends: ../validation-policy.yaml
 tier: inherit                       # or an explicit override with justification
 
 inherits:
-  - OPERON-INV-001                  # referenced, never restated
+  - ACME-INV-001                  # referenced, never restated
 
 invariants:
   - id: LL-INV-001
     statement: "A learning attaches to an agent identity, never to an instance."
     enforcement: [runtime_guardrail, test]
   - id: LL-INV-002
-    tightens: OPERON-INV-001
+    tightens: ACME-INV-001
     statement: "A learning-promotion lease is held by exactly one worker and expires within 60s."
 
 boundaries: ./boundary-map.md
@@ -144,7 +144,7 @@ gates:
 
 ```yaml
 provisional_values:
-  - id: OPERON-PROV-001
+  - id: ACME-PROV-001
     parameter: "BND-009 reconciliation freshness window"
     value: 120s
     owner: <human>

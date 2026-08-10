@@ -198,7 +198,7 @@ Never use an unscoped target such as “production ready.”
 Create a catalog of claims that must hold. Gather sources in this order, while checking freshness and contradictions:
 
 1. Explicit approved requirements, safety/security policies, and contractual obligations.
-2. Ratified harness-design artifacts when present — `validation-policy.yaml`, `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, `acceptance/`, `case-catalog.md`, and `case-catalog.yaml` (see [references/harness-policy-conformance.md](references/harness-policy-conformance.md)). These were human-confirmed at design time: classify their claims `authoritative`, keep their namespaced IDs (for example `OPERON-INV-003`) as claim IDs in the traceability matrix, and record any contradiction with observed behavior as a finding rather than silently preferring either side.
+2. Ratified harness-design artifacts when present — `validation-policy.yaml`, `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, `acceptance/`, `case-catalog.md`, and `case-catalog.yaml` (see [references/harness-policy-conformance.md](references/harness-policy-conformance.md)). These were human-confirmed at design time: classify their claims `authoritative`, keep their namespaced IDs (for example `ACME-INV-003`) as claim IDs in the traceability matrix, and record any contradiction with observed behavior as a finding rather than silently preferring either side.
 3. Public interfaces, schemas, protocols, compatibility commitments, and user documentation.
 4. Data constraints, architectural invariants, operational controls, and threat or hazard analyses.
 5. Existing tests and prior incident-derived requirements.

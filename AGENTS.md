@@ -98,7 +98,6 @@ and the anti-yes-loop design.
 `src/` one module per concern (orchestrator, two adapters, readers, auditor,
 audit parsing/verdicts, prompts, report, transcript, ramble, workspace,
 fixtures, target, catalog, trace, fidelity, registry, conventions, cli) · `fixtures/` three synthetic
-products (web app / backend daemon / agentic LLM) plus `operon`, the
-real-target pilot docs snapshot · `bin/validation-trace.js` the product-
+products (web app / backend daemon / agentic LLM) · `bin/validation-trace.js` the product-
 agnostic closure CLI · `skill/implement-harness-ticket/` the coding-agent
 enablement skill · `runs/` gitignored campaign outputs.

@@ -7,6 +7,7 @@ Completes the six-layer contract introduced in 0.6.0 across every load-bearing c
 - Propagates `L-ACC` through the concept primer, question bank, tooling menu, LLM judge-calibration guidance, policy example, derivation grammar, walking-skeleton/backlog guidance, durable artifact lists, and ongoing evidence-deposit rule.
 - Adds `acceptance/` to the builder's enumeration chain and makes layer-6 placement explicit: scored rubric axes stay in outcome acceptance, while campaign guardrails and negative controls stay at layers 1–2 and the grader is calibrated at layer 4.
 - Keeps the design/audit contract pair versioned together with audit 0.6.1.
+- Renames the example ID namespace in SKILL.md and the policy-and-inheritance worked example from `OPERON-` to the neutral `ACME-` (example content only; no behavioral change).
 
 ## 0.6.0
 
