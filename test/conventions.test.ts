@@ -11,6 +11,9 @@ describe("TRACEABILITY_CONVENTIONS (issue #4)", () => {
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-trace");
     expect(TRACEABILITY_CONVENTIONS).toContain("implement-harness-ticket");
     expect(TRACEABILITY_CONVENTIONS).toContain("owner-backlog.md");
+    expect(TRACEABILITY_CONVENTIONS).toContain("acceptance/");
+    expect(TRACEABILITY_CONVENTIONS).toContain("L-ACC");
+    expect(TRACEABILITY_CONVENTIONS).toContain("fresh human authorization");
   });
 
   it("is embedded verbatim in the designer kickoff so every campaign emits it", () => {

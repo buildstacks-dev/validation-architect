@@ -1,4 +1,4 @@
-// CF-W01-R — every named refusal class refuses pre-mutation (HB-001).
+// CF-W01-R — every named refusal class refuses pre-mutation (HB-001; Journey matrix).
 // DELIBERATELY WEAKENED for the fidelity fixture: the citation is present
 // (trace credits the family) but no assertion can fail — no seeded duplicate,
 // no malformed input, a tautology where the detector should be. Closure is

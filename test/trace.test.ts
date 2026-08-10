@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { cpSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ownerBacklogNames, runTrace } from "../src/trace.js";
 
@@ -12,6 +14,7 @@ describe("runTrace — hermetic synthetic trees", () => {
     expect(r.checks.forward).toEqual([]);
     expect(r.checks.backward).toEqual([]);
     expect(r.checks.statusHonesty).toEqual([]);
+    expect(r.checks.structure).toEqual([]);
     expect(r.checks.agreement).toEqual([]);
     expect(r.specs).toHaveLength(2);
     expect(r.specs.reduce((n, s) => n + s.tests, 0)).toBe(5);
@@ -49,6 +52,32 @@ describe("runTrace — hermetic synthetic trees", () => {
     const r = runTrace(resolve(fixtures, "conforming"), { testsRoot: "no-such-tests" });
     expect(r.ok).toBe(false);
     expect(r.reds.some((x) => x.includes("not found"))).toBe(true);
+  });
+
+  it("does not award coverage to a citation-only file with zero tests", () => {
+    const target = mkdtempSync(join(tmpdir(), "vda-trace-zero-tests-"));
+    cpSync(resolve(fixtures, "conforming"), target, { recursive: true });
+    writeFileSync(
+      join(target, "tests", "cf-w01-s", "cf-w01-s.test.ts"),
+      "// CF-W01-S — bookkeeping only (HB-001; Journey matrix).\n",
+    );
+    const r = runTrace(target);
+    expect(r.ok).toBe(false);
+    expect(r.checks.structure.some((red) => red.includes("contains no it/test call sites"))).toBe(true);
+    expect(r.checks.forward.some((red) => red.includes("CF-W01-S"))).toBe(true);
+  });
+
+  it("does not award coverage to a CF token outside the required header", () => {
+    const target = mkdtempSync(join(tmpdir(), "vda-trace-body-token-"));
+    cpSync(resolve(fixtures, "conforming"), target, { recursive: true });
+    writeFileSync(
+      join(target, "tests", "cf-w01-s", "cf-w01-s.test.ts"),
+      '// bookkeeping header only\nconst family = "CF-W01-S";\ntest("unrelated", () => {});\n',
+    );
+    const r = runTrace(target);
+    expect(r.ok).toBe(false);
+    expect(r.checks.structure.some((red) => red.includes("header cites no concrete CF family"))).toBe(true);
+    expect(r.checks.forward.some((red) => red.includes("CF-W01-S"))).toBe(true);
   });
 });
 

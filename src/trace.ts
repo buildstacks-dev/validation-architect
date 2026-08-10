@@ -4,8 +4,10 @@ import {
   type CaseCatalogManifest,
   type CatalogFamily,
   type CatalogTicket,
+  creditedFamilyIds,
   expandCellId,
   extractCfTokens,
+  checkBacklogAgreement,
   checkCatalogAgreement,
   parseManifest,
   tokenMatch,
@@ -34,6 +36,10 @@ export interface SpecFileInfo {
   path: string;
   /** Normalized family citations found in the file. */
   citations: string[];
+  /** Backlog-ticket ids named by the required first comment block. */
+  tickets: string[];
+  /** Whether the file starts with the required comment block. */
+  hasHeader: boolean;
   /** Number of test cases (it/test call sites — a heuristic count). */
   tests: number;
 }
@@ -47,6 +53,8 @@ export interface TraceChecks {
   backward: string[];
   /** LANDED tickets whose families lack citing specs. */
   statusHonesty: string[];
+  /** Violations of the normative path/header/test-call conventions. */
+  structure: string[];
 }
 
 export interface TraceResult {
@@ -81,6 +89,12 @@ function countTests(source: string): number {
   return [...source.matchAll(/^\s*(?:it|test)(?:\.\w+)?\s*\(/gm)].length;
 }
 
+function firstCommentBlock(source: string): string | undefined {
+  const lineBlock = source.match(/^\s*((?:\/\/[^\n]*(?:\n|$))+)/);
+  if (lineBlock) return lineBlock[1];
+  return source.match(/^\s*(\/\*[\s\S]*?\*\/)/)?.[1];
+}
+
 /** Collect spec files and their normalized family citations. */
 export function scanSpecs(targetRoot: string, testsRoot: string, suffixes: string[]): SpecFileInfo[] {
   const absRoot = join(targetRoot, testsRoot);
@@ -89,11 +103,19 @@ export function scanSpecs(targetRoot: string, testsRoot: string, suffixes: strin
   for (const file of walk(absRoot)) {
     if (!suffixes.some((s) => file.endsWith(s))) continue;
     const source = readFileSync(file, "utf8");
+    const header = firstCommentBlock(source);
     const citations = new Set<string>();
-    for (const token of extractCfTokens(source)) {
+    for (const token of extractCfTokens(header ?? "")) {
       for (const id of expandCellId(token).ids) citations.add(id);
     }
-    specs.push({ path: relative(targetRoot, file), citations: [...citations].sort(), tests: countTests(source) });
+    const tickets = [...new Set((header ?? "").match(/\bHB-[A-Za-z0-9]+\b/g) ?? [])].sort();
+    specs.push({
+      path: relative(targetRoot, file),
+      citations: [...citations].sort(),
+      tickets,
+      hasHeader: header !== undefined,
+      tests: countTests(source),
+    });
   }
   return specs;
 }
@@ -104,18 +126,64 @@ interface FamilyCoverage {
   tests: number;
 }
 
-function coverage(manifest: CaseCatalogManifest, specs: SpecFileInfo[]): Map<string, FamilyCoverage> {
+function analyzeSpecs(
+  manifest: CaseCatalogManifest,
+  specs: SpecFileInfo[],
+): { credits: Map<string, Set<string>>; problems: string[] } {
+  const credits = new Map<string, Set<string>>();
+  const problems: string[] = [];
+  const knownTickets = new Set(manifest.tickets.map((ticket) => ticket.id));
+
+  for (const spec of specs) {
+    const valid = new Set<string>();
+    credits.set(spec.path, valid);
+    if (!spec.hasHeader) problems.push(`${spec.path} does not begin with a comment header`);
+    if (spec.citations.length === 0) problems.push(`${spec.path} header cites no concrete CF family`);
+    if (spec.tests === 0) problems.push(`${spec.path} contains no it/test call sites`);
+    for (const ticket of spec.tickets) {
+      if (!knownTickets.has(ticket)) problems.push(`${spec.path} header cites unknown ticket ${ticket}`);
+    }
+
+    for (const citation of spec.citations) {
+      const familyIds = creditedFamilyIds(citation, manifest.families);
+      if (familyIds.length === 0) {
+        if (manifest.families.some((family) => tokenMatch(citation, family.id) === "group")) {
+          problems.push(`${spec.path} cites family group ${citation}; cite a concrete family id`);
+        }
+        continue;
+      }
+      for (const id of familyIds) {
+        const family = manifest.families.find((candidate) => candidate.id === id) as CatalogFamily;
+        const directoryParts = spec.path.split("/").slice(0, -1).map((part) => part.toLowerCase());
+        if (!directoryParts.some((part) => part.includes(id.toLowerCase()))) {
+          problems.push(`${spec.path} cites ${id} but is not under a directory named for that family`);
+          continue;
+        }
+        if (!family.ticket) {
+          problems.push(`${spec.path} cites ${id}, which has no owning backlog ticket`);
+          continue;
+        }
+        if (!spec.tickets.includes(family.ticket)) {
+          problems.push(`${spec.path} cites ${id} but its header does not cite owning ticket ${family.ticket}`);
+          continue;
+        }
+        if (spec.tests > 0) valid.add(id);
+      }
+    }
+  }
+  return { credits, problems };
+}
+
+function coverage(
+  manifest: CaseCatalogManifest,
+  specs: SpecFileInfo[],
+  credits: Map<string, Set<string>>,
+): Map<string, FamilyCoverage> {
   const map = new Map<string, FamilyCoverage>(
     manifest.families.map((f) => [f.id, { family: f, files: [], tests: 0 }]),
   );
   for (const spec of specs) {
-    const credited = new Set<string>();
-    for (const c of spec.citations) {
-      for (const f of manifest.families) {
-        if (tokenMatch(c, f.id) === "credits") credited.add(f.id);
-      }
-    }
-    for (const id of credited) {
+    for (const id of credits.get(spec.path) ?? []) {
       const cov = map.get(id) as FamilyCoverage;
       cov.files.push(spec.path);
       cov.tests += spec.tests;
@@ -139,7 +207,7 @@ export function ownerBacklogNames(text: string): Map<string, string> {
 }
 
 export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResult {
-  const checks: TraceChecks = { agreement: [], forward: [], backward: [], statusHonesty: [] };
+  const checks: TraceChecks = { agreement: [], forward: [], backward: [], statusHonesty: [], structure: [] };
   const manifestRel = opts.manifestPath ?? join("validation-design", "case-catalog.yaml");
   // Absolute --manifest paths win; relative ones resolve against the target
   // root (the product-repo convention: the enablement bundle lands next to
@@ -168,7 +236,12 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
   // vendor only the manifest.
   const catalogMdAbs = join(manifestAbs, "..", "case-catalog.md");
   if (existsSync(catalogMdAbs)) {
-    checks.agreement = checkCatalogAgreement(manifest, readFileSync(catalogMdAbs, "utf8"));
+    const catalogMd = readFileSync(catalogMdAbs, "utf8");
+    checks.agreement = checkCatalogAgreement(manifest, catalogMd);
+    const backlogAbs = join(manifestAbs, "..", "harness-backlog.md");
+    if (existsSync(backlogAbs)) {
+      checks.agreement.push(...checkBacklogAgreement(manifest, catalogMd, readFileSync(backlogAbs, "utf8")));
+    }
   }
 
   const testsRoot = opts.testsRoot ?? manifest.conventions?.tests_root ?? "tests";
@@ -177,7 +250,9 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
   }
   const suffixes = manifest.conventions?.spec_suffixes ?? DEFAULT_SPEC_SUFFIXES;
   const specs = scanSpecs(targetRoot, testsRoot, suffixes);
-  const cov = coverage(manifest, specs);
+  const analysis = analyzeSpecs(manifest, specs);
+  checks.structure = analysis.problems;
+  const cov = coverage(manifest, specs, analysis.credits);
   const ticketById = new Map(manifest.tickets.map((t) => [t.id, t]));
 
   // 1. Forward closure: every implementable family has ≥1 citing spec or a
@@ -221,6 +296,7 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
     ...checks.forward.map((r) => `forward: ${r}`),
     ...checks.backward.map((r) => `backward: ${r}`),
     ...checks.statusHonesty.map((r) => `status-honesty: ${r}`),
+    ...checks.structure.map((r) => `structure: ${r}`),
   ];
 
   const ownerBacklogAbs = join(manifestAbs, "..", "owner-backlog.md");
@@ -304,6 +380,7 @@ ${checkLine("Agreement (manifest ↔ markdown catalog)", checks.agreement)}
 ${checkLine("Forward closure", checks.forward)}
 ${checkLine("Backward closure", checks.backward)}
 ${checkLine("Status honesty", checks.statusHonesty)}
+${checkLine("Spec structure", checks.structure)}
 
 ## Tickets by wave
 

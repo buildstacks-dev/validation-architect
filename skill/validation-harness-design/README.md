@@ -2,7 +2,7 @@
 
 A reusable Agent Skill for designing — and redesigning — the validation surface of a product or module **at design time**: before code exists on first entry, and re-entered whenever the architecture moves or the harness itself proves wrongly shaped.
 
-The output is not an exhaustive test-case list. It is the set of durable artifacts from which cases are derived for the life of the product: a reconciled system map, falsifiable invariants, a boundary map, per-boundary contracts, LLM eval plans with committed golden sets, a risk-weighted coverage allocation across five validation layers, a traced case catalog, a tooling decision, and a machine-readable `validation-policy.yaml` that a later audit can diff conformance against.
+The output is not an exhaustive test-case list. It is the set of durable artifacts from which cases are derived for the life of the product: a reconciled system map, falsifiable invariants, a boundary map, per-boundary contracts, LLM eval plans with committed golden sets, outcome-acceptance artifacts when applicable, a risk-weighted allocation across six validation layers, a traced case catalog, a tooling decision, and a machine-readable `validation-policy.yaml` that a later audit can diff conformance against.
 
 ## The skill pair
 
@@ -28,9 +28,9 @@ Before proposing invariants, reconcile:
 
 Interfaces are adapters around behavior, not duplicated behaviors. Journeys reveal which seams are crossed; architecture determines where the seams actually are.
 
-## The five validation layers
+## The six validation layers
 
-Every check the skill designs lands in one of five layers, each defined by the question it answers — never by the technology inside it:
+Every check the skill designs lands in one of six layers, each defined by the question it answers — never by the technology inside it:
 
 | # | Layer | Question it answers |
 |---|---|---|
@@ -39,8 +39,9 @@ Every check the skill designs lands in one of five layers, each defined by the q
 | 3 | Live system (sandbox) | Can the real world break the seams? |
 | 4 | Eval / qualification | Can the model be wrong while the machinery is right? |
 | 5 | Ops hardening | Can time, load, or an adversary hurt you? |
+| 6 | Outcome acceptance (`L-ACC`) | Given realistic input, is the output work a human would accept? |
 
-Lanes may be declared empty with a reason, never left silently absent — that single rule lets one taxonomy scale from a throwaway CRUD tool to an autonomous agentic system.
+Lanes may be declared empty with a reason, never left silently absent. Layer 6 uses a human-ratified rubric and is inconclusive by default; its mechanical campaign guardrails stay at layers 1–2 and its grader is calibrated at layer 4.
 
 ## Scope modes
 
@@ -58,11 +59,14 @@ Any mode may declare a `parallel-greenfield` coexistence posture: build under on
 3. `boundary-map.md` — seams, journey intersections, failure modes, per-boundary honest-fake column, controlled/live placement.
 4. `contracts/` — one file per boundary, plus journey acceptance criteria.
 5. `llm-eval-plan.md` + `golden-sets/` scaffolds.
+5b. `acceptance/` — for active `L-ACC`: rubric, realistic scenarios, sealed-plant policy, and campaign invariants.
 6. `validation-policy.yaml` — the contract a future audit diffs against.
-7. `case-catalog.md` — risk- and layer-traced case families.
+7. `case-catalog.md` + `case-catalog.yaml` — human and machine-readable risk/layer trace surfaces.
 8. `harness-backlog.md` — ticket-shaped, starting with the walking skeleton.
 9. `elicitation-log.md` — provenance of every accepted item.
+9b. `harness-state.yaml` — machine-written source revision, staleness, inventory, and ratification state.
 10. `agents-md-contribution.md` — a proposed `AGENTS.md`/`CLAUDE.md` section that routes every future coding agent to these artifacts: consult contracts and acceptance criteria on feature changes, deposit cases per the derivation grammar, never weaken a gate, re-enter `harness-revision` on structural mismatch.
+11. `owner-briefing.md` + `owner-backlog.md` — non-normative owner-facing ratification and progress companions.
 
 ## Files
 

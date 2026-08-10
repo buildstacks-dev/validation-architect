@@ -1,9 +1,13 @@
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   checkFidelityReportFormat,
   resolveFidelityScope,
+  runBoundFidelityAudit,
   runFidelityAudit,
   specsByFamily,
 } from "../src/fidelity.js";
@@ -13,6 +17,35 @@ import type { AuditorRunner } from "../src/types.js";
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 const weakened = join(repoRoot, "test", "fixtures", "fidelity", "weakened");
 const orphanSpec = join(repoRoot, "test", "fixtures", "trace", "orphan-spec");
+const tempRepos: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempRepos.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "test",
+      GIT_AUTHOR_EMAIL: "test@example.com",
+      GIT_COMMITTER_NAME: "test",
+      GIT_COMMITTER_EMAIL: "test@example.com",
+    },
+  }).trim();
+}
+
+function committedFidelityRepo(): string {
+  const root = mkdtempSync(join(tmpdir(), "vda-fidelity-bound-"));
+  tempRepos.push(root);
+  cpSync(weakened, root, { recursive: true });
+  git(root, ["init", "-q", "-b", "main"]);
+  git(root, ["add", "-A"]);
+  git(root, ["commit", "-q", "-m", "fixture"]);
+  return root;
+}
 
 function scripted(report: string): AuditorRunner & { calls: string[] } {
   const calls: string[] = [];
@@ -27,15 +60,15 @@ function scripted(report: string): AuditorRunner & { calls: string[] } {
 
 const WEAKENED_FINDING_REPORT = `mode: fidelity
 
-AUD-901 (blocking) — tests/cf-w01/cf-w01-r.test.ts — CF-W01-R detector cannot fire
+AUD-901 (blocking) — tests/cf-w01-r/cf-w01-r.test.ts — CF-W01-R detector cannot fire
 
 Catalog: "every named refusal class refuses pre-mutation" (case-catalog.yaml, oracle: refusal).
 Spec: \`expect(true).toBe(true)\` — no duplicate is ever seeded; the negative control plants no violation.
 
 ## What I checked
 
-- CF-W01-S: tests/cf-w01/cf-w01-s.test.ts — axes a–d, honest.
-- CF-W01-R: tests/cf-w01/cf-w01-r.test.ts — axis b fails.
+- CF-W01-S: tests/cf-w01-s/cf-w01-s.test.ts — axes a–d, honest.
+- CF-W01-R: tests/cf-w01-r/cf-w01-r.test.ts — axes a–d; axis b fails.
 `;
 
 describe("fidelity fixture preconditions", () => {
@@ -57,6 +90,96 @@ describe("closure preflight", () => {
   });
 });
 
+describe("immutable target binding", () => {
+  const cleanReport = `mode: fidelity
+
+## What I checked
+
+- CF-W01-S: tests/cf-w01-s/cf-w01-s.test.ts — all four axes.
+- CF-W01-R: tests/cf-w01-r/cf-w01-r.test.ts — all four axes.
+`;
+
+  it("refuses a dirty checkout before creating a live auditor call", async () => {
+    const target = committedFidelityRepo();
+    writeFileSync(join(target, "untracked.txt"), "dirty\n");
+    const auditor = scripted(cleanReport);
+
+    await expect(runBoundFidelityAudit(auditor, target, { wave: "0" })).rejects.toThrow(
+      /uncommitted or untracked/,
+    );
+    expect(auditor.calls).toHaveLength(0);
+  });
+
+  it("audits a detached no-remote clone and reports the pre-audit commit/tree", async () => {
+    const target = committedFidelityRepo();
+    const expectedCommit = git(target, ["rev-parse", "HEAD"]);
+    const expectedTree = git(target, ["rev-parse", "HEAD^{tree}"]);
+    let auditRoot = "";
+    const auditor: AuditorRunner = {
+      run(_prompt, workspace): Promise<string> {
+        auditRoot = workspace;
+        expect(workspace).not.toBe(target);
+        expect(git(workspace, ["rev-parse", "HEAD"])).toBe(expectedCommit);
+        expect(git(workspace, ["remote"])).toBe("");
+        return Promise.resolve(cleanReport);
+      },
+    };
+
+    const bound = await runBoundFidelityAudit(auditor, target, { wave: "0" });
+    expect(auditRoot).not.toBe("");
+    expect(bound.targetRevision).toMatchObject({
+      commit: expectedCommit,
+      sourceTree: expectedTree,
+      dirty: false,
+    });
+    expect(bound.result.report).toContain(`target-commit: ${expectedCommit}`);
+    expect(bound.result.report).toContain(`target-tree: ${expectedTree}`);
+    expect(bound.result.report).toContain("input: detached immutable snapshot");
+  });
+
+  it("invalidates the result when the user checkout moves during the live pass", async () => {
+    const target = committedFidelityRepo();
+    const before = git(target, ["rev-parse", "HEAD"]);
+    const auditor: AuditorRunner & { calls: number } = {
+      calls: 0,
+      run(): Promise<string> {
+        this.calls++;
+        writeFileSync(join(target, "source-only.ts"), "export const moved = true;\n");
+        git(target, ["add", "source-only.ts"]);
+        git(target, ["commit", "-q", "-m", "move during audit"]);
+        return Promise.resolve(cleanReport);
+      },
+    };
+
+    await expect(runBoundFidelityAudit(auditor, target, { wave: "0" })).rejects.toThrow(
+      /Target changed.*result is invalid/,
+    );
+    expect(auditor.calls).toBe(1);
+    expect(git(target, ["rev-parse", "HEAD"])).not.toBe(before);
+  });
+
+  it("rejects relative path traversal before the live pass", async () => {
+    const target = committedFidelityRepo();
+    const auditor = scripted(cleanReport);
+    await expect(
+      runBoundFidelityAudit(auditor, target, { manifestPath: "../outside.yaml" }),
+    ).rejects.toThrow(/must be inside the target repo/);
+    expect(auditor.calls).toHaveLength(0);
+  });
+
+  it("maps absolute in-repo manifest/test paths into the immutable clone", async () => {
+    const target = committedFidelityRepo();
+    const auditor = scripted(cleanReport);
+    const bound = await runBoundFidelityAudit(auditor, target, {
+      manifestPath: join(target, "validation-design", "case-catalog.yaml"),
+      testsRoot: join(target, "tests"),
+      wave: "0",
+    });
+    expect(bound.result.status).toBe("ok");
+    expect(auditor.calls).toHaveLength(1);
+  });
+});
+
 describe("scope resolution", () => {
   const trace = runTrace(weakened);
   const manifest = trace.manifest!;
@@ -67,7 +190,7 @@ describe("scope resolution", () => {
     expect(scope.tickets.map((t) => t.id)).toEqual(["HB-001"]);
     expect(scope.families.map((f) => f.family.id).sort()).toEqual(["CF-W01-R", "CF-W01-S"]);
     const r = scope.families.find((f) => f.family.id === "CF-W01-R")!;
-    expect(r.files).toEqual(["tests/cf-w01/cf-w01-r.test.ts"]);
+    expect(r.files).toEqual(["tests/cf-w01-r/cf-w01-r.test.ts"]);
   });
 
   it("ticket scope: explicit set wins", () => {
@@ -96,7 +219,7 @@ describe("the fidelity prompt", () => {
     const prompt = auditor.calls[0]!;
     // scoped families with their citing specs; out-of-scope family excluded
     expect(prompt).toContain("CF-W01-R");
-    expect(prompt).toContain("tests/cf-w01/cf-w01-r.test.ts");
+    expect(prompt).toContain("tests/cf-w01-r/cf-w01-r.test.ts");
     expect(prompt).not.toContain("CF-W02");
     // the four axes and the boundaries
     expect(prompt).toContain("Seed coverage");
@@ -128,10 +251,45 @@ describe("the weakened-spec pass (acceptance negative control)", () => {
   });
 
   it("a clean report over an honest scope is ok", async () => {
-    const clean = "mode: fidelity\n\n## What I checked\n\n- CF-W01-S: honest across all four axes.\n";
+    const clean = `mode: fidelity
+
+## What I checked
+
+- CF-W01-S: tests/cf-w01-s/cf-w01-s.test.ts — all four axes.
+- CF-W01-R: tests/cf-w01-r/cf-w01-r.test.ts — all four axes.
+`;
     const res = await runFidelityAudit(scripted(clean), weakened, { tickets: ["HB-001"] });
     expect(res.status).toBe("ok");
     expect(res.findings).toEqual([]);
+  });
+
+  it("fails closed when What I checked omits part of the declared scope", async () => {
+    const partial = `mode: fidelity
+
+## What I checked
+
+- CF-W01-S: tests/cf-w01-s/cf-w01-s.test.ts — all four axes.
+`;
+    const res = await runFidelityAudit(scripted(partial), weakened, { tickets: ["HB-001"] });
+    expect(res.status).toBe("protocol-violation");
+    expect(res.violations).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("omits scoped family CF-W01-R"),
+      ]),
+    );
+  });
+
+  it("fails closed when a scoped family is listed without every citing file", async () => {
+    const missingFile = `mode: fidelity
+
+## What I checked
+
+- CF-W01-S — all four axes.
+- CF-W01-R: tests/cf-w01-r/cf-w01-r.test.ts — all four axes.
+`;
+    const res = await runFidelityAudit(scripted(missingFile), weakened, { tickets: ["HB-001"] });
+    expect(res.status).toBe("protocol-violation");
+    expect(res.violations.some((violation) => violation.includes("cf-w01-s.test.ts"))).toBe(true);
   });
 });
 
@@ -139,7 +297,7 @@ describe("findings-only format guard (red-then-green)", () => {
   it("RED: a report smuggling a patch is a protocol violation", async () => {
     const patchReport = `mode: fidelity
 
-AUD-901 (blocking) — tests/cf-w01/cf-w01-r.test.ts — detector cannot fire
+AUD-901 (blocking) — tests/cf-w01-r/cf-w01-r.test.ts — detector cannot fire
 
 Fix it like this:
 
@@ -163,6 +321,14 @@ Fix it like this:
     expect(checkFidelityReportFormat("Please apply this change to the spec.")).toEqual([
       expect.stringContaining("apply this change"),
     ]);
+  });
+
+  it("rejects findings outside the fidelity-reserved AUD-9xx range", () => {
+    expect(
+      checkFidelityReportFormat(
+        "AUD-101 (blocking) — tests/x.test.ts — campaign-range id in a fidelity report",
+      ),
+    ).toEqual([expect.stringContaining("outside the reserved AUD-9xx range")]);
   });
 
   it("GREEN: findings-only prose passes, and markdown horizontal rules are not diff hunks", () => {

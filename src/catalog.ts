@@ -139,6 +139,23 @@ export function tokenMatch(token: string, familyId: string): "credits" | "group"
   return "none";
 }
 
+/**
+ * Resolve one concrete citation to the family it may credit. Exact ids win:
+ * when a catalog contains both CF-B01 and CF-B01-L3, a CF-B01-L3 citation
+ * protects only the latter. A longer token may still credit a collapsed row
+ * (CF-B14-CE -> CF-B14) when no exact family exists.
+ */
+export function creditedFamilyIds(token: string, families: CatalogFamily[]): string[] {
+  if (families.some((family) => family.id === token)) return [token];
+  const collapsedParents = families
+    .filter((family) => token.startsWith(`${family.id}-`))
+    .sort((a, b) => b.id.length - a.id.length);
+  const longest = collapsedParents[0]?.id.length;
+  return longest === undefined
+    ? []
+    : collapsedParents.filter((family) => family.id.length === longest).map((family) => family.id);
+}
+
 // ---------------------------------------------------------------------------
 // case-catalog.md parsing (ground truth: the Operon pilot's catalog)
 // ---------------------------------------------------------------------------
@@ -463,19 +480,35 @@ export function parseManifest(text: string): CaseCatalogManifest {
   if (!Array.isArray(doc.families) || doc.families.length === 0) {
     throw new Error("manifest has no families");
   }
+  const familyIds = new Set<string>();
   for (const f of doc.families) {
     if (!f?.id || typeof f.id !== "string") throw new Error("manifest family without an id");
+    if (familyIds.has(f.id)) throw new Error(`manifest has duplicate family id ${f.id}`);
+    familyIds.add(f.id);
+    if (!f.section || typeof f.section !== "string") throw new Error(`family ${f.id} has no section`);
     if (!["implementable", "pruned", "blocked"].includes(f.status as string)) {
       throw new Error(`family ${f.id} has invalid status "${String(f.status)}"`);
     }
+    if (f.status === "implementable" && (!f.layers || !f.risk)) {
+      throw new Error(`implementable family ${f.id} must declare layers and risk`);
+    }
+    if (f.status === "pruned" && !f.prune) throw new Error(`pruned family ${f.id} has no prune token`);
+    if (f.status === "blocked" && !f.blocked_by) throw new Error(`blocked family ${f.id} has no blocked_by`);
   }
   if (!Array.isArray(doc.tickets)) throw new Error("manifest has no tickets list");
+  const ticketIds = new Set<string>();
   for (const t of doc.tickets) {
     if (!t?.id || typeof t.id !== "string") throw new Error("manifest ticket without an id");
+    if (ticketIds.has(t.id)) throw new Error(`manifest has duplicate ticket id ${t.id}`);
+    ticketIds.add(t.id);
+    if (!t.wave || typeof t.wave !== "string") throw new Error(`ticket ${t.id} has no wave`);
     if (!["pending", "landed"].includes(t.status as string)) {
       throw new Error(`ticket ${t.id} has invalid status "${String(t.status)}"`);
     }
     if (!Array.isArray(t.families)) throw new Error(`ticket ${t.id} has no families list`);
+    for (const id of t.families) {
+      if (!familyIds.has(id)) throw new Error(`ticket ${t.id} cites unknown family ${id}`);
+    }
   }
   return doc as CaseCatalogManifest;
 }
@@ -517,6 +550,92 @@ export function checkCatalogAgreement(manifest: CaseCatalogManifest, catalogMd: 
     const a = [...(mf.blocked_remainder ?? [])].sort().join(",");
     const b = [...(md.blocked_remainder ?? [])].sort().join(",");
     if (a !== b) out.push(`family ${id}: blocked remainder disagrees (manifest "${a}", markdown "${b}")`);
+
+    const compare = (field: "section" | "layers" | "oracle" | "risk" | "reason") => {
+      const manifestValue = (mf[field] ?? "").trim();
+      const markdownValue = (md[field] ?? "").trim();
+      if (manifestValue !== markdownValue) {
+        out.push(
+          `family ${id}: ${field} disagrees (manifest "${manifestValue}", markdown "${markdownValue}")`,
+        );
+      }
+    };
+    compare("section");
+    compare("layers");
+    compare("oracle");
+    compare("risk");
+    compare("reason");
+
+    const manifestCovers = [...(mf.covers ?? [])].sort().join(",");
+    const markdownCovers = [...(md.covers ?? [])].sort().join(",");
+    if (manifestCovers !== markdownCovers) {
+      out.push(
+        `family ${id}: covers disagrees (manifest "${manifestCovers}", markdown "${markdownCovers}")`,
+      );
+    }
+  }
+  return out;
+}
+
+/** Validate manifest ticket ownership/status against the human backlog. */
+export function checkBacklogAgreement(
+  manifest: CaseCatalogManifest,
+  catalogMd: string,
+  backlogMd: string,
+): string[] {
+  const generated = generateManifest(catalogMd, backlogMd, {
+    ...(manifest.product ? { product: manifest.product } : {}),
+    ...(manifest.conventions ? { conventions: manifest.conventions } : {}),
+  });
+  const out = generated.problems.map((problem) => `backlog generation: ${problem}`);
+  const expectedById = new Map(generated.manifest.tickets.map((ticket) => [ticket.id, ticket]));
+  const actualById = new Map(manifest.tickets.map((ticket) => [ticket.id, ticket]));
+
+  for (const id of expectedById.keys()) {
+    if (!actualById.has(id)) out.push(`ticket ${id} is in harness-backlog.md but missing from the manifest`);
+  }
+  for (const id of actualById.keys()) {
+    if (!expectedById.has(id)) out.push(`ticket ${id} is in the manifest but not in harness-backlog.md`);
+  }
+  for (const [id, expected] of expectedById) {
+    const actual = actualById.get(id);
+    if (!actual) continue;
+    if (actual.status !== expected.status) {
+      out.push(`ticket ${id}: status disagrees (manifest "${actual.status}", backlog "${expected.status}")`);
+    }
+    if (actual.wave !== expected.wave) {
+      out.push(`ticket ${id}: wave disagrees (manifest "${actual.wave}", backlog "${expected.wave}")`);
+    }
+    const actualFamilies = [...actual.families].sort().join(",");
+    const expectedFamilies = [...expected.families].sort().join(",");
+    if (actualFamilies !== expectedFamilies) {
+      out.push(
+        `ticket ${id}: families disagree (manifest "${actualFamilies}", backlog "${expectedFamilies}")`,
+      );
+    }
+  }
+
+  const expectedFamilies = new Map(generated.manifest.families.map((family) => [family.id, family]));
+  for (const expected of expectedFamilies.values()) {
+    if (expected.status === "implementable" && (!expected.ticket || !expected.wave)) {
+      out.push(
+        `implementable family ${expected.id} has no owning backlog ticket/wave in harness-backlog.md`,
+      );
+    }
+  }
+  for (const actual of manifest.families) {
+    const expected = expectedFamilies.get(actual.id);
+    if (!expected) continue;
+    if ((actual.ticket ?? "") !== (expected.ticket ?? "")) {
+      out.push(
+        `family ${actual.id}: owning ticket disagrees (manifest "${actual.ticket ?? ""}", backlog "${expected.ticket ?? ""}")`,
+      );
+    }
+    if ((actual.wave ?? "") !== (expected.wave ?? "")) {
+      out.push(
+        `family ${actual.id}: owning wave disagrees (manifest "${actual.wave ?? ""}", backlog "${expected.wave ?? ""}")`,
+      );
+    }
   }
   return out;
 }
@@ -530,6 +649,7 @@ export function workspaceCatalogProblems(workspace: string): string[] {
   const dir = join(workspace, "validation-design");
   const mdPath = join(dir, "case-catalog.md");
   const yamlPath = join(dir, "case-catalog.yaml");
+  const backlogPath = join(dir, "harness-backlog.md");
   if (!existsSync(mdPath)) return ["validation-design/case-catalog.md is missing"];
   if (!existsSync(yamlPath)) {
     return ["validation-design/case-catalog.yaml is missing — the machine-readable manifest is a required deliverable"];
@@ -540,5 +660,12 @@ export function workspaceCatalogProblems(workspace: string): string[] {
   } catch (err) {
     return [`case-catalog.yaml does not parse as a valid manifest: ${(err as Error).message}`];
   }
-  return checkCatalogAgreement(manifest, readFileSync(mdPath, "utf8"));
+  const catalogMd = readFileSync(mdPath, "utf8");
+  const problems = checkCatalogAgreement(manifest, catalogMd);
+  if (!existsSync(backlogPath)) {
+    problems.push("validation-design/harness-backlog.md is missing — ticket ownership cannot be verified");
+  } else {
+    problems.push(...checkBacklogAgreement(manifest, catalogMd, readFileSync(backlogPath, "utf8")));
+  }
+  return problems;
 }

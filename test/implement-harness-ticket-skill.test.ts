@@ -20,10 +20,11 @@ const KNOWN_CORPUS_ARTIFACTS = new Set([
   "owner-backlog.md",
   "trace-report.md",
   "contracts/",
+  "acceptance/",
 ]);
 
-/** Match `foo.md`, `foo.yaml`, or `contracts/` directory references in prose. */
-const ARTIFACT_REF = /\b([a-z][a-z0-9-]*\.(?:md|yaml)|contracts\/)\b/g;
+/** Match `foo.md`, `foo.yaml`, or durable artifact-directory references in prose. */
+const ARTIFACT_REF = /\b([a-z][a-z0-9-]*\.(?:md|yaml)|(?:contracts|acceptance)\/)\b/g;
 
 function parseFrontmatter(source: string): { name?: string; description?: string; body: string } {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
@@ -59,6 +60,9 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toContain("case-catalog.yaml");
     expect(text).toMatch(/enumeration/);
     expect(text).toMatch(/invariants\.md|boundary-map|contracts/);
+    expect(text).toContain("acceptance/");
+    expect(text).toMatch(/l-acc|outcome acceptance/);
+    expect(text).toMatch(/inconclusive/);
 
     // Standing rules digest
     expect(text).toMatch(/cheapest falsifying layer|cheapest.*layer/);

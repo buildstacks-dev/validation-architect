@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+Completes consumption of the six-layer design contract introduced in 0.6.0.
+
+- Adds `acceptance/`, `case-catalog.yaml`, and `harness-state.yaml` everywhere the design corpus is discovered or treated as authoritative.
+- Corrects the conformance checklist and standalone reviewer prompt from five to six lanes and adds the complete `L-ACC` integrity check: rubric ratification, realistic inputs, sealed answers, per-axis independence, self-report handling, campaign-invariant separation, staged gates, authorization, release relationship, and fail-closed incomplete/inconclusive outcomes.
+- Keeps the audit/design contract pair versioned together with design 0.6.1.
+
 ## 0.6.0
 
 Consumes the expanded design contract (design 0.6.0). Conformance checks added for everything that skill now declares.

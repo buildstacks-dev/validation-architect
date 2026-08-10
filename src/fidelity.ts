@@ -1,9 +1,14 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseFindings } from "./audit.js";
 import type { CaseCatalogManifest, CatalogFamily, CatalogTicket } from "./catalog.js";
-import { tokenMatch } from "./catalog.js";
+import { creditedFamilyIds } from "./catalog.js";
 import { fidelityAuditorPrompt } from "./prompts.js";
 import { runTrace, type TraceOptions } from "./trace.js";
-import type { AuditFinding, AuditorRunner } from "./types.js";
+import { captureTargetRevision, verifyTargetRevision } from "./target.js";
+import type { AuditFinding, AuditorRunner, TargetRevision } from "./types.js";
 
 /**
  * The fidelity audit (issue #7): a fresh-context judgment pass over a product
@@ -92,9 +97,7 @@ export function specsByFamily(
   for (const spec of specs) {
     const credited = new Set<string>();
     for (const c of spec.citations) {
-      for (const f of manifest.families) {
-        if (tokenMatch(c, f.id) === "credits") credited.add(f.id);
-      }
+      for (const id of creditedFamilyIds(c, manifest.families)) credited.add(id);
     }
     for (const id of credited) (map.get(id) as string[]).push(spec.path);
   }
@@ -117,6 +120,12 @@ export function checkFidelityReportFormat(text: string): string[] {
   if (/apply (this|the following) (change|patch|diff)/i.test(text)) {
     violations.push('report instructs "apply this change/patch" — remediation belongs to the product repo\'s agents');
   }
+  const wrongIds = parseFindings(text, FIDELITY_ITERATION)
+    .map((finding) => finding.id)
+    .filter((id) => !/^AUD-9\d{2}$/.test(id));
+  if (wrongIds.length > 0) {
+    violations.push(`findings use ids outside the reserved AUD-9xx range: ${wrongIds.join(", ")}`);
+  }
   return violations;
 }
 
@@ -127,18 +136,48 @@ export function checkFidelityReportFormat(text: string): string[] {
  * for the remaining sub-passes to complete") cannot read as a clean pass.
  * Fail-closed, same discipline as the no-patches guard.
  */
-export function checkFidelityReportCompleteness(text: string): string[] {
-  if (!/what i checked/i.test(text)) {
-    return [
-      'report lacks the mandatory "What I checked" coverage section — an incomplete auditor session must not read as a clean pass',
-    ];
+export function checkFidelityReportCompleteness(text: string, scope?: FidelityScope): string[] {
+  const violations: string[] = [];
+  if ((text.match(/^[^\r\n]*/)?.[0] ?? "").trim().toLowerCase() !== "mode: fidelity") {
+    violations.push('report lacks the required first-line "mode: fidelity" marker');
   }
-  return [];
+  const heading = /^#{1,6}\s+what i checked\s*$/im.exec(text);
+  if (!heading) {
+    violations.push(
+      'report lacks the mandatory "What I checked" coverage section — an incomplete auditor session must not read as a clean pass',
+    );
+    return violations;
+  }
+
+  const checked = text.slice(heading.index + heading[0].length);
+  if (
+    !/(?:all\s+four\s+axes|axes?\s+a\s*[–-]\s*d|seed coverage[\s\S]*negative-control reality[\s\S]*oracle match[\s\S]*no quiet narrowing)/i.test(
+      checked,
+    )
+  ) {
+    violations.push('"What I checked" does not attest that all four fidelity axes were applied');
+  }
+  for (const entry of scope?.families ?? []) {
+    const escapedId = entry.family.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const idPattern = new RegExp(`(?:^|[^A-Za-z0-9-])${escapedId}(?![A-Za-z0-9-])`, "i");
+    if (!idPattern.test(checked)) {
+      violations.push(`"What I checked" omits scoped family ${entry.family.id}`);
+      continue;
+    }
+    for (const file of entry.files) {
+      if (!checked.includes(file)) {
+        violations.push(`"What I checked" omits scoped file ${file} for ${entry.family.id}`);
+      }
+    }
+  }
+  return violations;
 }
 
 export interface FidelityOptions extends TraceOptions {
   wave?: string;
   tickets?: string[];
+  /** Trusted identity supplied only by runBoundFidelityAudit for report provenance. */
+  targetRevision?: TargetRevision;
 }
 
 export type FidelityStatus = "ok" | "findings" | "protocol-violation" | "refused-closure";
@@ -153,6 +192,18 @@ export interface FidelityRunResult {
   prompt?: string;
   /** The full report document (header + auditor text), ready to write. */
   report: string;
+}
+
+export interface BoundFidelityRunResult {
+  result: FidelityRunResult;
+  /** Pre-audit identity. Registry writes must bind this exact value. */
+  targetRevision: TargetRevision;
+}
+
+function revisionReportLines(revision: TargetRevision | undefined): string {
+  return revision
+    ? `target-commit: ${revision.commit}\ntarget-tree: ${revision.sourceTree}\ntarget-captured-at: ${revision.capturedAt}\ninput: detached immutable snapshot\n`
+    : "";
 }
 
 export async function runFidelityAudit(
@@ -171,7 +222,7 @@ export async function runFidelityAudit(
       reds: trace.reds,
       findings: [],
       violations: [],
-      report: `# Fidelity audit — REFUSED\n\nClosure is red; fix closure before asking for judgment (guardrails-enforce before evals-measure, applied recursively). Trace findings:\n\n${trace.reds.map((r) => `- ${r}`).join("\n")}\n`,
+      report: `# Fidelity audit — REFUSED\n${revisionReportLines(opts.targetRevision)}\nClosure is red; fix closure before asking for judgment (guardrails-enforce before evals-measure, applied recursively). Trace findings:\n\n${trace.reds.map((r) => `- ${r}`).join("\n")}\n`,
     };
   }
 
@@ -181,14 +232,14 @@ export async function runFidelityAudit(
   });
   const prompt = fidelityAuditorPrompt(scope, trace.manifest.product);
   const text = await auditor.run(prompt, targetRoot);
-  const violations = [...checkFidelityReportFormat(text), ...checkFidelityReportCompleteness(text)];
+  const violations = [...checkFidelityReportFormat(text), ...checkFidelityReportCompleteness(text, scope)];
   const findings = parseFindings(text, FIDELITY_ITERATION);
 
   const header = `# Fidelity audit${trace.manifest.product ? ` — ${trace.manifest.product}` : ""}
 mode: fidelity
 scope: ${scope.label}
 date: ${new Date().toISOString().slice(0, 10)}
-closure: green (${trace.specs.length} spec files scanned)
+${revisionReportLines(opts.targetRevision)}closure: green (${trace.specs.length} spec files scanned)
 findings: ${findings.length}${violations.length > 0 ? `\nPROTOCOL-VIOLATION: ${violations.join("; ")}` : ""}
 
 Findings only — remediation belongs to the product repo's coding agents (route
@@ -207,4 +258,76 @@ validation-harness-design's harness-revision mode).
     prompt,
     report: header + text.trim() + "\n",
   };
+}
+
+function snapshotOptionPath(
+  value: string | undefined,
+  targetRoot: string,
+  label: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const target = resolve(targetRoot);
+  const absolute = isAbsolute(value) ? resolve(value) : resolve(target, value);
+  const rel = relative(target, absolute);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`${label} must be inside the target repo when fidelity uses an immutable snapshot: ${value}`);
+  }
+  return rel || ".";
+}
+
+/**
+ * Run a fidelity pass against a detached, no-remote clone of one clean target
+ * revision. The user's checkout is checked again after the pass; any movement
+ * invalidates the result even though the auditor itself saw immutable input.
+ */
+export async function runBoundFidelityAudit(
+  auditor: AuditorRunner,
+  targetRoot: string,
+  opts: FidelityOptions = {},
+): Promise<BoundFidelityRunResult> {
+  const target = resolve(targetRoot);
+  const targetRevision = captureTargetRevision(target);
+  const temp = mkdtempSync(join(tmpdir(), "vda-fidelity-"));
+  const snapshot = join(temp, "target");
+  let result: FidelityRunResult | undefined;
+  let auditError: unknown;
+  let verificationError: unknown;
+  try {
+    const manifestPath = snapshotOptionPath(opts.manifestPath, target, "--manifest");
+    const testsRoot = snapshotOptionPath(opts.testsRoot, target, "--tests");
+    execFileSync("git", ["clone", "--no-local", "--no-checkout", "--quiet", "--", target, snapshot], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, GIT_LFS_SKIP_SMUDGE: "1" },
+    });
+    execFileSync("git", ["checkout", "--detach", "--quiet", targetRevision.commit], {
+      cwd: snapshot,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    execFileSync("git", ["remote", "remove", "origin"], {
+      cwd: snapshot,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    try {
+      result = await runFidelityAudit(auditor, snapshot, {
+        ...opts,
+        ...(manifestPath !== undefined ? { manifestPath } : {}),
+        ...(testsRoot !== undefined ? { testsRoot } : {}),
+        targetRevision,
+      });
+    } catch (err) {
+      auditError = err;
+    }
+    try {
+      verifyTargetRevision(target, targetRevision);
+    } catch (err) {
+      verificationError = err;
+    }
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+  if (verificationError) throw verificationError;
+  if (auditError) throw auditError;
+  if (!result) throw new Error("Fidelity audit ended without a result.");
+  return { result, targetRevision };
 }

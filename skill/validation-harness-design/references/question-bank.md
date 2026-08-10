@@ -46,6 +46,10 @@ When an answer exposes something the architecture doc doesn't cover, record an a
 - How is it deployed: one install with two users, or multi-tenant with strangers sharing infrastructure?
 - Is any part of this materially higher-stakes than the rest? (Drives per-component tier override.)
 
+**Outcome probe (introduces layer 6; do not elicit a rubric yet):**
+
+- Does this product emit a work product for which every interface, contract, and model-call check could pass while a human still rejects the result? If yes, carry an `L-ACC` obligation into Phase 6; if no, record why the lane is empty.
+
 ---
 
 ## Phase 2 — Invariants
@@ -163,6 +167,12 @@ When an answer exposes something the architecture doc doesn't cover, record an a
 - What runs always-on or unattended? (Triggers layer-5 soak: state growth under retention, missed-tick reconciliation after sleep, cost integrity under retries.)
 - Which failures only appear after days, not minutes — and what telemetry would a soak run assert on?
 - Present the matrix with each cell's layer placement; the human confirms. Do not let the doc or your own inference settle business consequence.
+- For `L-ACC`: what realistic messy input distinguishes judgment from transcription, and which human-owned axes decide whether the final work is acceptable?
+- Which answers stay sealed from producer and grader, and what evidence does each grading axis read? Are producer and grader disjoint for every axis?
+- Which mechanical campaign invariants and preflights belong at layers 1–2 with negative controls, rather than as scored axes?
+- What is the intermediate gate, who may resolve it, and what is recorded durably before downstream spend?
+- What target, scenario set, spend/time ceiling, and external effects does a human authorize per campaign? What produces `incomplete` or `inconclusive`?
+- Does a conclusive `L-ACC` result gate release or provide disclosed assurance outside the release gate? Silence is not a policy.
 
 ---
 

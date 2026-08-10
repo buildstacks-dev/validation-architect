@@ -1,21 +1,43 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ClaudeAuditorRunner } from "./auditor.js";
+import { nextPostHocAuditIteration, validateAuditReport } from "./audit.js";
 import { ClaudeDesigner } from "./designer.js";
-import { runFidelityAudit } from "./fidelity.js";
+import { runBoundFidelityAudit } from "./fidelity.js";
 import { listFixtures, loadFixture } from "./fixtures.js";
-import { runCampaign } from "./orchestrator.js";
+import {
+  buildRunConfig,
+  claudeAuthFlag,
+  nonNegativeIntegerFlag,
+  positiveIntegerFlag,
+} from "./options.js";
+import { auditedCoreFingerprint, runCampaign } from "./orchestrator.js";
 import { auditorPrompt, designerKickoff, stakeholderKickoff } from "./prompts.js";
 import { RambleWatcher } from "./ramble.js";
 import { ClaudeReaderRunner } from "./readers.js";
 import { loadRegistry, recordCampaign, recordDelivery, recordFidelity, renderRepos, repoStatuses } from "./registry.js";
 import { generateReport } from "./report.js";
 import { CodexStakeholder } from "./stakeholder.js";
-import { deliverArtifacts, existingCorpusDir, loadTarget, resolveCampaignMode } from "./target.js";
+import {
+  captureTargetBase,
+  deliverArtifacts,
+  existingCorpusDir,
+  loadTarget,
+  recoverTargetBaseFromWorkspace,
+  resolveCampaignMode,
+  verifyTargetSnapshot,
+} from "./target.js";
 import { Transcript, readTranscript } from "./transcript.js";
-import type { ClaudeAuthMode, CodexAuthMode, RunConfig, RunState } from "./types.js";
-import { assembleWorkspace, ensureAuditSkill, ramblePath } from "./workspace.js";
+import type { RunState, TargetBase } from "./types.js";
+import {
+  applyLegacyTargetRecovery,
+  assembleWorkspace,
+  ensureAuditSkill,
+  ramblePath,
+  reanchorLegacyTargetWorkspace,
+} from "./workspace.js";
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 const runsRoot = join(repoRoot, "runs");
@@ -48,32 +70,81 @@ function statePath(runDir: string): string {
 }
 
 function saveState(runDir: string): (s: RunState) => void {
-  return (s) => writeFileSync(statePath(runDir), `${JSON.stringify(s, null, 2)}\n`);
+  return (s) => {
+    const destination = statePath(runDir);
+    const temporary = `${destination}.tmp-${process.pid}-${randomUUID()}`;
+    try {
+      writeFileSync(temporary, `${JSON.stringify(s, null, 2)}\n`);
+      renameSync(temporary, destination);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+  };
 }
 
 function loadState(runDir: string): RunState {
   return JSON.parse(readFileSync(statePath(runDir), "utf8")) as RunState;
 }
 
-function buildConfig(fixture: string, runId: string, flags: Map<string, string>): RunConfig {
-  const smoke = flags.get("smoke") === "true";
-  const designerModel = flags.get("designer-model") ?? "claude-fable-5";
-  return {
-    fixture,
-    runId,
-    designerModel,
-    stakeholderModel: flags.get("stakeholder-model") ?? "gpt-5.6-sol",
-    readerModel: flags.get("reader-model") ?? "claude-sonnet-5",
-    // The auditor defaults to the designer's model: the audit needs the same
-    // capability class as what produced the corpus; independence comes from
-    // fresh context, not a different model.
-    auditorModel: flags.get("auditor-model") ?? designerModel,
-    claudeAuth: (flags.get("claude-auth") ?? "subscription") as ClaudeAuthMode,
-    codexAuth: (flags.get("codex-auth") ?? "chatgpt") as CodexAuthMode,
-    maxExchanges: Number(flags.get("max-exchanges") ?? (smoke ? 4 : 60)),
-    maxWallMinutes: Number(flags.get("wall-minutes") ?? (smoke ? 45 : 300)),
-    designerMaxTurns: Number(flags.get("designer-max-turns") ?? 250),
-  };
+type LegacyRecovery = "none" | "evidence" | "reanchored";
+
+/**
+ * Restore additive targetBase state only from authenticated frozen evidence,
+ * or perform the operator's explicit current-HEAD recovery. Re-anchoring
+ * returns without spending provider quota; a subsequent resume starts fresh
+ * sessions with a mandatory reconciliation appended to the fresh kickoff.
+ */
+function prepareLegacyTargetState(
+  runDir: string,
+  state: RunState,
+  recoveryFlag?: string,
+): LegacyRecovery {
+  if (!state.target) {
+    if (recoveryFlag !== undefined) {
+      throw new Error(`Run ${state.runId} is not target-anchored; --recover-target-base is not applicable.`);
+    }
+    return "none";
+  }
+  if (state.targetBase) {
+    if (recoveryFlag !== undefined) {
+      throw new Error(`Run ${state.runId} already has an immutable target base; --recover-target-base is not applicable.`);
+    }
+    return "none";
+  }
+  if (recoveryFlag !== undefined && recoveryFlag !== "current") {
+    throw new Error(`--recover-target-base accepts only "current" (got ${recoveryFlag}).`);
+  }
+  let recovered: TargetBase | undefined;
+  try {
+    recovered = recoverTargetBaseFromWorkspace(state.workspace);
+  } catch (err) {
+    if (recoveryFlag !== "current") throw err;
+    console.warn(
+      `[vda] frozen legacy evidence is incomplete/corrupt and will not be trusted: ${(err as Error).message}`,
+    );
+  }
+  if (recovered) {
+    state.targetBase = recovered;
+    state.updatedAt = new Date().toISOString();
+    saveState(runDir)(state);
+    console.log(
+      `[vda] recovered immutable target base ${recovered.commit.slice(0, 12)} from frozen workspace evidence`,
+    );
+    return "evidence";
+  }
+  if (recoveryFlag === undefined) {
+    throw new Error(
+      `Legacy target run ${state.runId} has no authenticated frozen source revision. Refusing to guess from current HEAD. Recover explicitly with: vda resume ${state.runId} --recover-target-base current`,
+    );
+  }
+  const recovery = reanchorLegacyTargetWorkspace(repoRoot, runDir, state);
+  applyLegacyTargetRecovery(state, recovery);
+  saveState(runDir)(state);
+  console.log(`[vda] legacy workspace preserved untouched at ${recovery.legacyWorkspace}`);
+  console.log(
+    `[vda] re-anchored ${state.runId} on clean target ${recovery.targetBase.commit.slice(0, 12)}; reader/audit evidence and provider sessions were reset`,
+  );
+  return "reanchored";
 }
 
 /** Persist an audit artifact to the run dir AND the workspace's corpus. */
@@ -115,20 +186,36 @@ function tryDeliver(runDir: string, state: RunState): void {
       workspace: state.workspace,
       target: state.target,
       runId: state.runId,
+      ...(state.targetBase?.commit ? { baseCommit: state.targetBase.commit } : {}),
+      ...(state.targetBase?.sourceTree ? { sourceTree: state.targetBase.sourceTree } : {}),
+      ...(state.targetBase?.docsTree ? { docsTree: state.targetBase.docsTree } : {}),
+      ...(state.targetBase?.capturedAt ? { capturedAt: state.targetBase.capturedAt } : {}),
+      ...(state.deliveryBranch ? { branch: state.deliveryBranch } : {}),
     });
-    state.delivery = { ...delivery, deliveredAt: new Date().toISOString() };
+    const deliveredAt = new Date().toISOString();
+    state.delivery = { ...delivery, deliveredAt };
     state.updatedAt = new Date().toISOString();
     saveState(runDir)(state);
     recordDelivery(
       registryPath,
       state.target,
-      { runId: state.runId, ...state.delivery },
+      {
+        runId: state.runId,
+        branch: delivery.branch,
+        commit: delivery.commit,
+        deliveredAt,
+        baseCommit: delivery.baseCommit,
+        ...(delivery.sourceTree ? { sourceTree: delivery.sourceTree } : {}),
+        corpusTree: delivery.corpusTree,
+      },
       manifestSchemaOf(state.workspace),
     );
     console.log(
       `[vda] delivered to ${state.target} — branch ${delivery.branch} @ ${delivery.commit.slice(0, 12)}`,
     );
-    console.log(`[vda] review & ratify: git -C ${state.target} switch ${delivery.branch} (or open a PR from that branch)`);
+    console.log(
+      `[vda] review & ratify: open a PR from ${delivery.branch}, or inspect git -C ${state.target} diff ${delivery.baseCommit.slice(0, 12)}..${delivery.branch} -- validation-design/ (leave the delivery branch un-checked-out so an idempotent re-delivery can update it)`,
+    );
   } catch (err) {
     console.error(`[vda] delivery to target failed: ${(err as Error).message}`);
     console.error(`[vda] artifacts are intact in the workspace; retry with: vda deliver ${state.runId}`);
@@ -137,7 +224,22 @@ function tryDeliver(runDir: string, state: RunState): void {
 }
 
 async function execCampaign(runDir: string, state: RunState): Promise<void> {
-  const fixture = state.target ? loadTarget(state.target) : loadFixture(repoRoot, state.fixture);
+  const fixture = state.target
+    ? (() => {
+        if (!state.targetBase) {
+          throw new Error(
+            `Target run ${state.runId} lacks an authenticated source snapshot. Run vda resume ${state.runId} --recover-target-base current before resuming live work.`,
+          );
+        }
+        const snapshot = verifyTargetSnapshot(state.workspace, state.targetBase);
+        return {
+          ...loadTarget(snapshot),
+          name: state.fixture,
+          displayName: state.fixture,
+          hasRambling: existsSync(ramblePath(state.workspace)),
+        };
+      })()
+    : loadFixture(repoRoot, state.fixture);
   // Runs started before the audit stage existed lack the vendored audit skill
   // in their workspace; backfill so resume enters the audit loop cleanly.
   ensureAuditSkill(repoRoot, state.workspace);
@@ -180,7 +282,10 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
     },
     state,
     {
-      designer: designerKickoff(fixture, state.campaignMode ?? "greenfield"),
+      designer: [
+        designerKickoff(fixture, state.campaignMode ?? "greenfield"),
+        state.sourceRecoveryDirective,
+      ].filter((message): message is string => message !== undefined).join("\n\n---\n\n"),
       stakeholder: stakeholderKickoff(repoRoot, fixture),
     },
   );
@@ -217,11 +322,13 @@ async function cmdRun(args: string[]): Promise<void> {
 
   let fixture; // FixtureInfo shape for both sources
   let target: string | undefined;
+  let targetBase: TargetBase | undefined;
   let campaignMode: "greenfield" | "revision" = "greenfield";
   let seedCorpusFrom: string | undefined;
   if (targetFlag) {
     fixture = loadTarget(targetFlag);
     target = fixture.dir;
+    targetBase = captureTargetBase(target);
     const fresh = flags.get("fresh") === "true";
     campaignMode = resolveCampaignMode(target, fresh);
     const corpus = existingCorpusDir(target);
@@ -237,6 +344,7 @@ async function cmdRun(args: string[]): Promise<void> {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const runId = flags.get("run-id") ?? `${fixture.name}-${stamp}`;
+  const config = buildRunConfig(fixture.name, runId, flags);
   const runDir = join(runsRoot, runId);
   if (existsSync(runDir)) {
     console.error(`run dir already exists: ${runDir} (use vda resume ${runId})`);
@@ -244,8 +352,10 @@ async function cmdRun(args: string[]): Promise<void> {
     return;
   }
   mkdirSync(runDir, { recursive: true });
-  const workspace = assembleWorkspace(repoRoot, fixture, runDir, { ...(seedCorpusFrom ? { seedCorpusFrom } : {}) });
-  const config = buildConfig(fixture.name, runId, flags);
+  const workspace = assembleWorkspace(repoRoot, fixture, runDir, {
+    ...(seedCorpusFrom ? { seedCorpusFrom } : {}),
+    ...(targetBase ? { targetBase } : {}),
+  });
   const state: RunState = {
     runId,
     fixture: fixture.name,
@@ -254,6 +364,7 @@ async function cmdRun(args: string[]): Promise<void> {
     exchanges: 0,
     seq: 0,
     target,
+    targetBase,
     campaignMode,
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -269,10 +380,10 @@ async function cmdRun(args: string[]): Promise<void> {
  * Idempotent: updates the same validation-design/<runId> branch.
  */
 function cmdDeliver(args: string[]): void {
-  const { positional } = parseFlags(args);
+  const { positional, flags } = parseFlags(args);
   const runId = positional[0];
   if (!runId) {
-    console.error("usage: vda deliver <runId>");
+    console.error("usage: vda deliver <runId> [--recover-target-base current]");
     process.exitCode = 2;
     return;
   }
@@ -280,6 +391,17 @@ function cmdDeliver(args: string[]): void {
   const state = loadState(runDir);
   if (!state.target) {
     console.error(`run ${runId} is a fixture run (no --target); nothing to deliver. Artifacts: ${join(state.workspace, "validation-design")}`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const recovery = prepareLegacyTargetState(runDir, state, flags.get("recover-target-base"));
+    if (recovery === "reanchored") {
+      console.log(`[vda] recovery workspace is ready; inspect it, then continue with: vda resume ${runId}`);
+      return;
+    }
+  } catch (err) {
+    console.error(`[vda] delivery recovery refused: ${(err as Error).message}`);
     process.exitCode = 2;
     return;
   }
@@ -295,21 +417,36 @@ async function cmdResume(args: string[]): Promise<void> {
   const { positional, flags } = parseFlags(args);
   const runId = positional[0];
   if (!runId) {
-    console.error("usage: vda resume <runId> [--max-exchanges N] [--wall-minutes N]");
+    console.error("usage: vda resume <runId> [--recover-target-base current] [--max-exchanges N] [--wall-minutes N]");
     process.exitCode = 2;
     return;
   }
   const runDir = join(runsRoot, runId);
   const state = loadState(runDir);
+  try {
+    const recovery = prepareLegacyTargetState(runDir, state, flags.get("recover-target-base"));
+    if (recovery === "reanchored") {
+      console.log(`[vda] recovery workspace is ready; inspect it, then run: vda resume ${runId}`);
+      return;
+    }
+  } catch (err) {
+    console.error(`[vda] resume recovery refused: ${(err as Error).message}`);
+    process.exitCode = 2;
+    return;
+  }
   if (state.status === "completed") {
     console.log(`[vda] run ${runId} already completed`);
     return;
   }
   // A run aborted at a cap is resumed by raising that cap.
   const maxExchanges = flags.get("max-exchanges");
-  if (maxExchanges !== undefined) state.config.maxExchanges = Number(maxExchanges);
+  if (maxExchanges !== undefined) {
+    state.config.maxExchanges = positiveIntegerFlag(maxExchanges, "max-exchanges");
+  }
   const wallMinutes = flags.get("wall-minutes");
-  if (wallMinutes !== undefined) state.config.maxWallMinutes = Number(wallMinutes);
+  if (wallMinutes !== undefined) {
+    state.config.maxWallMinutes = positiveIntegerFlag(wallMinutes, "wall-minutes");
+  }
   state.status = "running";
   state.statusReason = undefined;
   console.log(`[vda] resuming ${runId} at exchange ${state.exchanges}, pending → ${state.pending?.to ?? "start"}`);
@@ -378,6 +515,17 @@ async function cmdAudit(args: string[]): Promise<void> {
     process.exitCode = 2;
     return;
   }
+  if (state.target) {
+    try {
+      prepareLegacyTargetState(runDir, state);
+      if (!state.targetBase) throw new Error("targetBase recovery did not produce an immutable snapshot");
+      verifyTargetSnapshot(state.workspace, state.targetBase);
+    } catch (err) {
+      console.error(`[vda] post-hoc audit refused before live spend: ${(err as Error).message}`);
+      process.exitCode = 2;
+      return;
+    }
+  }
   ensureAuditSkill(repoRoot, state.workspace);
   const model =
     flags.get("auditor-model") ?? state.config.auditorModel ?? state.config.designerModel;
@@ -385,12 +533,31 @@ async function cmdAudit(args: string[]): Promise<void> {
   // Iteration 2 (AUD-2xx, verification rubric) is reserved for the
   // in-campaign loop; a post-hoc audit is always first-pass-style, so its
   // iteration number skips from 1 to 3.
-  const priorAudits = readTranscript(runDir).filter((e) => e.role === "auditor").length;
-  const iteration = priorAudits === 1 ? 3 : priorAudits + 1;
+  const iteration = nextPostHocAuditIteration(readTranscript(runDir));
   console.log(`[vda] running post-hoc audit of ${runId} (iteration ${iteration}, model ${model}, fresh context)`);
+  const coreAtStart = auditedCoreFingerprint(state.workspace);
   const text = await auditor.run(auditorPrompt(iteration), state.workspace);
+  try {
+    if (state.targetBase) verifyTargetSnapshot(state.workspace, state.targetBase);
+    if (auditedCoreFingerprint(state.workspace) !== coreAtStart) {
+      throw new Error("the audited design core changed during the live pass");
+    }
+  } catch (err) {
+    console.error(`[vda] post-hoc audit INVALIDATED: ${(err as Error).message}`);
+    console.error("[vda] no transcript entry or audit report was written");
+    process.exitCode = 2;
+    return;
+  }
+  const validation = validateAuditReport(text, iteration, [], {
+    requireBlindSource:
+      iteration !== 2 && existsSync(join(state.workspace, "TARGET-SNAPSHOT.md")),
+  });
   const transcript = new Transcript(runDir, state.seq);
-  transcript.append({ role: "auditor", text, note: `audit-iteration-${iteration} (post-hoc)` });
+  transcript.append({
+    role: "auditor",
+    text,
+    note: `audit-iteration-${iteration} (post-hoc${validation.problems.length > 0 ? ", protocol violation" : ""})`,
+  });
   saveAuditFile(runDir, state.workspace)(`audit-report-${iteration}.md`, text);
   state.seq = transcript.nextSeq();
   state.updatedAt = new Date().toISOString();
@@ -398,6 +565,11 @@ async function cmdAudit(args: string[]): Promise<void> {
   generateReport(runDir);
   console.log(`[vda] audit report: ${join(runDir, `audit-report-${iteration}.md`)}`);
   console.log(`[vda] report.md regenerated`);
+  if (validation.problems.length > 0) {
+    console.error("[vda] AUDIT PROTOCOL VIOLATION — the report is incomplete or malformed:");
+    for (const problem of validation.problems) console.error(`  - ${problem}`);
+    process.exitCode = 1;
+  }
 }
 
 /**
@@ -418,19 +590,28 @@ async function cmdFidelity(args: string[]): Promise<void> {
   const target = resolve(targetRoot);
   const auditor = new ClaudeAuditorRunner({
     model: flags.get("auditor-model") ?? "claude-fable-5",
-    authMode: (flags.get("claude-auth") ?? "subscription") as ClaudeAuthMode,
+    authMode: claudeAuthFlag(flags.get("claude-auth")),
   });
   const wave = flags.get("wave");
   const ticketsFlag = flags.get("tickets");
   const manifestPath = flags.get("manifest");
   const testsRoot = flags.get("tests");
   console.log(`[vda] fidelity audit of ${target} (${wave !== undefined ? `wave ${wave}` : ticketsFlag ? `tickets ${ticketsFlag}` : "all waves"}; fresh context, live Claude session)`);
-  const result = await runFidelityAudit(auditor, target, {
-    ...(wave !== undefined ? { wave } : {}),
-    ...(ticketsFlag ? { tickets: ticketsFlag.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
-    ...(manifestPath !== undefined ? { manifestPath } : {}),
-    ...(testsRoot !== undefined ? { testsRoot } : {}),
-  });
+  let bound;
+  try {
+    bound = await runBoundFidelityAudit(auditor, target, {
+      ...(wave !== undefined ? { wave } : {}),
+      ...(ticketsFlag ? { tickets: ticketsFlag.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+      ...(manifestPath !== undefined ? { manifestPath } : {}),
+      ...(testsRoot !== undefined ? { testsRoot } : {}),
+    });
+  } catch (err) {
+    console.error(`[vda] REFUSED/INVALIDATED: ${(err as Error).message}`);
+    console.error("[vda] no fidelity report or registry evidence was written");
+    process.exitCode = 2;
+    return;
+  }
+  const { result, targetRevision } = bound;
 
   if (result.status === "refused-closure") {
     console.error("[vda] REFUSED: closure is red — fix these before asking for judgment:");
@@ -443,13 +624,18 @@ async function cmdFidelity(args: string[]): Promise<void> {
   const outPath = flags.get("out") ?? join(runsRoot, "fidelity", `${basename(target)}-${stamp}.md`);
   mkdirSync(join(outPath, ".."), { recursive: true });
   writeFileSync(outPath, result.report);
-  recordFidelity(registryPath, target, {
-    at: new Date().toISOString(),
-    scope: result.scope?.label ?? "unknown",
-    status: result.status,
-    findings: result.findings.length,
-    blocking: result.findings.filter((f) => f.tier === "blocking").length,
-  });
+  recordFidelity(
+    registryPath,
+    target,
+    {
+      at: new Date().toISOString(),
+      scope: result.scope?.label ?? "unknown",
+      status: result.status,
+      findings: result.findings.length,
+      blocking: result.findings.filter((f) => f.tier === "blocking").length,
+    },
+    targetRevision,
+  );
   console.log(`[vda] fidelity report: ${outPath}`);
   console.log(`[vda] findings: ${result.findings.length}${result.findings.length > 0 ? ` (${result.findings.map((f) => `${f.id}:${f.tier}`).join(", ")})` : ""}`);
   if (result.violations.length > 0) {
@@ -482,7 +668,9 @@ function cmdRepos(args: string[]): void {
   const reg = loadRegistry(registryPath);
   const staleDaysFlag = flags.get("stale-days");
   const lines = repoStatuses(reg, positional.map((p) => resolve(p)), {
-    ...(staleDaysFlag !== undefined ? { staleDays: Number(staleDaysFlag) } : {}),
+    ...(staleDaysFlag !== undefined
+      ? { staleDays: nonNegativeIntegerFlag(staleDaysFlag, "stale-days") }
+      : {}),
   });
   console.log(renderRepos(lines));
 }

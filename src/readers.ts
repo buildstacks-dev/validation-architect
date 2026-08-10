@@ -1,4 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { join } from "node:path";
+import { buildClaudeReadOnlyQueryOptions } from "./designer.js";
 import { readerPrompt } from "./prompts.js";
 import type { ReaderPersonaId, ReaderRunner } from "./types.js";
 
@@ -28,15 +30,13 @@ export class ClaudeReaderRunner implements ReaderRunner {
   async run(persona: ReaderPersonaId, workspace: string): Promise<string> {
     const q = query({
       prompt: readerPrompt(persona),
-      options: {
-        cwd: workspace,
+      options: buildClaudeReadOnlyQueryOptions({
+        workspace,
+        readRoot: join(workspace, "validation-design"),
         model: this.opts.model,
-        permissionMode: "dontAsk",
-        allowedTools: ["Read", "Grep", "Glob"],
-        settingSources: [],
         maxTurns: 60,
         env: this.env,
-      },
+      }),
     });
     for await (const msg of q as AsyncIterable<Record<string, unknown>>) {
       if (msg["type"] === "result") {

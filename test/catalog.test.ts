@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkCatalogAgreement,
+  creditedFamilyIds,
   expandCellId,
   extractCfTokens,
   generateManifest,
@@ -78,6 +79,15 @@ describe("tokenMatch", () => {
     expect(tokenMatch("CF-SM-APPR", "CF-SM-APPR-L")).toBe("group"); // resolves, no coverage credit
     expect(tokenMatch("CF-B14", "CF-B15")).toBe("none");
     expect(tokenMatch("CF-B1", "CF-B14")).toBe("none"); // no partial-token matches
+  });
+
+  it("credits an exact child without also crediting its collapsed parent", () => {
+    const families = [
+      { id: "CF-B01", section: "Boundary matrix", status: "implementable" as const },
+      { id: "CF-B01-L3", section: "Boundary matrix", status: "implementable" as const },
+    ];
+    expect(creditedFamilyIds("CF-B01-L3", families)).toEqual(["CF-B01-L3"]);
+    expect(creditedFamilyIds("CF-B01-timeout", families)).toEqual(["CF-B01"]);
   });
 });
 
@@ -238,9 +248,64 @@ describe("parseManifest fail-closed validation", () => {
   it("rejects families with invalid status", () => {
     expect(() =>
       parseManifest(
-        `schema: validation-architect/case-catalog/v1\nfamilies:\n  - id: CF-X\n    status: done\ntickets: []\n`,
+        `schema: validation-architect/case-catalog/v1\nfamilies:\n  - id: CF-X\n    section: Journey matrix\n    status: done\ntickets: []\n`,
       ),
     ).toThrow(/invalid status/);
+  });
+
+  it("rejects duplicate ids and incomplete implementable semantics", () => {
+    expect(() =>
+      parseManifest(
+        `schema: validation-architect/case-catalog/v1
+families:
+  - id: CF-X
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: E1
+  - id: CF-X
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: E1
+tickets: []
+`,
+      ),
+    ).toThrow(/duplicate family id/);
+    expect(() =>
+      parseManifest(
+        `schema: validation-architect/case-catalog/v1
+families:
+  - id: CF-X
+    section: Journey matrix
+    status: implementable
+tickets: []
+`,
+      ),
+    ).toThrow(/layers and risk/);
+  });
+
+  it("rejects ticket references to unknown families", () => {
+    expect(() =>
+      parseManifest(
+        `schema: validation-architect/case-catalog/v1
+families:
+  - id: CF-X
+    section: Journey matrix
+    status: implementable
+    layers: "2"
+    oracle: state
+    risk: E1
+tickets:
+  - id: HB-001
+    wave: "0"
+    status: pending
+    families: [CF-Y]
+`,
+      ),
+    ).toThrow(/unknown family CF-Y/);
   });
 });
 
@@ -287,6 +352,21 @@ describe("checkCatalogAgreement (manifest ↔ markdown, disagreement = red)", ()
     const reds = checkCatalogAgreement(swapped, catalogMd);
     expect(reds.some((r) => r.includes("CF-J17-A") && r.includes("blocked-by disagrees"))).toBe(true);
   });
+
+  it("fires when executable oracle, layer, or risk semantics drift", () => {
+    const drifted = {
+      ...manifest,
+      families: manifest.families.map((family) =>
+        family.id === "CF-J01-S"
+          ? { ...family, layers: "6", oracle: "logs", risk: "FLOOR" }
+          : family,
+      ),
+    };
+    const reds = checkCatalogAgreement(drifted, catalogMd);
+    expect(reds.some((red) => red.includes("CF-J01-S") && red.includes("layers disagrees"))).toBe(true);
+    expect(reds.some((red) => red.includes("CF-J01-S") && red.includes("oracle disagrees"))).toBe(true);
+    expect(reds.some((red) => red.includes("CF-J01-S") && red.includes("risk disagrees"))).toBe(true);
+  });
 });
 
 describe("workspaceCatalogProblems (the campaign completion gate)", () => {
@@ -300,8 +380,51 @@ describe("workspaceCatalogProblems (the campaign completion gate)", () => {
   }
 
   it("is clean when manifest and markdown agree", () => {
-    const ws = makeWorkspace({ "case-catalog.md": catalogMd, "case-catalog.yaml": committedManifest });
+    const ws = makeWorkspace({
+      "case-catalog.md": catalogMd,
+      "case-catalog.yaml": committedManifest,
+      "harness-backlog.md": backlogMd,
+    });
     expect(workspaceCatalogProblems(ws)).toEqual([]);
+  });
+
+  it("fails closed when the human backlog is missing", () => {
+    const ws = makeWorkspace({ "case-catalog.md": catalogMd, "case-catalog.yaml": committedManifest });
+    expect(workspaceCatalogProblems(ws).some((problem) => problem.includes("harness-backlog.md is missing"))).toBe(
+      true,
+    );
+  });
+
+  it("detects ticket status and family-ownership drift from the backlog", () => {
+    const drifted = committedManifest.replace(
+      "  - id: HB-014\n    wave: \"1\"\n    status: pending",
+      "  - id: HB-014\n    wave: \"wrong\"\n    status: landed",
+    );
+    const ws = makeWorkspace({
+      "case-catalog.md": catalogMd,
+      "case-catalog.yaml": drifted,
+      "harness-backlog.md": backlogMd,
+    });
+    const problems = workspaceCatalogProblems(ws);
+    expect(problems.some((problem) => problem.includes("ticket HB-014") && problem.includes("status disagrees"))).toBe(
+      true,
+    );
+    expect(problems.some((problem) => problem.includes("ticket HB-014") && problem.includes("wave disagrees"))).toBe(
+      true,
+    );
+  });
+
+  it("fails when an implementable family has no owning backlog ticket or wave", () => {
+    const ws = makeWorkspace({
+      "case-catalog.md": catalogMd,
+      "case-catalog.yaml": committedManifest,
+      "harness-backlog.md": backlogMd.replace("CF-INV-007", "omitted-family"),
+    });
+    expect(
+      workspaceCatalogProblems(ws).some(
+        (problem) => problem.includes("CF-INV-007") && problem.includes("no owning backlog ticket/wave"),
+      ),
+    ).toBe(true);
   });
 
   it("fails closed when the manifest deliverable is missing", () => {
@@ -315,7 +438,7 @@ describe("workspaceCatalogProblems (the campaign completion gate)", () => {
   });
 
   it("reports disagreements", () => {
-    const broken = committedManifest.replace("- id: CF-INV-007\n", "- id: CF-INV-707\n");
+    const broken = committedManifest.replaceAll("CF-INV-007", "CF-INV-707");
     const ws = makeWorkspace({ "case-catalog.md": catalogMd, "case-catalog.yaml": broken });
     const problems = workspaceCatalogProblems(ws);
     expect(problems.some((p) => p.includes("CF-INV-007"))).toBe(true);

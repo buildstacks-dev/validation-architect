@@ -12,8 +12,8 @@ import { runTrace } from "./trace.js";
 
 const USAGE = `usage:
   validation-trace <target-repo> [--manifest <path>] [--tests <path>] [--out <report.md>] [--quiet]
-      Run the three closure checks (forward, backward, status honesty) plus
-      the manifest↔markdown agreement check, and render the trace report.
+      Run catalog/backlog agreement, spec-structure, forward, backward, and
+      status-honesty checks, and render the trace report.
       Exit code: 0 all green, 1 any red, 2 usage/setup error.
 
   validation-trace generate <case-catalog.md> <harness-backlog.md> [--product <name>]
@@ -96,14 +96,17 @@ function cmdCheck(args: string[]): number {
     for (const r of result.reds) console.error(`  - ${r}`);
     return 1;
   }
-  console.error("\n[validation-trace] green — forward, backward, and status-honesty closure hold.");
+  console.error("\n[validation-trace] green — agreement, spec structure, forward, backward, and status-honesty closure hold.");
   return 0;
 }
 
 const [first, ...rest] = process.argv.slice(2);
 if (first === "generate") {
   process.exitCode = cmdGenerate(rest);
-} else if (first === undefined || first === "--help" || first === "-h") {
+} else if (first === "--help" || first === "-h") {
+  console.log(USAGE);
+  process.exitCode = 0;
+} else if (first === undefined) {
   console.error(USAGE);
   process.exitCode = 2;
 } else {

@@ -172,6 +172,9 @@ pnpm vda run lumen-webapp --smoke
 
 pnpm vda list
 pnpm vda resume <runId>       # continue an aborted/crashed/interrupted run
+# legacy target state only: offline, explicit re-anchor on current clean HEAD
+pnpm vda resume <runId> --recover-target-base current
+pnpm vda resume <runId>       # inspect first, then start the live reconciliation
 pnpm vda audit <runId>        # one post-hoc audit iteration of a COMPLETED
                               # run: fresh auditor, no feedback loop; writes
                               # audit-report-N.md, updates report.md
@@ -180,7 +183,8 @@ pnpm vda report <runId>       # regenerate report.md
 # fidelity audit (spends Claude quota, one fresh session): do the citing
 # specs actually falsify their ratified seeds? Scoped per wave / ticket set;
 # REFUSES when validation-trace is red (fix closure before asking judgment);
-# findings only — a report containing a patch is a protocol violation.
+# also refuses a dirty checkout, audits a detached captured HEAD/tree, and
+# invalidates the result if the checkout moves; findings only — no patches.
 pnpm vda fidelity <target-repo> --wave 1
 pnpm vda fidelity <target-repo> --tickets HB-014,HB-015 --out fid.md
 
@@ -193,11 +197,21 @@ pnpm vda repos ~/code/myproduct         # explicit query (UNKNOWN if absent)
 pnpm vda repos --stale-days 7
 
 # deterministic design→implementation closure over a target repo
-# (ships as the `validation-trace` bin; intended for the product repo's CI)
+# from this source checkout
 pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
 pnpm trace generate <case-catalog.md> <harness-backlog.md> \
   [--product name] [--tests-root path] [-o case-catalog.yaml]
+
+# in a product repo: the packed/released package runs compiled JavaScript and
+# has no runtime dependency on tsx or this source checkout
+pnpm add --save-dev --save-exact validation-architect@0.1.0
+pnpm exec validation-trace . \
+  --manifest validation-design/case-catalog.yaml \
+  --tests <tests-root>
 ```
+
+Before a registry release, replace `validation-architect@0.1.0` with the exact
+`.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
 `--designer-model` / `--stakeholder-model` / `--reader-model` ·
@@ -218,11 +232,15 @@ api-key`), the Codex side uses the ChatGPT login from `codex login`
 The product repo is first-class; VDA is a tool invoked against it. Install
 once, then:
 
-1. **First run (greenfield).** `pnpm vda run --target <product-repo>`. Inputs
-   are the repo's real `docs/` and its `rambling.txt` (optional). The
-   campaign runs in a sandboxed workspace under `runs/<runId>/` as usual, but
+1. **First run (greenfield).** `pnpm vda run --target <product-repo>`. The
+   target must be a clean Git checkout with a committed `docs/` tree. VDA
+   pins its HEAD and tree digests, clones that exact revision without a
+   remote under the campaign workspace, and exposes source, configuration,
+   docs, and readable history to the confined designer/auditor. The campaign
+   therefore cannot silently move to a newer checkout while it runs. It runs
+   under `runs/<runId>/` as usual, but
    on completion the durable spec — the whole `validation-design/` corpus —
-   is **delivered to the product repo** as a branch
+   and its `validation-design/enablement/` handoff are **delivered to the product repo** as a branch
    (`validation-design/<runId>`), committed via a temporary worktree so your
    checkout is never touched. Campaign residue (transcript, `state.json`,
    `report.md`) stays VDA-local.
@@ -232,20 +250,44 @@ once, then:
 3. **Iterate (revision).** Re-running `vda run --target` against a repo that
    already carries `validation-design/validation-policy.yaml` auto-detects
    the corpus, mounts it as the baseline, and kicks the designer off in the
-   skill's `harness-revision` mode: diff against the current docs, reopen
-   only affected concepts, surgical edits, retired IDs preserved — never a
-   from-scratch Phase 0. `--fresh` opts out, with a warning that it creates
-   a second, diverging design.
-4. **Agents as callers.** The delivered `agents-md-contribution.md` routes
-   the repo's coding agents to the corpus, the `implement-harness-ticket`
-   skill, and the `validation-trace` CI check — and back into VDA
-   (`harness-revision`) when the structure moves.
+   skill's `harness-revision` mode. Every delivery embeds
+   `source-provenance.json`; the next revision receives the prior/current
+   SHAs, a source/config path summary, and a unified diff, then reopens only
+   affected concepts with surgical edits and retired IDs preserved — never a
+   from-scratch Phase 0. `--fresh` opts out, with a warning that it creates a
+   second, diverging design.
+4. **Install enablement, then use agents as callers.** Follow the delivered
+   `validation-design/enablement/INSTALL.md`: pin this package (which supplies
+   the compiled `validation-trace` bin), install the bundled
+   `implement-harness-ticket` skill in the repo's supported skill location,
+   land the ratified `agents-md-contribution.md`, and review/copy the included
+   CI template. The delivery branch does not silently rewrite a product
+   package manifest, standing agent instructions, or active CI workflow.
+   Those instructions route structural changes back into VDA's
+   `harness-revision` mode. Installing enablement never authorizes a live
+   `L-ACC` campaign.
 
-If delivery fails (target not a git repo, no commits yet), the campaign
-record is still intact — fix the repo and `pnpm vda deliver <runId>`;
+If startup fails because the target is dirty, commit or stash its changes
+before spending live quota. If delivery later fails (for example, the pinned
+commit is unavailable), the campaign record is still intact — fix the repo
+and `pnpm vda deliver <runId>`;
 re-delivery idempotently updates the same branch. Fixture runs (`vda run
 <fixture>`) skip delivery entirely: fixtures exercise the skill surface,
 they are not the production journey.
+
+State files from before immutable target snapshots are never silently bound to
+whatever HEAD happens to be current. If a legacy workspace already contains a
+valid no-remote `target-source/` plus `TARGET-SNAPSHOT.md`, `resume`/`deliver`
+recover that exact identity automatically. Otherwise commit or stash the
+target, then run `pnpm vda resume <runId> --recover-target-base current`. This
+first command is offline: it leaves the old workspace untouched, creates a new
+frozen workspace at current HEAD, preserves the legacy corpus/ramble and prior
+pending turn, removes stale audit/owner final surfaces, resets provider
+sessions plus reader/audit evidence, and reopens even a formerly completed
+run. Inspect it, then run ordinary `pnpm vda resume <runId>` to perform the
+mandatory source-grounding reconciliation. A recovered delivery uses a new
+`validation-design/<runId>-recovered-<sha>` branch rather than rewriting an
+incompatible legacy branch.
 
 ## Fixtures
 
@@ -298,10 +340,16 @@ runs/<runId>/
 | `src/registry.ts` | per-repo fleet ledger + staleness flags behind `vda repos` |
 | `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |
 | `src/conventions.ts` | normative AGENTS.md traceability conventions the designer emits |
+| `src/enablement.ts` · `enablement/` | materialized product-repo handoff: builder skill, compiled-CLI install, CI template, exact conventions |
 | `src/prompts.ts` | kickoffs, persona assembly, reader personas, auditor rubrics |
 | `src/report.ts` | report.md + verdict counting + rubber-stamp & audit-suspect flags |
 | `personas/` | stakeholder persona (grumpy-engineer mandate) |
 | `skill/` | this repo's design + audit skills, plus `implement-harness-ticket` (Enable leg) |
 | `fixtures/` | three synthetic products + the `operon` real-target pilot |
 | `test/` | offline suite (fake adapters, no tokens) |
-| `bin/validation-trace.js` | package bin for the product-agnostic trace CLI |
+| `bin/validation-trace.js` · `tsconfig.build.json` | production package bin and narrow compiled build for the product-agnostic trace CLI |
+
+## License
+
+This repository and its published package are **UNLICENSED**. No open-source
+license or permission grant is implied by package publication.

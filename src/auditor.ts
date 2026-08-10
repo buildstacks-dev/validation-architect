@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { buildClaudeReadOnlyQueryOptions } from "./designer.js";
 import type { AuditorRunner } from "./types.js";
 
 export interface ClaudeAuditorOptions {
@@ -30,17 +31,14 @@ export class ClaudeAuditorRunner implements AuditorRunner {
   async run(prompt: string, workspace: string): Promise<string> {
     const q = query({
       prompt,
-      options: {
-        cwd: workspace,
+      options: buildClaudeReadOnlyQueryOptions({
+        workspace,
         model: this.opts.model,
-        permissionMode: "dontAsk",
-        allowedTools: ["Read", "Grep", "Glob"],
-        settingSources: [],
         // The audit reads a large corpus plus the skill's references; give it
         // more headroom than a reader.
         maxTurns: 200,
         env: this.env,
-      },
+      }),
     });
     for await (const msg of q as AsyncIterable<Record<string, unknown>>) {
       if (msg["type"] === "result") {

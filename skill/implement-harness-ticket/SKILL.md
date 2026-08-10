@@ -1,6 +1,6 @@
 ---
 name: implement-harness-ticket
-description: Teach-first workflow for a product repo's coding agent (Cursor, Codex, Claude Code — vendor-neutral) to implement one harness-backlog ticket end-to-end. Read the HB ticket, resolve its CF family rows in the case catalog, expand each family's ratified enumeration from upstream design artifacts (invariant seeds, boundary failure modes, contract clauses), land red-then-green specs with negative controls at the assigned validation layer, and update traceability in the same change. Case counts come from closure over those enumerations — never invented per ticket. Use when AGENTS.md or the owner routes you to an HB-* ticket, when landing Wave 1+ specs against a ratified validation-design corpus, or when the user asks to "implement HB-014", "land the harness ticket", or "add tests for this catalog row". Complements validation-harness-design (designs the harness) and validation-harness-audit (judges fidelity) — this skill is the builder's playbook for mechanical closure; it does not design new case families or audit whether assertions falsify their seeds.
+description: Vendor-neutral workflow for a product repo's coding agent to implement one harness-backlog ticket end to end. Resolve the HB ticket and its CF rows, expand each family's ratified enumeration from invariants, boundary failure modes, contracts, eval plans, or acceptance artifacts, land red-then-green specs with negative controls at the assigned layer, and update traceability in the same change. Use when routed to an HB-* ticket, landing specs against a ratified validation-design corpus, or asked to implement a catalog row. This is the builder's playbook for mechanical closure; validation-harness-design owns new families and validation-harness-audit judges fidelity.
 ---
 
 # Implement Harness Ticket
@@ -15,7 +15,7 @@ Every ticket implements **closure over ratified design**, not ad-hoc test ideas.
 | --- | --- | --- |
 | **1. Ticket** | `harness-backlog.md` | The `HB-*` entry: acceptance criteria, defended invariants/contracts, assigned validation layer(s), wave, executor. This is scope and done-ness — not the case list. |
 | **2. Family** | `case-catalog.md` + `case-catalog.yaml` | Every `CF-*` ID the ticket owns. Read the markdown row for human intent; treat the manifest row as authoritative for tools (layer, oracle, risk, status, prune/blocked, owning ticket, wave). |
-| **3. Enumeration** | Upstream artifact for that family type | The **ratified seeds** that define case count. Invariant families → seeds/clauses in `invariants.md`. Boundary families → failure modes / honest-fake obligations in `boundary-map.md` and `contracts/`. Journey families → matrix cells in `case-catalog.md` cross-linked to journeys in `system-map.md`. Eval families → scenarios/rubrics in `llm-eval-plan.md`. **Never invent cases** — expand the enumeration; if the catalog says "4 ratified seeds", you land four (or fewer only when a seed is explicitly `BLOCKED:` / deferred with a catalog note). |
+| **3. Enumeration** | Upstream artifact for that family type | The **ratified seeds** that define case count. Invariant families → seeds/clauses in `invariants.md`. Boundary families → failure modes / honest-fake obligations in `boundary-map.md` and `contracts/`. Journey families → matrix cells in `case-catalog.md` cross-linked to journeys in `system-map.md`. Eval families → scenarios/rubrics in `llm-eval-plan.md`. Outcome-acceptance (`L-ACC`) families → realistic scenario briefs, rubric axes, campaign invariants, intermediate-gate behavior, and incomplete/inconclusive terminals in `acceptance/`. **Never invent cases** — expand the enumeration; if the catalog says "4 ratified seeds", you land four (or fewer only when a seed is explicitly `BLOCKED:` / deferred with a catalog note). |
 | **4. Tests** | Product repo test tree | Spec files at the ticket's assigned layer, each binding one or more enumeration items, each with a real negative control. Directory + header conventions below so `validation-trace` stays green. |
 
 **Case-count rule:** the number of implementable checks is the closure of level 3. A ticket that "feels done" with two tests when the enumeration has seven seeds is not done — it is a fidelity gap waiting for audit.
@@ -24,7 +24,7 @@ Every ticket implements **closure over ratified design**, not ad-hoc test ideas.
 
 These apply regardless of product or repo. They are the same discipline the design skill ratified; repeat them here so no ticket bypasses them.
 
-1. **Cheapest falsifying layer.** Land each check at the lowest validation layer that can honestly falsify it (invariant/contract → hermetic system → live sandbox → eval → ops). Do not jump to live or eval because it is easier to write.
+1. **Cheapest falsifying layer.** Land each check at the lowest validation layer that can honestly falsify it (invariant/contract → hermetic system → live sandbox → eval → ops → outcome acceptance). Do not jump to live, eval, or `L-ACC` because it is easier to write. Layer-6 campaign guardrails remain layer-1/2 detectors; only human-rubric axes are layer-6 work.
 2. **Red-then-green negative controls.** Every new detector family proves it can fire before it proves the system passes: seed a violation (mutated fixture, planted defect, double scripted to misbehave), expect red, then fix forward to green. A spec that has only ever been green is an assumption.
 3. **Non-empty walks.** Scanners, sweeps, and property-test generators must assert they found subjects. An empty walk fails — never passes silently.
 4. **Tighten-only.** No ticket weakens a gate, golden set, or oracle to make CI green. Narrowing scope requires a design revision, not a local edit.
@@ -81,6 +81,7 @@ Standard campaign deliverables live under `validation-design/` (path may differ 
 | `contracts/` | Per-boundary clauses and oracles |
 | `system-map.md` | Journeys, components, state ownership |
 | `llm-eval-plan.md` | Eval scenarios, rubrics, thresholds |
+| `acceptance/` | `L-ACC` rubric, realistic scenario briefs, sealed-plant policy, campaign-invariant registry |
 | `validation-policy.yaml` | Gates, layer declarations, tighten-only policy |
 | `risk-allocation.md` | Risk tiers backing catalog rows |
 | `agents-md-contribution.md` | Routing + traceability conventions for coding agents |
@@ -92,17 +93,18 @@ Owner-facing companions (`owner-briefing.md`, `owner-backlog.md`) are non-normat
 1. **Select the ticket.** Start from the `HB-*` entry routed to you. Read acceptance criteria, defended IDs, and layer assignment. If status is already `LANDED`, confirm the human intends rework; otherwise prefer pending tickets.
 2. **Resolve families.** List every `CF-*` on the ticket. For each, read the catalog row and manifest entry. Respect `pruned`, `blocked`, and `BLOCKED:*` remainder legs — implement only implementable rows; do not "helpfully" cover pruned dupes.
 3. **Expand enumerations.** For each family, open the upstream artifact and write down every seed/failure mode/clause you must bind. That list is your case checklist; its length is not negotiable.
-4. **Place at layer.** Use the family's assigned layer(s) from the manifest. Build hermetic doubles per `boundary-map.md` / contracts when layer 2; reserve live/eval for seams the design marks non-fakeable.
+4. **Place at layer.** Use the family's assigned layer(s) from the manifest. Build hermetic doubles per `boundary-map.md` / contracts when layer 2; reserve live/eval for seams the design marks non-fakeable. For `L-ACC`, implement the ratified realistic scenarios and scored axes without translating them into binary assertions; put sealed-answer, producer↔grader independence, preflight, spend cutoff, intermediate-gate persistence, and incomplete/inconclusive behavior in layers 1–2 with negative controls. Never run the live campaign without the ticket's explicit per-campaign human authorization.
 5. **Land red-then-green.** For each detector family: failing seed → green fix. Include negative-control tests in the same spec file where the design expects them.
 6. **Update traceability.** Same change: spec files, directory names, headers, manifest rows if counts/status changed, markdown catalog if human table changed, backlog ticket status (`LANDED` only when every owned implementable family has citing specs).
 7. **Run closure.** Execute `validation-trace` against the repo root (see below). Fix every red before declaring the ticket done. Green closure does not replace fidelity audit — it proves the graph is wired, not that oracles match intent.
 
 ## Verify with `validation-trace`
 
-The architect ships a deterministic, product-agnostic CLI (also exposed as `pnpm trace` in the validation-architect package). Run it from the **product repo** on every harness change; wire it into CI per the campaign's lane config.
+The architect ships a deterministic, product-agnostic CLI in the `validation-architect` package. Install the version pinned by the delivered enablement bundle as a product-repo dev dependency, then run it from the **product repo** on every harness change; wire the included CI template into the repo's own CI per the campaign's lane config.
 
 ```bash
-validation-trace . \
+pnpm add --save-dev --save-exact validation-architect@<pinned-version>
+pnpm exec validation-trace . \
   --manifest validation-design/case-catalog.yaml \
   --tests <tests_root>
 ```

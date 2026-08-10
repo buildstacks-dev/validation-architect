@@ -1,6 +1,6 @@
 ---
 name: validation-harness-design
-description: Teach-first workflow that designs — and redesigns — a validation harness at design time, before code exists on first entry and again whenever the architecture moves. Reconciles user journeys, CLI/API/UI/MCP and event-driven behavior with state ownership and failure domains, then produces a system map, falsifiable invariants, a boundary map, per-boundary contracts, LLM eval plans, six-layer risk allocation, tooling selection, a traced case catalog, and a validation-policy.yaml a later audit can diff against. Use when planning tests or evals for a product, feature, module, or agentic system; defining invariants, boundaries, contracts, or acceptance criteria upfront; deciding which validation layer (invariant/contract, hermetic system, live sandbox, eval, ops hardening, outcome acceptance) a check belongs to; designing evals for LLM calls or agent loops; preparing a safe model swap; building an isolated replacement harness beside an incumbent suite; extending a module harness; revising a harness that no longer fits the architecture; or when the user asks things like "how should I test this", "what evals do I need", or "build a validation harness for module X of product Y". Complements validation-harness-audit — the audit measures an existing harness; this skill designs one that does not exist yet, or redesigns one that no longer fits.
+description: Teach-first workflow for designing or revising a validation harness before implementation. Reconciles journeys and interfaces with state ownership and failure domains, then produces a system map, falsifiable invariants, boundary contracts, LLM eval plans, six-layer risk allocation (including outcome acceptance), tooling, a traced case catalog, and validation-policy.yaml. Use when planning tests/evals for a product, feature, module, or agentic system; defining invariants, boundaries, contracts, or acceptance criteria; placing checks across invariant/contract, hermetic, live, eval, ops, and L-ACC layers; preparing model swaps; designing an isolated replacement harness; or revising a harness after architecture drift. Complements validation-harness-audit, which measures what was built against this design.
 ---
 
 # Validation Harness Design
@@ -18,7 +18,7 @@ Design — and redesign — the validation surface for a product or module **at 
 5. **Guardrails enforce invariants; evals measure quality.** Never let an invariant depend on model goodwill or probabilistic behavior. Invariants get runtime enforcement (fail-closed) plus tests of the *guardrail*; evals measure quality statistically, offline.
 6. **Evals before prompt iteration.** Golden sets are authored and committed before any prompt tuning, or validation is circular. Same discipline for classic code: adversarial cases are derived from invariants before implementation.
 7. **Risk weighting is a human decision.** You propose probability × cost tiers; the human confirms them. Business consequence is not fully encoded in any doc.
-8. **Harness before cases.** The skeleton (one real test per layer through real CI) is the upfront investment; cases accumulate through the four sourcing channels forever after.
+8. **Harness before cases.** The skeleton (one real mechanical detector per active layer through real CI, plus an executable but never implicitly authorized campaign skeleton for layer 6) is the upfront investment; cases accumulate through the four sourcing channels forever after.
 9. **Policy-as-data, fail-closed, tighten-only.** Decisions land in `validation-policy.yaml`, not prose. Missing gates default to blocking-absent findings, never silence. A module policy may narrow an inherited requirement; a module policy that loosens one is a policy violation, not a merge.
 10. **Inherit, never restate.** In module scope, parent invariants and contracts are referenced by ID. Duplicating them into the module's files creates two truths that drift.
 11. **Hard stops are hard.** Scope confirmation (Phase 0), tier confirmation (Phase 1), risk-tier confirmation (Phase 6), tooling selection (Phase 7), and the adversarial review (Phase 8) require explicit human go-ahead. Do not proceed on silence.
@@ -84,7 +84,7 @@ The phases below run inside a standing human↔agent protocol. Its premise: alig
 2. **Agent proposes, human corrects:** boundary map with its honest-fake column, and per-boundary contracts (Phases 3–4).
 3. **Human rambles, agent structures:** invariants and risk weighting (Phases 2 and 6) — the inverted step; see Differentiated elicitation.
 4. **Human confirms the assembled artifact set** — the last heavyweight alignment point.
-5. **Agent alone: walking skeleton** — the honest fakes plus one real test per layer through real CI, *before* mass case implementation (catalog derivation is never deferred — Phase 6).
+5. **Agent alone: walking skeleton** — the honest fakes plus one real detector per mechanical layer through real CI and, when `L-ACC` is active, its campaign manifest/rubric loader/preflight path with negative controls at layers 1–2. The live outcome campaign remains unrun until separately authorized. This lands *before* mass case implementation (catalog derivation is never deferred — Phase 6).
 6. **Agent alone: exhaustive derivation** — the case derivation grammar (Phase 6) applied over the ratified artifacts to matrix closure (every cell traced or risk-pruned by name), each case landing at the cheapest layer that can falsify it (rule 12), every unknown expected outcome returned to the human.
 7. **Human spot-reviews by risk tier** — audit the top-tier paths, smoke-check the rest; never line-by-line.
 
@@ -147,11 +147,11 @@ Before proposing invariants, build and reconcile two views. Read `references/con
 
 Write the result to `system-map.md`. This working map does not replace the architecture document; it makes the derivation surface explicit. Do not proceed from a list of interfaces alone, and do not wait for perfect documentation — validation design is allowed to expose gaps.
 
-Teach the layer taxonomy here — frame and ground beats only, since it is a fixed frame rather than an elicited concept. The tier and deployment shape decide how heavy layers 3–5 must be; the taxonomy gives every later phase its placement vocabulary.
+Teach the layer taxonomy here — frame and ground beats only, since it is a fixed frame rather than an elicited concept. The tier and deployment shape decide how heavy layers 3–6 must be; the taxonomy gives every later phase its placement vocabulary.
 
 Propose a criticality tier on the C0–C4 scale shared with validation-harness-audit, whose `references/criticality-model.md` is the canonical rubric for both skills — **C0** experimental/throwaway, **C1** limited (local or bounded internal use, reversible consequences), **C2** production (customer-facing or persistent production data — money, customer data, reputation), **C3** high-consequence (serious financial, privacy, regulatory, or broad operational harm), **C4** safety/mission-critical — with per-component overrides (a `billing/` module inside a C1 tool is C2 or higher). Cite the evidence behind each. In module scope, the module **inherits the parent tier by default**; any override is stated with justification.
 
-**HARD STOP.** Confirm the reconciled system map and tier. They decide which behaviors and failure modes are in scope, coverage depth per risk tier, how heavy the LLM eval program needs to be, and which layer-5 obligations apply (Phase 6).
+**HARD STOP.** Confirm the reconciled system map and tier. They decide which behaviors and failure modes are in scope, coverage depth per risk tier, how heavy the LLM eval program needs to be, which layer-5 obligations apply, and whether a human-judged work product creates a layer-6 obligation (Phase 6).
 
 ## Phase 2 — Invariants
 
@@ -223,7 +223,7 @@ Build a probability × cost matrix over journeys and modules. Money paths and ir
 |---|---|---|
 | `inner-loop` | what a developer or coding agent runs *before* pushing — the lane that decides whether the harness gets used or routed around | fast subset of 1–2 |
 | `per-commit` | the blocking CI gate | 1–2 |
-| `triggered` | run on an explicit condition (changed adapter, prompt or model change, nightly) | 3–4 |
+| `triggered` | run on an explicit condition (changed adapter, prompt/model change, or an individually authorized outcome campaign) | 3–4; 6 only with per-campaign human authorization |
 | `release` | required before shipping a candidate | 3–4, plus any release-gating obligation |
 | `scheduled` | recurring, calendar- or cadence-driven | 5 |
 
@@ -250,7 +250,7 @@ It also fixes the **layer-6 lane**, which is declared empty with a reason or spe
 
 Spend is bounded per campaign by an explicit human authorization, not by a standing global ceiling, and exhaustion of that bound is an `incomplete` result rather than a truncated pass.
 
-**HARD STOP.** The human confirms the weighting and the layer-5 obligations (rule 7).
+**HARD STOP.** The human confirms the weighting and layer-5 obligations; when `L-ACC` is active, the human also ratifies the rubric, campaign authorization shape, and release relationship (rule 7).
 
 ### Case derivation grammar
 
@@ -266,6 +266,7 @@ After risk confirmation, derive case families mechanically rather than brainstor
 | Interface adapter | conformance to the shared underlying behavior, including error translation |
 | LLM call site | deterministic envelope, statistical quality, trajectory, and judge calibration as applicable |
 | Operational obligation | load at the contention point, soak, resource growth, clock skew, abuse, and recovery |
+| Outcome-acceptance scenario | realistic-input variants, every ratified rubric axis, intermediate-gate stop, sealed-plant and independence guardrails, and every incomplete/inconclusive terminal |
 
 Rows come from the stimulus taxonomy (Division of labor): user events and time events enumerate the journeys; adversity is applied at every flow step through the Phase-3 failure-mode checklist, never enumerated as rows of its own. Risk prunes this matrix; do not exercise the full Cartesian product. Once the source artifacts and expected outcomes are ratified, let the agent generate and maintain traced cases with high autonomy (Division of labor steps 5–6). Return any unknown expected outcome to the human.
 
@@ -291,7 +292,7 @@ The `Invariant → every credible violation path` row is the one that most often
 
 ## Phase 7 — Tooling selection
 
-Present a tooling menu per layer — invariant/contract runner, hermetic fixture strategy, live-sandbox targets, eval framework, ops-hardening tools, CI host — with the tradeoffs that actually differ, not a feature matrix. Menu and selection heuristics: `references/tooling-menu.md`.
+Present a tooling menu per layer — invariant/contract runner, hermetic fixture strategy, live-sandbox targets, eval framework, ops-hardening tools, outcome-acceptance campaign runner/instrument, CI host — with the tradeoffs that actually differ, not a feature matrix. Menu and selection heuristics: `references/tooling-menu.md`.
 
 In module scope, the parent's existing stack is the default and the burden of proof is on divergence: a module introducing a second runner or a second eval framework must justify it, because it doubles the CI surface a future audit has to reason about.
 
@@ -311,7 +312,11 @@ Produce, as Git-trackable files:
 5b. `acceptance/` — only when layer 6 is non-empty: the ratified rubric (axes, scoring, the intermediate gate's criteria, and explicitly whether any threshold exists), the scenario briefs in their realistic-input form, the sealed-plant policy, and the campaign-invariant registry kept separate from the product invariants. The rubric is a **human artifact**: propose axes, never ratify them.
 6. `validation-policy.yaml` — tier map, the six layer lanes with any empty lane declared and reasoned, `module_map:` with a status per module (Phase 0), per-family execution lanes with the named inner-loop command (Phase 6), per-class gate requirements (blocking/advisory/waived), thresholds, golden-set and corpus locations, CI cost tiering, layer-5 obligations, the layer-6 lane or its declared-empty reason, tooling selection, and any coexistence/migration constraints. Layout and inheritance semantics: `references/policy-and-inheritance.md`. **This file is the contract a future audit diffs conformance against.**
 7. `case-catalog.md` + `case-catalog.yaml` — traced case families derived from journeys, states, invariants, boundaries, contracts, interfaces, model sites, and operational obligations; include risk, layer, oracle, and source IDs. Derive both to matrix closure now (Phase 6): every cell traced or risk-pruned by name; the YAML is the machine-readable companion (schema `validation-architect/case-catalog/v1`) and MUST agree with the markdown. Only the *executable authoring* of cases waits for the walking skeleton's fixtures — catalog derivation never does.
+When `L-ACC` is active, both catalog surfaces also trace every realistic scenario, scored rubric axis, campaign-invariant guardrail, intermediate-gate stop, and incomplete/inconclusive terminal back to `acceptance/`.
+
 8. `harness-backlog.md` — ticket-shaped, starting with the walking skeleton: a trivial end-to-end flow through real CI carrying one layer-1 invariant/contract test, one layer-2 hermetic composition test (including one boundary failure mode), one journey test (layer 2 by default; a layer-3 sandbox smoke where an unfakeable seam exists), and one LLM contract test if applicable — each skeleton test paired with its negative control (rule 16), plus the harness's own self-tests (rule 17) and, under `parallel-greenfield`, the additive CI lane over the isolated root. The skeleton — including the honest fakes it exercises — lands *before* mass case implementation (Division of labor step 5): cases *implemented* before the fixtures exist get written to what is convenient to test rather than what the contracts require; catalog *derivation* is never deferred (Phase 6). **Expansion gates are scoped per layer:** a layer's implementation tickets are gated only on that layer's own skeleton and fixtures — a missing live target, an unpassed eval threshold, or unauthorized CI parks only its own layer's tickets, never layer-1/2 implementation. A gate that references conditions outside the layer it gates is a design defect. Every ticket has acceptance criteria, the invariant/contract it defends, its layer, and a named executor (human, standing coding agent, or scheduled build campaign) — a backlog without owners is a designed stall. Under `parallel-greenfield`, include migration equivalence, rollback, and explicit cutover tickets; none execute implicitly.
+When layer 6 is active, the backlog's walking skeleton also lands the rubric/scenario loaders, sealed-answer and grader-independence preflights, intermediate-gate persistence, and incomplete/inconclusive terminals. Their mechanical detectors live at layers 1–2; the live scored campaign remains triggered-only and requires explicit per-campaign authorization.
+
 9. `elicitation-log.md` — the human's raw thinking per concept, with what was dropped and why.
 9b. `harness-state.yaml` — machine-written run state, never human-ratified and never mixed into the policy: the source revision each artifact was derived against, per-artifact staleness, substrate inventories with digests, ratification records with dates, and module-map statuses. This is what makes the next run incremental; without it every re-entry is a full re-derivation.
 10. `agents-md-contribution.md` — a proposed section for the repo's agent-instructions file (`AGENTS.md`, `CLAUDE.md`, or equivalent), ready to land verbatim. The harness is operated by whatever coding agent works in the repo next, and that agent reads the standing instructions — not this skill's artifacts — unless the instructions route it there. The section states: where the design artifacts live (mirror the policy `artifacts:` block); that a feature change starts from the journey's acceptance criteria and the affected boundary's contract, and deposits its cases per the case derivation grammar at the cheapest layer that can falsify them, updating `case-catalog.md` *and* `case-catalog.yaml` traceability; that every bug fix deposits its detector in the same change; that gates and golden sets are never weakened to make a change pass, and the policy is tighten-only; that the normative **traceability conventions** the product repo's CI enforces via `validation-trace` are listed (test directories named by family ID; spec headers cite `CF-…` + owning `HB-…`; every implementable family owns ≥1 citing spec or a declared pending wave; implement tickets via the `implement-harness-ticket` skill; regenerate `owner-backlog.md` when the backlog changes); and that a structural mismatch (boundary map contradicts the architecture, mis-placed lane) means re-entering this skill in `harness-revision` mode, not piling cases onto a wrong shape. Under `parallel-greenfield`, it also names the isolated root and the protected incumbent paths. If the repo's agent-instructions file is human-ratified, present the section as a proposal with rationale — never silently rewrite it.
@@ -322,7 +327,7 @@ Produce, as Git-trackable files:
 
 ## Ongoing case sourcing (for the life of the product)
 
-Three channels, recorded in the policy file as standing obligations:
+Four channels, recorded in the policy file as standing obligations:
 
 1. **Acceptance criteria** as each feature lands.
 2. **Adversarial derivation** from invariants — the Phase-6 violation-surface walk, re-run against the source as the system evolves. Not a recall exercise.
@@ -331,9 +336,13 @@ Three channels, recorded in the policy file as standing obligations:
 
 The four channels only fire if the coding agents working in the repo are routed to these artifacts — that routing is the `agents-md-contribution.md` deliverable (Phase 8), and it must be kept current as artifact locations move. Apply the case derivation grammar whenever a journey, state machine, interface, boundary, or contract changes. The evidence-deposit layer rule applies across all four channels: any deterministic defect surfaced by a layer-3 run or a layer-4 campaign deposits its layer-1/2 detector in the same change. Case sourcing handles growth; when the *structure* no longer fits — the system map or boundary map contradicts the architecture, a lane is mis-placed — re-enter this skill in `harness-revision` mode rather than piling cases onto a wrong shape.
 
+The evidence-deposit rule also applies to a deterministic defect exposed during a layer-6 campaign: its mechanical detector lands at layer 1/2 in the same change. A poor rubric score is not itself deterministic and instead grows the realistic scenario/rubric corpus through human ratification.
+
 ## Relationship to validation-harness-audit
 
 Design → build → audit → revise is one loop. This skill produces the durable spec — `validation-policy.yaml`, invariants, boundary map, contracts, golden sets. validation-harness-audit later measures whether the built system conforms and whether the gates actually catch defects (its `assess` and `verify` modes), remediates approved gaps (`harden` mode), and issues a scoped, evidence-backed release verdict against a stated assurance target. The two skills share the C0–C4 criticality scale — the audit's `references/criticality-model.md` is the canonical rubric — and the layer lanes in the policy file are the audit's diff surface: an undeclared-absent lane is a finding, a declared-empty lane is a decision. The audit routes findings by kind: **case-level** gaps (a missing test, a weak oracle, a skipped gate) land in its harden backlog with traceability to the claim they defend; **structural** findings (the boundary map contradicts the architecture, a mis-placed lane, invariants that no longer describe the system) re-enter this skill in `harness-revision` mode. Never let the audit's corpus or holdouts be rewritten to match fixes; never let this skill's golden sets be authored after prompt tuning.
+
+The durable design contract consumed by the audit includes `acceptance/`, both case-catalog surfaces, `harness-state.yaml`, and the implementation backlog in addition to the policy, invariants, boundary map, contracts, and golden sets.
 
 ## Reference files
 

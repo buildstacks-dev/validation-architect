@@ -1,4 +1,4 @@
-// CF-W01-S — widget lifecycle reaches every ratified state (HB-001).
+// CF-W01-S — widget lifecycle reaches every ratified state (HB-001; Journey matrix).
 // This spec is honest: it plants the transitions and asserts on outcomes.
 describe("CF-W01-S", () => {
   it("draft -> active on publish", () => {});

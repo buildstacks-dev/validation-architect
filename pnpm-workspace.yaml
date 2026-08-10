@@ -7,6 +7,11 @@
 packages:
   - '.'
 
+# Commands never mutate the shared install implicitly. `pnpm install` is an
+# explicit prerequisite; run/exec must remain read-only with respect to
+# node_modules (also keeps packaging smokes isolated from the dev install).
+verifyDepsBeforeRun: false
+
 # esbuild ships a postinstall that fetches its platform binary; pnpm blocks build
 # scripts by default. `allowBuilds` is the pnpm >= 11 spelling (pnpm 10 called it
 # `onlyBuiltDependencies`), and pnpm rewrites this block with a placeholder when a

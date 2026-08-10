@@ -30,6 +30,15 @@ export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "gree
 - The ratified product and architecture documents are in ./docs/ — they are the source of product truth. ./validation-design/ carries the prior ratified design: it is the baseline under revision, never a blank slate.`
       : `- Scope mode: product. Target: production ${fixture.displayName}.
 - The ratified product and architecture documents are in ./docs/ — they are the source of product truth. There is no incumbent test suite; this is a greenfield design (no coexistence posture needed).`;
+  const sourceEvidenceBullet = `- If ./TARGET-SNAPSHOT.md is present, this is a target-repo campaign. Read it before deriving anything, then inspect the immutable committed source/config/history under ./target-source/ as evidence alongside ./docs/. Treat ./target-source/ as strictly read-only and write only beneath ./validation-design/.${
+    mode === "revision"
+      ? " Also read ./TARGET-DIFF.md and its ./TARGET-DIFF.patch: they name the prior/current revisions and show the source/config delta; use that evidence to decide which concepts must reopen."
+      : ""
+  }`;
+  const beginInstruction =
+    mode === "revision"
+      ? "Begin now: read the skill, ./TARGET-SNAPSHOT.md, ./TARGET-DIFF.md, ./TARGET-DIFF.patch, ./target-source/, and ./docs/. Then enter the harness-revision workflow with your scope declaration and module map proposal for the stakeholder."
+      : "Begin now: read the skill. If ./TARGET-SNAPSHOT.md is present, read it and inspect ./target-source/ plus ./docs/ before deriving scope; otherwise read ./docs/. Then open Phase 0 with your scope declaration and module map proposal for the stakeholder.";
   return `You are the Designer in a fully autonomous validation-harness design campaign for the product "${fixture.displayName}".
 
 Use the validation-harness-design skill located at:
@@ -41,6 +50,7 @@ ${workflowScope}
 ## Campaign parameters
 
 ${scopeBullet}
+${sourceEvidenceBullet}
 - The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md, owner-briefing.md, owner-backlog.md).
 - Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is specified in harness-backlog.md, not built. Catalog derivation is design work, not implementation: case-catalog.md must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
 
@@ -83,7 +93,7 @@ Because no live human ratified anything, finish by writing validation-design/rat
 
 Teach-first per the skill — the frames genuinely improve the stakeholder's input. Keep beat-1/beat-2 tight (the stakeholder reads fluently), and let elicitation carry the weight. Be thorough but do not gold-plate: this campaign is itself budget-bounded.
 
-Begin now: read the skill, read ./docs/, then open Phase 0 with your scope declaration and module map proposal for the stakeholder.`;
+${beginInstruction}`;
 }
 
 export function stakeholderKickoff(repoRoot: string, fixture: FixtureInfo): string {
@@ -120,11 +130,17 @@ export function rambleRefreshNote(): string {
 `;
 }
 
-export function readerReportMessage(reports: Array<{ persona: ReaderPersonaId; text: string }>): string {
+export function readerReportMessage(
+  reports: Array<{ persona: ReaderPersonaId; text: string }>,
+  finalOwnerReview = false,
+): string {
   const sections = reports
     .map((r) => `## Reader: ${r.persona}\n\n${r.text.trim()}`)
     .join("\n\n---\n\n");
-  return `[Environment: reader test complete. Three fresh-context readers examined ONLY ./validation-design/ (no product docs, no rambling, no conversation history). Their unedited reports follow. Treat their confusions and gaps as Phase 8 findings: revise the artifacts surgically with inline changelogs, then present the final confirmation gate to the stakeholder.]
+  const instruction = finalOwnerReview
+    ? `This is the mandatory post-audit review of the final owner-facing corpus. Resolve substantive findings surgically, including owner-document defects. Any corpus edit invalidates this review and the environment will run all three readers again. When no edits remain, emit <<CAMPAIGN-COMPLETE>> without changing the corpus.`
+    : `Treat their confusions and gaps as Phase 8 findings: revise the artifacts surgically with inline changelogs, then present the final confirmation gate to the stakeholder.`;
+  return `[Environment: reader test complete. Three fresh-context readers examined ONLY ./validation-design/ (no product docs, no rambling, no conversation history). Their unedited reports follow. ${instruction}]
 
 ${sections}`;
 }
@@ -144,7 +160,7 @@ Judge from that file alone: Does it route you to the contracts you must honor an
 export function readerPrompt(persona: ReaderPersonaId): string {
   return `${READER_PERSONAS[persona]}
 
-Rules: Read ONLY within ./validation-design/ — do not open ./docs/, ./rambling.txt, or anything else; the point of this exercise is what the artifacts alone can support. Do not modify anything.
+Rules: Read ONLY within ./validation-design/ — do not open ./docs/, ./rambling.txt, or anything else; the point of this exercise is what the artifacts alone can support. Do not modify anything. For every Grep or Glob call, set its path explicitly to ./validation-design/; pathless workspace searches are denied.
 
 Output: a numbered list of concrete findings, each with severity (blocking / significant / minor), the artifact file it concerns, and the specific gap or confusion. If the artifacts genuinely support your role, say so explicitly and list what made them sufficient. No preamble.`;
 }
@@ -161,20 +177,22 @@ AUD-${iteration}01 (blocking) — <artifact file> — <the specific claim or def
   - significant: a conformance gap that weakens the design's evidence chain but does not invalidate an artifact.
   - minor: everything else worth recording, including any structure/style observation.
 - Below each header, give concrete evidence: quote the offending passage (with file path) and state precisely why it fails the rubric. A finding without quotable evidence does not belong in the report.
+- If there are zero findings, write "No findings." on its own line. The environment fails closed unless a zero-finding result is explicit.
 - End with a "What I checked" section listing the artifacts read and the rubric points applied to each — mandatory even if you found nothing. Zero findings on a large ratified corpus is possible but suspicious; never manufacture findings to avoid it, and never suppress real ones to look agreeable.`;
 
 const AUDIT_GROUND_RULES = `## Ground rules (hard)
 
-1. Read-only, workspace-only. Your world is ./docs/ (ratified product truth), ./rambling.txt (the human's unratified pre-session thinking; may be absent), ./validation-design/ (the corpus under audit), and the vendored skills under ./.claude/skills/. Do not modify anything; do not look for a campaign transcript or conversation history — you have none on purpose.
+1. Read-only, workspace-only. Your world is ./docs/ (ratified product truth), ./rambling.txt (the human's unratified pre-session thinking; may be absent), ./validation-design/ (the corpus under audit), and the vendored skills under ./.claude/skills/. On target runs, ./TARGET-SNAPSHOT.md, optional ./TARGET-DIFF.md, and immutable ./target-source/ are also read-only source/config/history evidence: use them to verify design claims against the product revision. Do not modify anything; do not look for a campaign transcript or conversation history — you have none on purpose.
 2. NEVER relitigate ratified decisions. Decision entries (D-xxx or equivalent), gate outcomes the stakeholder confirmed, and owner calls recorded with provenance are FACTS to audit against, not positions to reopen. If you would have decided differently, that is out of scope — audit whether the artifacts conform to what WAS decided.
 3. NEVER audit taste. Structure, phrasing, and formatting preferences are minor tier at most, and only when they would genuinely mislead a reader. Your value is conformance and consistency, not style review.
 4. Recorded open findings are not defects. The corpus's own findings register (F-xxx or equivalent) declaring something unknown is the discipline working; flag only claims that CONTRADICT the register (e.g. an artifact asserting what a finding says is unknown).`;
 
-export function auditorPrompt(iteration: number): string {
+export function auditorPrompt(iteration: number, retryProblems: string[] = []): string {
   // Iterations 1 and 2 are the in-campaign loop; 3+ are post-hoc standalone
   // audits and reuse the full first-pass rubric under a fresh ID range.
-  if (iteration !== 2) return firstPassAuditorPrompt(iteration);
-  return verificationAuditorPrompt();
+  const base = iteration !== 2 ? firstPassAuditorPrompt(iteration) : verificationAuditorPrompt();
+  if (retryProblems.length === 0) return base;
+  return `${base}\n\n## Environment retry notice\n\nYour previous response was rejected and was NOT accepted as an audit report:\n${retryProblems.map((problem) => `- ${problem}`).join("\n")}\nReturn the entire report again in the strict format. Do not return a progress note or apology.`;
 }
 
 function firstPassAuditorPrompt(iteration: number): string {
@@ -186,6 +204,19 @@ A validation-harness design campaign has completed in this workspace. The corpus
 
 Read that file now, then read its references/harness-policy-conformance.md. Apply the skill in its design-conformance capacity: no harness has been built yet, so the audited object is the design corpus itself — its conformance to its own declared policy and its internal consistency — NOT an implemented test suite. Skip anything in the skill that requires running code or inspecting CI; none exists.
 
+Before you open, list, or grep anything under ./validation-design/, run the
+skill's bounded Phase 0 blind derivation. When ./TARGET-SNAPSHOT.md is present,
+read that snapshot record, ./docs/, and the immutable source/config/history in
+./target-source/ (plus ./TARGET-DIFF.md and ./TARGET-DIFF.patch in revision campaigns); derive two or
+three non-prunable floor properties and their source-to-sink substrate without
+using corpus IDs or enumerations. Only after recording that blind result may
+you unblind, read ./validation-design/, and diff the derived surface against
+the ratified claims. On fixture workspaces without target source, state that
+limitation and use the available ./docs/ evidence rather than pretending a
+source walk occurred.
+
+Ignore ./validation-design/audit/ entirely in a first-pass audit. It contains orchestrator records from earlier/resumed passes, not design evidence, and must not compromise your fresh-context judgment.
+
 ## What to measure
 
 - Falsifiability of invariants: every non-retired invariant states an oracle that could actually fail; an invariant enforceable only by goodwill is a finding.
@@ -193,13 +224,14 @@ Read that file now, then read its references/harness-policy-conformance.md. Appl
 - Policy discipline: validation-policy.yaml is fail-closed (gates default blocking, absences declared) and tighten-only (no module loosens an inherited requirement); every lane is active with content or declared empty WITH a reason — silent absence is a finding.
 - Layer placement: each case sits at the cheapest layer that can falsify it (the skill's cheapest-layer rule); an expensive-layer case a cheaper layer could falsify is a placement finding.
 - Provenance integrity: spot-check [rambling] citations against ./rambling.txt — a [rambling] label whose quoted passage does not exist there is a blocking finding; [simulated] entries must be flagged for human ratification, never laundered into [doc]; [stated] must not appear anywhere in this corpus.
+- Source conformance: when TARGET-SNAPSHOT.md is present, spot-check architectural and interface claims against ./target-source/ and use TARGET-DIFF.md in revision campaigns to confirm changed source/config was either incorporated or explicitly left as a finding.
 - Internal consistency: revision headers vs changelogs, counts vs registers, cross-references that resolve, the ratification package's statistics matching the artifacts.
 
 ${AUDIT_GROUND_RULES}
 
 ${AUDIT_OUTPUT_FORMAT(iteration)}
 
-Begin: read the skill, then the corpus, then write the report. No preamble in the final answer — the report only.`;
+Begin: read the skill and conformance reference; perform the blind source/docs derivation above; only then unblind and read the corpus before writing the report. No preamble in the final answer — the report only.`;
 }
 
 // Iteration 2's scope is deliberately narrow: verify round-1 dispositions and
@@ -217,6 +249,7 @@ A first audit iteration already ran; the designer then applied fixes and recorde
 - ./validation-design/audit/audit-report-1.md — the round-1 audit report.
 - ./validation-design/audit/audit-1-dispositions.md — the disposition record (fixed / disputed / deferred per finding).
 - ./docs/ and ./rambling.txt — ratified product truth and the human's unratified thinking, for evidence checks.
+- ./TARGET-SNAPSHOT.md, optional ./TARGET-DIFF.md, and ./target-source/ when present — immutable target revision evidence for source-conformance checks.
 - ./.claude/skills/validation-harness-audit/SKILL.md — the audit skill; consult it for rubric definitions as needed.
 
 ## Your scope — STRICT, and deliberately narrow so this loop converges
@@ -346,12 +379,46 @@ export function readerTestRequiredMessage(): string {
   return `[Environment: CAMPAIGN-COMPLETE rejected — the Phase 8 reader test has not run. The adversarial review requires fresh-context readers who see only the artifacts. Emit <<REQUEST-READER-TEST>> on its own line now; after you fold the readers' findings into the artifacts and the stakeholder confirms the final gate, emit <<CAMPAIGN-COMPLETE>> again.]`;
 }
 
+export function corpusGateRequiredMessage(problems: string[]): string {
+  return `[Environment: the deterministic corpus gate failed, so fresh readers and the independent auditor cannot run yet. Correct every problem below, then emit <<REQUEST-READER-TEST>> so the exact corrected corpus is reviewed. Do not emit CAMPAIGN-COMPLETE.
+
+${problems.map((problem) => `- ${problem}`).join("\n")}]`;
+}
+
+export function readerRereviewRequiredMessage(): string {
+  return `[Environment: the validation-design corpus changed after the most recent fresh-reader pass. That review is now stale. Emit <<REQUEST-READER-TEST>> without making further edits; completion and audit remain blocked until the current corpus has been reviewed.]`;
+}
+
+export function auditWindowRequiredMessage(
+  missing: string[],
+  unconfirmed: string[],
+  unarbitrated: string[],
+): string {
+  const problems = [
+    ...(missing.length > 0 ? [`findings without a parsed DISPOSITION line: ${missing.join(", ")}`] : []),
+    ...(unconfirmed.length > 0
+      ? [`dispositions without persisted stakeholder CONFIRMED evidence: ${unconfirmed.join(", ")}`]
+      : []),
+    ...(unarbitrated.length > 0
+      ? [`disputed findings without persisted stakeholder CONFIRMED arbitration: ${unarbitrated.join(", ")}`]
+      : []),
+  ];
+  return `[Environment: the audit feedback window cannot close yet. ${problems.join("; ")}. Present any disputes to the stakeholder and obtain a reasoned CONFIRMED ruling, then emit <<CAMPAIGN-COMPLETE>> again. The 12-exchange convergence cap still applies.]`;
+}
+
+export function auditedCoreChangedMessage(): string {
+  return `[Environment: the audited core corpus changed after the terminal independent auditor pass. Completion is fail-closed: the catalog, backlog, policy, contracts, invariants, maps, eval plan, golden sets, and other normative design artifacts are now frozen because no third audit iteration is allowed. Revert every post-audit core edit to the version the auditor reviewed. You may still update only validation-design/ratification-package.md, owner-briefing.md, and owner-backlog.md. Then repeat the pending protocol marker. Repeated attempts to deliver an unaudited core abort the run.]`;
+}
+
 export function auditSectionRequiredMessage(): string {
   return `[Environment: CAMPAIGN-COMPLETE rejected — validation-design/ratification-package.md does not yet contain an "Audit" heading. Write the Audit section now (verdict, every finding by tier with its disposition, unresolved disputes and deferrals for the human), then emit <<CAMPAIGN-COMPLETE>> again.]`;
 }
 
-export function catalogAgreementRequiredMessage(problems: string[]): string {
-  return `[Environment: CAMPAIGN-COMPLETE rejected — the case-catalog manifest does not agree with case-catalog.md (or is missing/unparseable). Fix the disagreement, then emit <<CAMPAIGN-COMPLETE>> again. Findings:
+export function catalogAgreementRequiredMessage(
+  problems: string[],
+  nextMarker: "REQUEST-READER-TEST" | "CAMPAIGN-COMPLETE" = "CAMPAIGN-COMPLETE",
+): string {
+  return `[Environment: completion rejected — both case-catalog.md and case-catalog.yaml are mandatory and must agree. Fix every problem, then emit <<${nextMarker}>>. Findings:
 
 ${problems.map((p) => `- ${p}`).join("\n")}]`;
 }
@@ -386,8 +453,13 @@ One consequence-language paragraph per wave and per HB ticket: which promise the
 When both files exist, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment rejects completion until they do.]`;
 }
 
-export function ownerDocsRequiredMessage(missing: string[]): string {
-  return `[Environment: CAMPAIGN-COMPLETE rejected — owner-facing document(s) still missing: ${missing.join(", ")}. Write them per the previous instruction (owner-briefing.md + owner-backlog.md under validation-design/), then emit <<CAMPAIGN-COMPLETE>> again.]`;
+export function ownerDocsRequiredMessage(
+  problems: string[],
+  nextMarker: "REQUEST-READER-TEST" | "CAMPAIGN-COMPLETE" = "CAMPAIGN-COMPLETE",
+): string {
+  return `[Environment: completion rejected — the owner-facing documents are missing, stale, or structurally incomplete. Correct owner-briefing.md and owner-backlog.md per the owner-document contract, then emit <<${nextMarker}>>. Problems:
+
+${problems.map((problem) => `- ${problem}`).join("\n")}]`;
 }
 
 export function designerEmptyTurnNudge(): string {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+Completes the six-layer contract introduced in 0.6.0 across every load-bearing consumer.
+
+- Propagates `L-ACC` through the concept primer, question bank, tooling menu, LLM judge-calibration guidance, policy example, derivation grammar, walking-skeleton/backlog guidance, durable artifact lists, and ongoing evidence-deposit rule.
+- Adds `acceptance/` to the builder's enumeration chain and makes layer-6 placement explicit: scored rubric axes stay in outcome acceptance, while campaign guardrails and negative controls stay at layers 1–2 and the grader is calibrated at layer 4.
+- Keeps the design/audit contract pair versioned together with audit 0.6.1.
+
 ## 0.6.0
 
 Derived from a blind-derivation experiment against a brownfield product (Cormidia, 2026-08-09): the same invariants were re-derived from source by an agent with no access to the ratified answer, and the results were verified against the code. Two invariants produced an order of magnitude more falsification surface than their ratified seed lists, including live holes in a non-prunable invariant. Every change below traces to something that experiment surfaced.
