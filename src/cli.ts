@@ -243,12 +243,20 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
   // Runs started before the audit stage existed lack the vendored audit skill
   // in their workspace; backfill so resume enters the audit loop cleanly.
   ensureAuditSkill(repoRoot, state.workspace);
+  const transcript = new Transcript(runDir, state.seq);
   const designer = new ClaudeDesigner({
     workspace: state.workspace,
     model: state.config.designerModel,
     authMode: state.config.claudeAuth,
     maxTurnsPerSend: state.config.designerMaxTurns,
     resumeSessionId: state.designerSessionId,
+    // A denied tool call must be visible in the durable record, not only in
+    // the model-facing tool error.
+    onDenial: (denial) =>
+      transcript.note(
+        "orchestrator",
+        `designer tool call denied: ${denial.tool}${denial.attempted ? ` [${denial.attempted}]` : ""} — ${denial.reason}`,
+      ),
   });
   const stakeholder = new CodexStakeholder({
     workspace: state.workspace,
@@ -264,7 +272,6 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
     model: state.config.auditorModel ?? state.config.designerModel,
     authMode: state.config.claudeAuth,
   });
-  const transcript = new Transcript(runDir, state.seq);
   const ramble = new RambleWatcher(ramblePath(state.workspace), state.rambleMtimeMs);
 
   const final = await runCampaign(
