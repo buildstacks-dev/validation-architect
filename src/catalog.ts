@@ -487,7 +487,9 @@ export function parseManifest(text: string): CaseCatalogManifest {
     familyIds.add(f.id);
     if (!f.section || typeof f.section !== "string") throw new Error(`family ${f.id} has no section`);
     if (!["implementable", "pruned", "blocked"].includes(f.status as string)) {
-      throw new Error(`family ${f.id} has invalid status "${String(f.status)}"`);
+      throw new Error(
+        `family ${f.id} has invalid status "${String(f.status)}" — every family requires an explicit status: "implementable" (normal covered family), "pruned" (with prune token), or "blocked" (with blocked_by)`,
+      );
     }
     if (f.status === "implementable" && (!f.layers || !f.risk)) {
       throw new Error(`implementable family ${f.id} must declare layers and risk`);
@@ -503,7 +505,7 @@ export function parseManifest(text: string): CaseCatalogManifest {
     ticketIds.add(t.id);
     if (!t.wave || typeof t.wave !== "string") throw new Error(`ticket ${t.id} has no wave`);
     if (!["pending", "landed"].includes(t.status as string)) {
-      throw new Error(`ticket ${t.id} has invalid status "${String(t.status)}"`);
+      throw new Error(`ticket ${t.id} has invalid status "${String(t.status)}" — valid: "pending" | "landed"`);
     }
     if (!Array.isArray(t.families)) throw new Error(`ticket ${t.id} has no families list`);
     for (const id of t.families) {
@@ -551,9 +553,15 @@ export function checkCatalogAgreement(manifest: CaseCatalogManifest, catalogMd: 
     const b = [...(md.blocked_remainder ?? [])].sort().join(",");
     if (a !== b) out.push(`family ${id}: blocked remainder disagrees (manifest "${a}", markdown "${b}")`);
 
+    // YAML auto-typing can hand us arrays/numbers/booleans where the schema
+    // means strings (e.g. `layers: ["1", CI]`). Coerce to a canonical string
+    // so the mismatch surfaces as a disagreement finding, never a TypeError
+    // that kills the campaign process mid-gate.
+    const asComparableString = (value: unknown): string =>
+      Array.isArray(value) ? value.map((entry) => String(entry)).join(",") : String(value ?? "");
     const compare = (field: "section" | "layers" | "oracle" | "risk" | "reason") => {
-      const manifestValue = (mf[field] ?? "").trim();
-      const markdownValue = (md[field] ?? "").trim();
+      const manifestValue = asComparableString(mf[field]).trim();
+      const markdownValue = asComparableString(md[field]).trim();
       if (manifestValue !== markdownValue) {
         out.push(
           `family ${id}: ${field} disagrees (manifest "${manifestValue}", markdown "${markdownValue}")`,

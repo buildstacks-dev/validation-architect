@@ -380,9 +380,53 @@ export function readerTestRequiredMessage(): string {
 }
 
 export function corpusGateRequiredMessage(problems: string[]): string {
+  // The manifest parser fails closed on the FIRST structural error, so a
+  // designer discovering the schema one rejection at a time can exhaust the
+  // gate's retry budget (observed: cormidia-rev1-20260810 aborted twice this
+  // way). State the whole required shape up front instead.
+  const schemaReference = problems.some((p) => p.includes("case-catalog.yaml"))
+    ? `
+
+Authoritative case-catalog.yaml shape (validation-architect/case-catalog/v1) — satisfy ALL of it in one pass; the validator stops at the first structural error, so a partial fix surfaces the next problem, not success:
+- top level: schema (exact id above), families (non-empty list), tickets (list; required even when empty).
+- every family: unique string id; section; status exactly one of "implementable" (normal covered family) | "pruned" | "blocked". implementable additionally requires layers and risk; pruned requires prune (token); blocked requires blocked_by.
+- every ticket: unique string id; wave (string); status exactly "pending" | "landed"; families (list, may be empty) citing only family ids that exist in the families list.
+- cross-checks after parsing: family ids, prune tokens, blocked_by and statuses must agree with case-catalog.md; ticket ownership/status must agree with harness-backlog.md.`
+    : "";
+  // A brownfield reconciliation can produce four-digit problem counts
+  // (observed: 1638). Dumping them all into one environment message would
+  // consume the designer's context; group by class instead and point at the
+  // complete list on disk.
+  const problemBlock =
+    problems.length <= 40
+      ? problems.map((problem) => `- ${problem}`).join("\n")
+      : summarizeProblemsByClass(problems);
   return `[Environment: the deterministic corpus gate failed, so fresh readers and the independent auditor cannot run yet. Correct every problem below, then emit <<REQUEST-READER-TEST>> so the exact corrected corpus is reviewed. Do not emit CAMPAIGN-COMPLETE.
 
-${problems.map((problem) => `- ${problem}`).join("\n")}]`;
+${problemBlock}${schemaReference}]`;
+}
+
+/** Group a large problem list into classes with counts and a few verbatim examples each. */
+export function summarizeProblemsByClass(problems: string[]): string {
+  const classes = new Map<string, string[]>();
+  for (const problem of problems) {
+    const key = problem
+      .replace(/CF-[A-Za-z0-9/-]+/g, "CF-*")
+      .replace(/HB-[A-Za-z0-9-]+/g, "HB-*")
+      .replace(/"[^"]*"/g, '"…"');
+    const bucket = classes.get(key) ?? [];
+    bucket.push(problem);
+    classes.set(key, bucket);
+  }
+  const lines = [...classes.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([key, members]) => {
+      const examples = members.slice(0, 3).map((m) => `    - ${m}`);
+      return `- ${members.length}× ${key}\n${examples.join("\n")}`;
+    });
+  return `${problems.length} problems in ${classes.size} classes. The COMPLETE per-item list is in ./CATALOG-GATE-PROBLEMS.md — read it (it is large; read it in slices) and fix systematically by class rather than one item at a time. Classes, largest first, with up to 3 verbatim examples each:
+
+${lines.join("\n")}`;
 }
 
 export function readerRereviewRequiredMessage(): string {

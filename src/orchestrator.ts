@@ -35,7 +35,7 @@ import type {
   StakeholderAgent,
 } from "./types.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-agent"];
@@ -270,11 +270,22 @@ export async function runCampaign(
     state.readerReviewFingerprint = undefined;
     const gate: CompletionGate = problems.catalog.length > 0 ? "catalog" : "owner-docs";
     const all = [...problems.catalog, ...problems.owner];
+    // Persist the complete list in the workspace so the designer can read it
+    // in slices; the environment message summarizes when the list is large.
+    writeFileSync(
+      join(state.workspace, "CATALOG-GATE-PROBLEMS.md"),
+      `# Deterministic corpus gate — complete problem list\n\n${all.length} problem(s) at ${new Date().toISOString()}. Regenerated on every gate evaluation; fix by class, then emit <<REQUEST-READER-TEST>>.\n\n${all.map((p) => `- ${p}`).join("\n")}\n`,
+    );
+    const noteLimit = 12;
+    const note =
+      all.length <= noteLimit
+        ? all.join("; ")
+        : `${all.slice(0, noteLimit).join("; ")} … and ${all.length - noteLimit} more (full list in workspace CATALOG-GATE-PROBLEMS.md)`;
     rejectGate(
       gate,
       { to: "designer", text: corpusGateRequiredMessage(all) },
       `designer repeatedly failed the deterministic ${gate} corpus gate`,
-      `deterministic corpus gate rejected: ${all.join("; ")}`,
+      `deterministic corpus gate rejected: ${note}`,
     );
     return true;
   };
