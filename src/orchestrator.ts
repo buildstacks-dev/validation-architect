@@ -508,7 +508,7 @@ export async function runCampaign(
       } else {
         audit.phase = "window";
         audit.windowExchanges = 0;
-        state.pending = { to: "designer", text: auditReportMessage(iteration, reportText) };
+        state.pending = { to: "designer", text: auditReportMessage(iteration, found) };
       }
       persist();
       continue;

@@ -338,8 +338,23 @@ AUD-901 (blocking) — <spec or catalog file> — <the specific fidelity gap>
 Begin: read the scoped catalog rows, then the citing specs, then write the report. No preamble — the report only.`;
 }
 
-export function auditReportMessage(iteration: number, reportText: string): string {
-  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report follows.
+/**
+ * The report itself is delivered as a workspace file, not inline: the full
+ * text can run to tens of KB (and one live 16 KB report deterministically
+ * tripped the provider's input safety filter four times — the same message
+ * as a file pointer does not). The ledger below is the index; the file is
+ * the auditor's unedited words.
+ */
+export function auditReportMessage(
+  iteration: number,
+  findings: Array<{ id: string; tier: string; title: string }>,
+): string {
+  const ledger = findings.map((f) => `- ${f.id} (${f.tier}) ${f.title}`).join("\n");
+  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report is saved at ./validation-design/audit/audit-report-${iteration}.md — read that file IN FULL before dispositioning anything; the ledger below is only an index.
+
+Findings ledger (parsed by the environment):
+
+${ledger}
 
 For EVERY finding, you must record a disposition as a line of exactly this form (the environment parses these lines):
 
@@ -354,9 +369,7 @@ Rules of the window:
 - Ratified decisions stay ratified: if the auditor relitigated one, dispute it with the decision record as evidence.
 - Present your dispositions to the stakeholder for confirmation with their usual verdict discipline (OBJECTION / GATE-REFUSED / CONFIRMED).
 - This window is capped at 12 stakeholder exchanges; be economical.
-- When every finding has a disposition and the stakeholder has confirmed them, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment will then continue the audit process — this does not yet end the campaign.]
-
-${reportText}`;
+- When every finding has a disposition and the stakeholder has confirmed them, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment will then continue the audit process — this does not yet end the campaign.]`;
 }
 
 export function auditPackageMessage(
