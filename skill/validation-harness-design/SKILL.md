@@ -290,6 +290,8 @@ The `Invariant → every credible violation path` row is the one that most often
 
 **Machine-readable companion.** Emit `case-catalog.yaml` in the same step as `case-catalog.md` — one entry per family (id, layers, oracle, risk, prune/blocked status + reason, owning backlog ticket, wave). Schema id: `validation-architect/case-catalog/v1`. The markdown catalog remains the human artifact; the YAML is what the `validation-trace` CLI (and the product repo's CI) consumes. The two MUST agree on family ids, prune tokens, and blocked-by — disagreement is a corpus bug. Regenerate the YAML whenever the markdown catalog or the backlog's family claims change.
 
+**Non-test-lane evidence declarations.** A family whose oracle lives outside the test tree — an L3 certification record, an L4 human-validated golden corpus, an L5 triggered-obligation record, an L-ACC campaign report — carries `EVIDENCE:<state>:<path>` in its catalog cell (state ∈ `complete` | `incomplete` | `inconclusive` | `unobserved`; path repo-relative), which flows into the YAML as `evidence_state`/`evidence_path`. The trace CLI verifies the artifact exists and surfaces the state; anything other than `complete` is visible declared partiality, never green-by-assertion. Never use an evidence declaration to excuse an ordinary test-lane family from a citing spec.
+
 ## Phase 7 — Tooling selection
 
 Present a tooling menu per layer — invariant/contract runner, hermetic fixture strategy, live-sandbox targets, eval framework, ops-hardening tools, outcome-acceptance campaign runner/instrument, CI host — with the tradeoffs that actually differ, not a feature matrix. Menu and selection heuristics: `references/tooling-menu.md`.

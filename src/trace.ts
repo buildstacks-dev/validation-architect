@@ -255,10 +255,36 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
   const cov = coverage(manifest, specs, analysis.credits);
   const ticketById = new Map(manifest.tickets.map((t) => [t.id, t]));
 
-  // 1. Forward closure: every implementable family has ≥1 citing spec or a
-  //    declared pending wave (an owning ticket that is not LANDED).
+  // Non-test-lane evidence: a family may declare an artifact instead of a
+  // citing spec (L3 certification records, L4 corpora, L5 records, L-ACC
+  // campaign evidence). Existence is verified fail-closed; the declared
+  // state travels into the report. Whether the artifact PROVES anything is
+  // fidelity's judgment, exactly as with citing tests.
+  const evidence = new Map<string, { state: string; path: string; exists: boolean }>();
+  for (const family of manifest.families) {
+    if (family.status === "implementable" && family.evidence_path && family.evidence_state) {
+      evidence.set(family.id, {
+        state: family.evidence_state,
+        path: family.evidence_path,
+        exists: existsSync(join(targetRoot, family.evidence_path)),
+      });
+    }
+  }
+
+  // 1. Forward closure: every implementable family has ≥1 citing spec, a
+  //    verified evidence artifact, or a declared pending wave (an owning
+  //    ticket that is not LANDED).
   for (const { family, files } of cov.values()) {
     if (family.status !== "implementable" || files.length > 0) continue;
+    const declared = evidence.get(family.id);
+    if (declared) {
+      if (!declared.exists) {
+        checks.forward.push(
+          `${family.id} declares evidence "${declared.path}" (${declared.state}) but the artifact does not exist — fail-closed`,
+        );
+      }
+      continue;
+    }
     const ticket = family.ticket ? ticketById.get(family.ticket) : undefined;
     if (!ticket) {
       checks.forward.push(
@@ -285,7 +311,7 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
     for (const id of ticket.families) {
       const c = cov.get(id);
       if (!c || c.family.status !== "implementable") continue;
-      if (c.files.length === 0) {
+      if (c.files.length === 0 && evidence.get(id)?.exists !== true) {
         checks.statusHonesty.push(`${ticket.id} is LANDED but its family ${id} has no citing spec`);
       }
     }
@@ -304,7 +330,7 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
     ? ownerBacklogNames(readFileSync(ownerBacklogAbs, "utf8"))
     : new Map<string, string>();
 
-  const report = renderTraceReport(manifest, cov, specs, checks, names);
+  const report = renderTraceReport(manifest, cov, specs, checks, names, evidence);
   return { ok: reds.length === 0, reds, checks, specs, report, manifest };
 }
 
@@ -314,6 +340,7 @@ function renderTraceReport(
   specs: SpecFileInfo[],
   checks: TraceChecks,
   ownerNames: Map<string, string>,
+  evidence: Map<string, { state: string; path: string; exists: boolean }> = new Map(),
 ): string {
   const impl = manifest.families.filter((f) => f.status === "implementable");
   const pruned = manifest.families.filter((f) => f.status === "pruned");
@@ -356,6 +383,16 @@ function renderTraceReport(
       ? `\n## Families without an owning ticket\n\n${unowned.map((f) => `- \`${f.id}\` (${f.section})`).join("\n")}\n`
       : "";
 
+  const evidenceRows = [...evidence.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const evidenceSection =
+    evidenceRows.length > 0
+      ? `\n## Evidence-cited families (non-test lanes)\n\nExistence is verified; the state is the family's own honest declaration. Whether\nthe artifact proves its obligation is the fidelity audit's judgment.\n\n| Family | State | Artifact | Found |\n| --- | --- | --- | --- |\n${evidenceRows
+          .map(
+            ([id, ev]) => `| ${id} | ${ev.state} | \`${ev.path}\` | ${ev.exists ? "yes" : "**MISSING**"} |`,
+          )
+          .join("\n")}\n`
+      : "";
+
   const redSection =
     checks.agreement.length + checks.forward.length + checks.backward.length + checks.statusHonesty.length > 0
       ? `\n## Red findings\n\n${[
@@ -375,7 +412,7 @@ its ratified seed is the fidelity audit's judgment, not this report's claim.
 ## Summary
 
 - **Families:** ${manifest.families.length} (${impl.length} implementable · ${pruned.length} pruned · ${blocked.length} blocked)
-- **Specs:** ${specs.length} files · ${totalTests} tests
+- **Specs:** ${specs.length} files · ${totalTests} tests${evidenceRows.length > 0 ? `\n- **Evidence-cited families:** ${evidenceRows.length} (${EVIDENCE_STATE_ORDER.map((s) => `${evidenceRows.filter(([, e]) => e.state === s).length} ${s}`).join(" · ")})` : ""}
 ${checkLine("Agreement (manifest ↔ markdown catalog)", checks.agreement)}
 ${checkLine("Forward closure", checks.forward)}
 ${checkLine("Backward closure", checks.backward)}
@@ -385,5 +422,7 @@ ${checkLine("Spec structure", checks.structure)}
 ## Tickets by wave
 
 ${waveSections}
-${unownedSection}${redSection}`;
+${unownedSection}${evidenceSection}${redSection}`;
 }
+
+const EVIDENCE_STATE_ORDER = ["complete", "incomplete", "inconclusive", "unobserved"];

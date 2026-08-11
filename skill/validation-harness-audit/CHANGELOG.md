@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2
+
+Consumes the design 0.6.2 evidence-declaration contract.
+
+- New conformance checks for evidence-cited families (`EVIDENCE:<state>:<path>` / `evidence_state`+`evidence_path`): artifact exists; declared state is honest against the artifact's own content; the family's lane genuinely cannot be asserted from the test tree (an ordinary hermetic family hiding behind an evidence declaration is a finding); non-`complete` states surface in owner rollups as declared partiality, never green coverage.
+- Versioned together with design 0.6.2.
+
 ## 0.6.1
 
 Completes consumption of the six-layer design contract introduced in 0.6.0.
