@@ -430,6 +430,17 @@ export function summarizeProblemsByClass(problems: string[]): string {
 ${lines.join("\n")}`;
 }
 
+/**
+ * Appended to the reader reports of a TERMINAL pass (reader-loop convergence
+ * rule). Record-don't-fix keeps the corpus byte-stable so the pass can stand;
+ * blocking material is the explicit exception and re-enters the strict loop.
+ */
+export function readerResidueInstruction(): string {
+  return `
+
+[Environment: reader-loop convergence rule. The loop has converged — the stakeholder ratified consecutive reader rounds — so THIS was the terminal reader pass. Disposition its findings by RECORDING them, not fixing them: add or extend a "Reader-round residue" subsection in ratification-package.md listing each finding, its tier, and why it is recorded for the human rather than fixed now. Do NOT edit any other artifact — any change outside ratification-package.md invalidates this pass and returns the campaign to the strict re-review loop. Exception: a genuinely BLOCKING finding must still be fixed; say so explicitly and fix it, accepting that the strict loop resumes. When the residue record is written and the stakeholder has confirmed it, emit <<CAMPAIGN-COMPLETE>>.]`;
+}
+
 export function readerRereviewRequiredMessage(): string {
   return `[Environment: the validation-design corpus changed after the most recent fresh-reader pass. That review is now stale. Emit <<REQUEST-READER-TEST>> without making further edits; completion and audit remain blocked until the current corpus has been reviewed.]`;
 }

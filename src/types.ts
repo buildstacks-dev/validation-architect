@@ -198,6 +198,22 @@ export interface RunState {
   readersRan?: boolean | undefined;
   /** Digest of the exact non-audit corpus seen by the latest reader pass. */
   readerReviewFingerprint?: string | undefined;
+  /**
+   * Reader-loop convergence (issue: livelock — every round's minor fixes
+   * re-dirty the corpus and force another round, so the fixed point of a
+   * byte-stable pass can be unreachable). Counts consecutive reader rounds
+   * the stakeholder ratified (a CONFIRMED verdict, no GATE-REFUSED); at the
+   * threshold the next pass is terminal: residue is recorded in
+   * ratification-package.md, never fixed in the corpus.
+   */
+  readerConvergentRounds?: number | undefined;
+  /** Verdicts observed since the last reader pass, feeding the counter. */
+  readerRoundHadConfirm?: boolean | undefined;
+  readerRoundHadRefusal?: boolean | undefined;
+  /** The terminal residue pass was served; completion may carry a ratification-package-only delta. */
+  readerResidueMode?: boolean | undefined;
+  /** Corpus digest excluding ratification-package.md, captured at the terminal pass. */
+  readerReviewCoreFingerprint?: string | undefined;
   /** Audit-stage state machine; absent until the first gated CAMPAIGN-COMPLETE. */
   audit?: AuditState | undefined;
   /** @deprecated Pre-0.2 shared counter; ignored so old state cannot poison a different gate. */

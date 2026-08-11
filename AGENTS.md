@@ -77,6 +77,16 @@ and the anti-yes-loop design.
   at blocking tier; never a third iteration) are what guarantee the audit
   stage terminates. They are enforced in the auditor prompts AND in the
   orchestrator's parsing; keep both halves.
+- **The reader loop has its own convergence rule (same status).** Fresh
+  readers always find minor nits, and every fix re-dirties the corpus and
+  forces another pass, so a byte-stable pass can be unreachable (observed:
+  29 rounds, cormidia-rev1). After two consecutive stakeholder-ratified
+  rounds (CONFIRMED, no GATE-REFUSED), the next pass is TERMINAL: findings
+  are recorded in a ratification-package.md "Reader-round residue" section,
+  never fixed, and completion accepts a package-only delta
+  (`readerCoreFingerprint`). Any other edit — or a GATE-REFUSED — disarms
+  the rule and the strict loop resumes. Enforced in the orchestrator AND the
+  terminal-pass environment message; keep both halves.
 - **The skills live here.** `skill/validation-harness-design/`,
   `skill/validation-harness-audit/` and `skill/implement-harness-ticket/` are
   this repo's own artifacts, not copies of anything upstream. Change them here.

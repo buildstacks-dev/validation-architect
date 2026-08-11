@@ -19,6 +19,7 @@ import {
   rambleRefreshNote,
   readerReportMessage,
   readerRereviewRequiredMessage,
+  readerResidueInstruction,
   readerTestRequiredMessage,
 } from "./prompts.js";
 import type { RambleWatcher } from "./ramble.js";
@@ -42,6 +43,17 @@ const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-
 
 /** Feedback-window cap per audit iteration, so the audit loop cannot eat the campaign budget. */
 const AUDIT_WINDOW_CAP = 12;
+/**
+ * Reader-loop convergence threshold: after this many consecutive
+ * stakeholder-ratified reader rounds, the next pass is terminal — its
+ * findings are recorded in ratification-package.md, not fixed, so the loop
+ * cannot livelock on minor-finding fixes that re-dirty the corpus forever
+ * (observed: cormidia-rev1-20260810, 29 rounds without a byte-stable pass).
+ * Mirrors the audit loop's own termination discipline (window cap, no third
+ * iteration). A GATE-REFUSED verdict resets the count — blocking material
+ * always returns the campaign to the strict loop.
+ */
+const READER_CONVERGENT_ROUNDS_FOR_RESIDUE = 2;
 /** Hard ceiling — a run exits with verdict "reservations" rather than audit a third time. */
 const MAX_AUDIT_ITERATIONS = 2;
 
@@ -184,6 +196,15 @@ export function corpusFingerprint(workspace: string): string {
 }
 
 /**
+ * Corpus digest minus ratification-package.md: what a terminal (residue)
+ * reader pass may not touch. The package is the one artifact designed to
+ * absorb post-review records — the same reasoning as auditedCoreFingerprint.
+ */
+export function readerCoreFingerprint(workspace: string): string {
+  return fingerprintCorpus(workspace, new Set(["audit", "ratification-package.md"]));
+}
+
+/**
  * Digest only the design core that the independent auditor freezes. The
  * final package and owner views are intentionally written after audit and
  * receive their own structural + fresh-reader gates.
@@ -314,7 +335,23 @@ export async function runCampaign(
     const fingerprint = corpusFingerprint(state.workspace);
     state.readerReviewFingerprint = fingerprint;
     if (finalOwnerReview && state.audit) state.audit.finalReviewFingerprint = fingerprint;
-    state.pending = { to: "designer", text: readerReportMessage(reports, finalOwnerReview) };
+    const residuePass =
+      !finalOwnerReview &&
+      !state.audit &&
+      (state.readerConvergentRounds ?? 0) >= READER_CONVERGENT_ROUNDS_FOR_RESIDUE;
+    if (residuePass) {
+      state.readerResidueMode = true;
+      state.readerReviewCoreFingerprint = readerCoreFingerprint(state.workspace);
+      transcript.note(
+        "orchestrator",
+        `reader loop converged (${state.readerConvergentRounds} ratified rounds); serving terminal residue pass — findings are recorded in ratification-package.md, not fixed`,
+      );
+      log("reader loop converged; terminal residue pass served");
+    }
+    state.pending = {
+      to: "designer",
+      text: readerReportMessage(reports, finalOwnerReview) + (residuePass ? readerResidueInstruction() : ""),
+    };
     clearGate("reader-test");
   };
 
@@ -583,15 +620,40 @@ export async function runCampaign(
         if (!state.audit) {
           const fingerprint = corpusFingerprint(state.workspace);
           if (state.readerReviewFingerprint !== fingerprint) {
-            state.readerReviewFingerprint = undefined;
-            const aborted = rejectGate(
-              "reader-test",
-              { to: "designer", text: readerRereviewRequiredMessage() },
-              "designer refused to re-run readers after changing the reviewed corpus",
-              "CAMPAIGN-COMPLETE rejected: corpus changed after its reader test",
-            );
-            if (aborted) return state;
-            continue;
+            // Terminal residue pass: the reviewed corpus plus a
+            // ratification-package-only delta (the recorded residue) is
+            // accepted as current. Any other delta disarms residue mode and
+            // returns the campaign to the strict re-review loop.
+            const residueOk =
+              state.readerResidueMode === true &&
+              state.readerReviewCoreFingerprint !== undefined &&
+              state.readerReviewCoreFingerprint === readerCoreFingerprint(state.workspace);
+            if (residueOk) {
+              transcript.note(
+                "orchestrator",
+                "reader review accepted with a ratification-package-only residue delta (terminal pass rule)",
+              );
+              state.readerReviewFingerprint = fingerprint;
+            } else {
+              if (state.readerResidueMode) {
+                state.readerResidueMode = undefined;
+                state.readerReviewCoreFingerprint = undefined;
+                state.readerConvergentRounds = 0;
+                transcript.note(
+                  "orchestrator",
+                  "terminal residue pass violated (edits beyond ratification-package.md); strict re-review loop resumes",
+                );
+              }
+              state.readerReviewFingerprint = undefined;
+              const aborted = rejectGate(
+                "reader-test",
+                { to: "designer", text: readerRereviewRequiredMessage() },
+                "designer refused to re-run readers after changing the reviewed corpus",
+                "CAMPAIGN-COMPLETE rejected: corpus changed after its reader test",
+              );
+              if (aborted) return state;
+              continue;
+            }
           }
           clearGate("reader-test");
           // Same shape as the reader gate: completion is not accepted until an
@@ -701,6 +763,19 @@ export async function runCampaign(
         const finalOwnerReview =
           state.audit?.phase === "owner-docs" || state.audit?.phase === "final-review";
         if (state.audit?.phase === "owner-docs") state.audit.phase = "final-review";
+        if (!finalOwnerReview) {
+          // Close the previous reader round for the convergence counter: a
+          // stakeholder-ratified round (CONFIRMED, no GATE-REFUSED) counts
+          // toward the terminal-pass threshold; a refusal resets it.
+          if (state.readersRan) {
+            if (state.readerRoundHadRefusal) state.readerConvergentRounds = 0;
+            else if (state.readerRoundHadConfirm) {
+              state.readerConvergentRounds = (state.readerConvergentRounds ?? 0) + 1;
+            }
+          }
+          state.readerRoundHadConfirm = undefined;
+          state.readerRoundHadRefusal = undefined;
+        }
         await runFreshReaders(finalOwnerReview);
         persist();
         continue;
@@ -763,6 +838,16 @@ export async function runCampaign(
       );
       transcript.append({ role: "stakeholder", text: turn.text, usage: turn.usage });
       log(`stakeholder: ${preview(turn.text)}`);
+      if (!state.audit && state.readersRan) {
+        // Reader-round verdict tracking for the convergence rule. Tagged
+        // verdicts are canonical; the prose form ("Yes — I confirm …") is
+        // accepted because live stakeholders demonstrably use it.
+        if (/^\s*GATE-REFUSED\s*:/im.test(turn.text)) {
+          state.readerRoundHadRefusal = true;
+        } else if (/^\s*CONFIRMED\s*:/im.test(turn.text) || /\bI\s+(?:re-)?confirm\b/i.test(turn.text)) {
+          state.readerRoundHadConfirm = true;
+        }
+      }
       if (
         state.audit?.phase === "window" &&
         /^\s*CONFIRMED\s*:/im.test(turn.text) &&
