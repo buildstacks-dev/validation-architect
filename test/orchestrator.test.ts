@@ -1470,3 +1470,80 @@ describe("reader-loop convergence rule", () => {
     expect(thirdPass).not.toContain("terminal reader pass");
   });
 });
+
+describe("audit window confirmation formats", () => {
+  const REPORT = [
+    "AUD-101 (blocking) — invariants.md — INV-003's oracle cannot fail",
+    "Evidence: the falsification shape quotes no observable.",
+    "AUD-102 (minor) — system-map.md — heading style drifts",
+    "",
+    "What I checked: invariants.md, boundary-map.md.",
+  ].join("\n");
+
+  it("persists a bold em-dash blanket confirmation", async () => {
+    const { deps } = makeDeps(
+      [
+        "All done, gate confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 1")
+            ? "DISPOSITION: AUD-101 = fixed — rewrote the oracle\nDISPOSITION: AUD-102 = fixed — style aligned\nOwner, please confirm.\n<<AWAITING-HUMAN>>"
+            : "did not get the audit report\n<<AWAITING-HUMAN>>",
+        "Confirmed by owner.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 2")
+            ? "Verification acknowledged.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the verification report\n<<AWAITING-HUMAN>>",
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      ["ack", "**CONFIRMED — audit window closed.** Both dispositions verified against the corpus."],
+      [
+        REPORT,
+        "## Disposition verification\nAUD-101: VERIFIED — observable named\nAUD-102: VERIFIED — aligned\n\n## What I checked\nDispositions.",
+      ],
+    );
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.audit?.dispositions["AUD-101"]?.confirmed).toBe(true);
+    expect(state.audit?.dispositions["AUD-102"]?.confirmed).toBe(true);
+  });
+
+  it("persists per-finding table-row confirmations inside an otherwise refusing message", async () => {
+    const { deps } = makeDeps(
+      [
+        "All done, gate confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 1")
+            ? "DISPOSITION: AUD-101 = fixed — rewrote the oracle\nDISPOSITION: AUD-102 = fixed — style aligned\nOwner, please confirm.\n<<AWAITING-HUMAN>>"
+            : "did not get the audit report\n<<AWAITING-HUMAN>>",
+        "AUD-101 corrected as you ruled.\nDISPOSITION: AUD-101 = fixed — corrected per ruling\n<<AWAITING-HUMAN>>",
+        "Both now confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 2")
+            ? "Verification acknowledged.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the verification report\n<<AWAITING-HUMAN>>",
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      [
+        "ack",
+        "Overall ruling: **GATE-REFUSED**.\n\n| Finding | Ruling |\n|---|---|\n| AUD-101 | **OBJECTION** — oracle still vague |\n| AUD-102 | **CONFIRMED** |",
+        "| Finding | Ruling |\n|---|---|\n| **AUD-101** | **CONFIRMED** |",
+      ],
+      [
+        REPORT,
+        "## Disposition verification\nAUD-101: VERIFIED — observable named\nAUD-102: VERIFIED — aligned\n\n## What I checked\nDispositions.",
+      ],
+    );
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.audit?.dispositions["AUD-101"]?.confirmed).toBe(true);
+    expect(state.audit?.dispositions["AUD-102"]?.confirmed).toBe(true);
+  });
+});

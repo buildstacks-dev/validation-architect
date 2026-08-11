@@ -848,23 +848,49 @@ export async function runCampaign(
           state.readerRoundHadConfirm = true;
         }
       }
-      if (
-        state.audit?.phase === "window" &&
-        /^\s*CONFIRMED\s*:/im.test(turn.text) &&
-        !/^\s*(?:OBJECTION|GATE-REFUSED)\s*:/im.test(turn.text)
-      ) {
-        // Confirmation applies only to exact machine-readable dispositions
-        // the stakeholder actually received, never an ID-only "please
-        // confirm" summary that hides the kind or rationale.
-        const presentedIds = new Set(parseDispositions(pending.text).map((disposition) => disposition.id));
-        const responseIds = new Set(
-          (turn.text.match(/\bAUD-\d+\b/gi) ?? []).map((id) => id.toUpperCase()),
-        );
-        const discussedIds =
-          responseIds.size === 0
-            ? presentedIds
-            : new Set([...presentedIds].filter((id) => responseIds.has(id)));
-        for (const id of discussedIds) {
+      if (state.audit?.phase === "window") {
+        // Live stakeholders phrase rulings three ways (all observed):
+        //   CONFIRMED: <rationale>              — the canonical tag
+        //   **CONFIRMED — audit window closed.** — bold + em-dash blanket
+        //   | AUD-101 | **CONFIRMED** |          — per-finding table row
+        // A parser accepting only the first silently drops real confirmations
+        // and wedges the window (cormidia-rev1, 3 confirmations unrecorded).
+        // Verdict words are matched UPPERCASE-only in the loosened forms so
+        // prose ("the stakeholder confirmed earlier") cannot rubber-stamp.
+        const anchored = (verdict: string) =>
+          new RegExp(String.raw`^[>\s]*[*_]{0,3}${verdict}[*_]{0,3}\s*(?:[:—–.-]|$)`, "m");
+        const blanketConfirm =
+          /^\s*CONFIRMED\s*:/im.test(turn.text) || anchored("CONFIRMED").test(turn.text);
+        const blanketBlock =
+          /^\s*(?:OBJECTION|GATE-REFUSED)\s*:/im.test(turn.text) ||
+          anchored("OBJECTION").test(turn.text) ||
+          anchored("GATE-REFUSED").test(turn.text);
+        // Per-id rows carry their own authority: the id and the verdict are on
+        // one line, so they apply even inside an otherwise-refusing message and
+        // are not gated on the dispositions being re-presented this turn.
+        const rowConfirmedIds = new Set<string>();
+        for (const line of turn.text.split("\n")) {
+          const idMatch = line.match(/\|\s*[*_]{0,3}(AUD-\d+)[*_]{0,3}\s*\|/);
+          if (!idMatch) continue;
+          const verdictMatch = line.match(/\b(CONFIRMED|OBJECTION|GATE-REFUSED)\b/);
+          if (verdictMatch?.[1] === "CONFIRMED") rowConfirmedIds.add((idMatch[1] as string).toUpperCase());
+        }
+        // Blanket confirmation applies only to exact machine-readable
+        // dispositions the stakeholder actually received, never an ID-only
+        // "please confirm" summary that hides the kind or rationale.
+        const confirmedIds = new Set<string>(rowConfirmedIds);
+        if (blanketConfirm && !blanketBlock) {
+          const presentedIds = new Set(parseDispositions(pending.text).map((disposition) => disposition.id));
+          const responseIds = new Set(
+            (turn.text.match(/\bAUD-\d+\b/gi) ?? []).map((id) => id.toUpperCase()),
+          );
+          const discussedIds =
+            responseIds.size === 0
+              ? presentedIds
+              : new Set([...presentedIds].filter((id) => responseIds.has(id)));
+          for (const id of discussedIds) confirmedIds.add(id);
+        }
+        for (const id of confirmedIds) {
           const disposition = state.audit.dispositions[id];
           if (!disposition || disposition.kind === "reopened") continue;
           disposition.confirmed = true;
