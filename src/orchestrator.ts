@@ -19,6 +19,7 @@ import {
   rambleRefreshNote,
   readerReportMessage,
   readerRereviewRequiredMessage,
+  readerResidueInstruction,
   readerTestRequiredMessage,
 } from "./prompts.js";
 import type { RambleWatcher } from "./ramble.js";
@@ -35,13 +36,24 @@ import type {
   StakeholderAgent,
 } from "./types.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-agent"];
 
 /** Feedback-window cap per audit iteration, so the audit loop cannot eat the campaign budget. */
 const AUDIT_WINDOW_CAP = 12;
+/**
+ * Reader-loop convergence threshold: after this many consecutive
+ * stakeholder-ratified reader rounds, the next pass is terminal — its
+ * findings are recorded in ratification-package.md, not fixed, so the loop
+ * cannot livelock on minor-finding fixes that re-dirty the corpus forever
+ * (observed: cormidia-rev1-20260810, 29 rounds without a byte-stable pass).
+ * Mirrors the audit loop's own termination discipline (window cap, no third
+ * iteration). A GATE-REFUSED verdict resets the count — blocking material
+ * always returns the campaign to the strict loop.
+ */
+const READER_CONVERGENT_ROUNDS_FOR_RESIDUE = 2;
 /** Hard ceiling — a run exits with verdict "reservations" rather than audit a third time. */
 const MAX_AUDIT_ITERATIONS = 2;
 
@@ -184,6 +196,15 @@ export function corpusFingerprint(workspace: string): string {
 }
 
 /**
+ * Corpus digest minus ratification-package.md: what a terminal (residue)
+ * reader pass may not touch. The package is the one artifact designed to
+ * absorb post-review records — the same reasoning as auditedCoreFingerprint.
+ */
+export function readerCoreFingerprint(workspace: string): string {
+  return fingerprintCorpus(workspace, new Set(["audit", "ratification-package.md"]));
+}
+
+/**
  * Digest only the design core that the independent auditor freezes. The
  * final package and owner views are intentionally written after audit and
  * receive their own structural + fresh-reader gates.
@@ -270,11 +291,22 @@ export async function runCampaign(
     state.readerReviewFingerprint = undefined;
     const gate: CompletionGate = problems.catalog.length > 0 ? "catalog" : "owner-docs";
     const all = [...problems.catalog, ...problems.owner];
+    // Persist the complete list in the workspace so the designer can read it
+    // in slices; the environment message summarizes when the list is large.
+    writeFileSync(
+      join(state.workspace, "CATALOG-GATE-PROBLEMS.md"),
+      `# Deterministic corpus gate — complete problem list\n\n${all.length} problem(s) at ${new Date().toISOString()}. Regenerated on every gate evaluation; fix by class, then emit <<REQUEST-READER-TEST>>.\n\n${all.map((p) => `- ${p}`).join("\n")}\n`,
+    );
+    const noteLimit = 12;
+    const note =
+      all.length <= noteLimit
+        ? all.join("; ")
+        : `${all.slice(0, noteLimit).join("; ")} … and ${all.length - noteLimit} more (full list in workspace CATALOG-GATE-PROBLEMS.md)`;
     rejectGate(
       gate,
       { to: "designer", text: corpusGateRequiredMessage(all) },
       `designer repeatedly failed the deterministic ${gate} corpus gate`,
-      `deterministic corpus gate rejected: ${all.join("; ")}`,
+      `deterministic corpus gate rejected: ${note}`,
     );
     return true;
   };
@@ -303,7 +335,23 @@ export async function runCampaign(
     const fingerprint = corpusFingerprint(state.workspace);
     state.readerReviewFingerprint = fingerprint;
     if (finalOwnerReview && state.audit) state.audit.finalReviewFingerprint = fingerprint;
-    state.pending = { to: "designer", text: readerReportMessage(reports, finalOwnerReview) };
+    const residuePass =
+      !finalOwnerReview &&
+      !state.audit &&
+      (state.readerConvergentRounds ?? 0) >= READER_CONVERGENT_ROUNDS_FOR_RESIDUE;
+    if (residuePass) {
+      state.readerResidueMode = true;
+      state.readerReviewCoreFingerprint = readerCoreFingerprint(state.workspace);
+      transcript.note(
+        "orchestrator",
+        `reader loop converged (${state.readerConvergentRounds} ratified rounds); serving terminal residue pass — findings are recorded in ratification-package.md, not fixed`,
+      );
+      log("reader loop converged; terminal residue pass served");
+    }
+    state.pending = {
+      to: "designer",
+      text: readerReportMessage(reports, finalOwnerReview) + (residuePass ? readerResidueInstruction() : ""),
+    };
     clearGate("reader-test");
   };
 
@@ -460,7 +508,7 @@ export async function runCampaign(
       } else {
         audit.phase = "window";
         audit.windowExchanges = 0;
-        state.pending = { to: "designer", text: auditReportMessage(iteration, reportText) };
+        state.pending = { to: "designer", text: auditReportMessage(iteration, found) };
       }
       persist();
       continue;
@@ -572,15 +620,40 @@ export async function runCampaign(
         if (!state.audit) {
           const fingerprint = corpusFingerprint(state.workspace);
           if (state.readerReviewFingerprint !== fingerprint) {
-            state.readerReviewFingerprint = undefined;
-            const aborted = rejectGate(
-              "reader-test",
-              { to: "designer", text: readerRereviewRequiredMessage() },
-              "designer refused to re-run readers after changing the reviewed corpus",
-              "CAMPAIGN-COMPLETE rejected: corpus changed after its reader test",
-            );
-            if (aborted) return state;
-            continue;
+            // Terminal residue pass: the reviewed corpus plus a
+            // ratification-package-only delta (the recorded residue) is
+            // accepted as current. Any other delta disarms residue mode and
+            // returns the campaign to the strict re-review loop.
+            const residueOk =
+              state.readerResidueMode === true &&
+              state.readerReviewCoreFingerprint !== undefined &&
+              state.readerReviewCoreFingerprint === readerCoreFingerprint(state.workspace);
+            if (residueOk) {
+              transcript.note(
+                "orchestrator",
+                "reader review accepted with a ratification-package-only residue delta (terminal pass rule)",
+              );
+              state.readerReviewFingerprint = fingerprint;
+            } else {
+              if (state.readerResidueMode) {
+                state.readerResidueMode = undefined;
+                state.readerReviewCoreFingerprint = undefined;
+                state.readerConvergentRounds = 0;
+                transcript.note(
+                  "orchestrator",
+                  "terminal residue pass violated (edits beyond ratification-package.md); strict re-review loop resumes",
+                );
+              }
+              state.readerReviewFingerprint = undefined;
+              const aborted = rejectGate(
+                "reader-test",
+                { to: "designer", text: readerRereviewRequiredMessage() },
+                "designer refused to re-run readers after changing the reviewed corpus",
+                "CAMPAIGN-COMPLETE rejected: corpus changed after its reader test",
+              );
+              if (aborted) return state;
+              continue;
+            }
           }
           clearGate("reader-test");
           // Same shape as the reader gate: completion is not accepted until an
@@ -690,6 +763,19 @@ export async function runCampaign(
         const finalOwnerReview =
           state.audit?.phase === "owner-docs" || state.audit?.phase === "final-review";
         if (state.audit?.phase === "owner-docs") state.audit.phase = "final-review";
+        if (!finalOwnerReview) {
+          // Close the previous reader round for the convergence counter: a
+          // stakeholder-ratified round (CONFIRMED, no GATE-REFUSED) counts
+          // toward the terminal-pass threshold; a refusal resets it.
+          if (state.readersRan) {
+            if (state.readerRoundHadRefusal) state.readerConvergentRounds = 0;
+            else if (state.readerRoundHadConfirm) {
+              state.readerConvergentRounds = (state.readerConvergentRounds ?? 0) + 1;
+            }
+          }
+          state.readerRoundHadConfirm = undefined;
+          state.readerRoundHadRefusal = undefined;
+        }
         await runFreshReaders(finalOwnerReview);
         persist();
         continue;
@@ -752,23 +838,59 @@ export async function runCampaign(
       );
       transcript.append({ role: "stakeholder", text: turn.text, usage: turn.usage });
       log(`stakeholder: ${preview(turn.text)}`);
-      if (
-        state.audit?.phase === "window" &&
-        /^\s*CONFIRMED\s*:/im.test(turn.text) &&
-        !/^\s*(?:OBJECTION|GATE-REFUSED)\s*:/im.test(turn.text)
-      ) {
-        // Confirmation applies only to exact machine-readable dispositions
-        // the stakeholder actually received, never an ID-only "please
-        // confirm" summary that hides the kind or rationale.
-        const presentedIds = new Set(parseDispositions(pending.text).map((disposition) => disposition.id));
-        const responseIds = new Set(
-          (turn.text.match(/\bAUD-\d+\b/gi) ?? []).map((id) => id.toUpperCase()),
-        );
-        const discussedIds =
-          responseIds.size === 0
-            ? presentedIds
-            : new Set([...presentedIds].filter((id) => responseIds.has(id)));
-        for (const id of discussedIds) {
+      if (!state.audit && state.readersRan) {
+        // Reader-round verdict tracking for the convergence rule. Tagged
+        // verdicts are canonical; the prose form ("Yes — I confirm …") is
+        // accepted because live stakeholders demonstrably use it.
+        if (/^\s*GATE-REFUSED\s*:/im.test(turn.text)) {
+          state.readerRoundHadRefusal = true;
+        } else if (/^\s*CONFIRMED\s*:/im.test(turn.text) || /\bI\s+(?:re-)?confirm\b/i.test(turn.text)) {
+          state.readerRoundHadConfirm = true;
+        }
+      }
+      if (state.audit?.phase === "window") {
+        // Live stakeholders phrase rulings three ways (all observed):
+        //   CONFIRMED: <rationale>              — the canonical tag
+        //   **CONFIRMED — audit window closed.** — bold + em-dash blanket
+        //   | AUD-101 | **CONFIRMED** |          — per-finding table row
+        // A parser accepting only the first silently drops real confirmations
+        // and wedges the window (cormidia-rev1, 3 confirmations unrecorded).
+        // Verdict words are matched UPPERCASE-only in the loosened forms so
+        // prose ("the stakeholder confirmed earlier") cannot rubber-stamp.
+        const anchored = (verdict: string) =>
+          new RegExp(String.raw`^[>\s]*[*_]{0,3}${verdict}[*_]{0,3}\s*(?:[:—–.-]|$)`, "m");
+        const blanketConfirm =
+          /^\s*CONFIRMED\s*:/im.test(turn.text) || anchored("CONFIRMED").test(turn.text);
+        const blanketBlock =
+          /^\s*(?:OBJECTION|GATE-REFUSED)\s*:/im.test(turn.text) ||
+          anchored("OBJECTION").test(turn.text) ||
+          anchored("GATE-REFUSED").test(turn.text);
+        // Per-id rows carry their own authority: the id and the verdict are on
+        // one line, so they apply even inside an otherwise-refusing message and
+        // are not gated on the dispositions being re-presented this turn.
+        const rowConfirmedIds = new Set<string>();
+        for (const line of turn.text.split("\n")) {
+          const idMatch = line.match(/\|\s*[*_]{0,3}(AUD-\d+)[*_]{0,3}\s*\|/);
+          if (!idMatch) continue;
+          const verdictMatch = line.match(/\b(CONFIRMED|OBJECTION|GATE-REFUSED)\b/);
+          if (verdictMatch?.[1] === "CONFIRMED") rowConfirmedIds.add((idMatch[1] as string).toUpperCase());
+        }
+        // Blanket confirmation applies only to exact machine-readable
+        // dispositions the stakeholder actually received, never an ID-only
+        // "please confirm" summary that hides the kind or rationale.
+        const confirmedIds = new Set<string>(rowConfirmedIds);
+        if (blanketConfirm && !blanketBlock) {
+          const presentedIds = new Set(parseDispositions(pending.text).map((disposition) => disposition.id));
+          const responseIds = new Set(
+            (turn.text.match(/\bAUD-\d+\b/gi) ?? []).map((id) => id.toUpperCase()),
+          );
+          const discussedIds =
+            responseIds.size === 0
+              ? presentedIds
+              : new Set([...presentedIds].filter((id) => responseIds.has(id)));
+          for (const id of discussedIds) confirmedIds.add(id);
+        }
+        for (const id of confirmedIds) {
           const disposition = state.audit.dispositions[id];
           if (!disposition || disposition.kind === "reopened") continue;
           disposition.confirmed = true;

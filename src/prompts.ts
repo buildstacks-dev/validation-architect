@@ -338,8 +338,23 @@ AUD-901 (blocking) — <spec or catalog file> — <the specific fidelity gap>
 Begin: read the scoped catalog rows, then the citing specs, then write the report. No preamble — the report only.`;
 }
 
-export function auditReportMessage(iteration: number, reportText: string): string {
-  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report follows.
+/**
+ * The report itself is delivered as a workspace file, not inline: the full
+ * text can run to tens of KB (and one live 16 KB report deterministically
+ * tripped the provider's input safety filter four times — the same message
+ * as a file pointer does not). The ledger below is the index; the file is
+ * the auditor's unedited words.
+ */
+export function auditReportMessage(
+  iteration: number,
+  findings: Array<{ id: string; tier: string; title: string }>,
+): string {
+  const ledger = findings.map((f) => `- ${f.id} (${f.tier}) ${f.title}`).join("\n");
+  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report is saved at ./validation-design/audit/audit-report-${iteration}.md — read that file IN FULL before dispositioning anything; the ledger below is only an index.
+
+Findings ledger (parsed by the environment):
+
+${ledger}
 
 For EVERY finding, you must record a disposition as a line of exactly this form (the environment parses these lines):
 
@@ -354,9 +369,7 @@ Rules of the window:
 - Ratified decisions stay ratified: if the auditor relitigated one, dispute it with the decision record as evidence.
 - Present your dispositions to the stakeholder for confirmation with their usual verdict discipline (OBJECTION / GATE-REFUSED / CONFIRMED).
 - This window is capped at 12 stakeholder exchanges; be economical.
-- When every finding has a disposition and the stakeholder has confirmed them, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment will then continue the audit process — this does not yet end the campaign.]
-
-${reportText}`;
+- When every finding has a disposition and the stakeholder has confirmed them, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment will then continue the audit process — this does not yet end the campaign.]`;
 }
 
 export function auditPackageMessage(
@@ -380,9 +393,65 @@ export function readerTestRequiredMessage(): string {
 }
 
 export function corpusGateRequiredMessage(problems: string[]): string {
+  // The manifest parser fails closed on the FIRST structural error, so a
+  // designer discovering the schema one rejection at a time can exhaust the
+  // gate's retry budget (observed: cormidia-rev1-20260810 aborted twice this
+  // way). State the whole required shape up front instead.
+  const schemaReference = problems.some((p) => p.includes("case-catalog.yaml"))
+    ? `
+
+Authoritative case-catalog.yaml shape (validation-architect/case-catalog/v1) — satisfy ALL of it in one pass; the validator stops at the first structural error, so a partial fix surfaces the next problem, not success:
+- top level: schema (exact id above), families (non-empty list), tickets (list; required even when empty).
+- every family: unique string id; section; status exactly one of "implementable" (normal covered family) | "pruned" | "blocked". implementable additionally requires layers and risk; pruned requires prune (token); blocked requires blocked_by.
+- every ticket: unique string id; wave (string); status exactly "pending" | "landed"; families (list, may be empty) citing only family ids that exist in the families list.
+- cross-checks after parsing: family ids, prune tokens, blocked_by and statuses must agree with case-catalog.md; ticket ownership/status must agree with harness-backlog.md.
+- case-catalog.md parsing convention: a markdown table DECLARES families only when its header row has a Layer column; tables without one (closure ledgers, evidence registers) are ignored by the parser, so enumerate freely there. Family-id cells in declaration tables must parse cleanly (a single id, an explicit list, or a brace form — not prose).`
+    : "";
+  // A brownfield reconciliation can produce four-digit problem counts
+  // (observed: 1638). Dumping them all into one environment message would
+  // consume the designer's context; group by class instead and point at the
+  // complete list on disk.
+  const problemBlock =
+    problems.length <= 40
+      ? problems.map((problem) => `- ${problem}`).join("\n")
+      : summarizeProblemsByClass(problems);
   return `[Environment: the deterministic corpus gate failed, so fresh readers and the independent auditor cannot run yet. Correct every problem below, then emit <<REQUEST-READER-TEST>> so the exact corrected corpus is reviewed. Do not emit CAMPAIGN-COMPLETE.
 
-${problems.map((problem) => `- ${problem}`).join("\n")}]`;
+${problemBlock}${schemaReference}]`;
+}
+
+/** Group a large problem list into classes with counts and a few verbatim examples each. */
+export function summarizeProblemsByClass(problems: string[]): string {
+  const classes = new Map<string, string[]>();
+  for (const problem of problems) {
+    const key = problem
+      .replace(/CF-[A-Za-z0-9/-]+/g, "CF-*")
+      .replace(/HB-[A-Za-z0-9-]+/g, "HB-*")
+      .replace(/"[^"]*"/g, '"…"');
+    const bucket = classes.get(key) ?? [];
+    bucket.push(problem);
+    classes.set(key, bucket);
+  }
+  const lines = [...classes.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([key, members]) => {
+      const examples = members.slice(0, 3).map((m) => `    - ${m}`);
+      return `- ${members.length}× ${key}\n${examples.join("\n")}`;
+    });
+  return `${problems.length} problems in ${classes.size} classes. The COMPLETE per-item list is in ./CATALOG-GATE-PROBLEMS.md — read it (it is large; read it in slices) and fix systematically by class rather than one item at a time. Classes, largest first, with up to 3 verbatim examples each:
+
+${lines.join("\n")}`;
+}
+
+/**
+ * Appended to the reader reports of a TERMINAL pass (reader-loop convergence
+ * rule). Record-don't-fix keeps the corpus byte-stable so the pass can stand;
+ * blocking material is the explicit exception and re-enters the strict loop.
+ */
+export function readerResidueInstruction(): string {
+  return `
+
+[Environment: reader-loop convergence rule. The loop has converged — the stakeholder ratified consecutive reader rounds — so THIS was the terminal reader pass. Disposition its findings by RECORDING them, not fixing them: add or extend a "Reader-round residue" subsection in ratification-package.md listing each finding, its tier, and why it is recorded for the human rather than fixed now. Do NOT edit any other artifact — any change outside ratification-package.md invalidates this pass and returns the campaign to the strict re-review loop. Exception: a genuinely BLOCKING finding must still be fixed; say so explicitly and fix it, accepting that the strict loop resumes. When the residue record is written and the stakeholder has confirmed it, emit <<CAMPAIGN-COMPLETE>>.]`;
 }
 
 export function readerRereviewRequiredMessage(): string {

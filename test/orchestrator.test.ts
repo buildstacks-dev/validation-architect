@@ -1338,3 +1338,212 @@ describe("runCampaign audit stage", () => {
     expect(resumed.auditor.prompts[0]).toContain("previous response was rejected");
   });
 });
+
+describe("reader-loop convergence rule", () => {
+  const ZERO_FINDINGS_AUDIT = ["No findings.\n\n## What I checked\nEvery artifact and rubric axis."];
+
+  const appendResidue = () => {
+    const pkg = join(dir, "validation-design", "ratification-package.md");
+    const prior = existsSync(pkg) ? readFileSync(pkg, "utf8") : "# Ratification package\n";
+    writeFileSync(pkg, `${prior}\n## Reader-round residue\n\n- (minor) terminal-round nit, recorded for the human.\n`);
+  };
+
+  it("arms the terminal pass after two ratified rounds and accepts a package-only residue delta", async () => {
+    let residueIncoming = "";
+    const { deps, readers, saved } = makeDeps(
+      [
+        "Artifacts ready.\n<<REQUEST-READER-TEST>>",
+        "Round 1 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Re-running readers.\n<<REQUEST-READER-TEST>>",
+        "Round 2 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Re-running readers.\n<<REQUEST-READER-TEST>>",
+        (incoming) => {
+          residueIncoming = incoming;
+          appendResidue();
+          return "Residue recorded in the package.\n<<CAMPAIGN-COMPLETE>>";
+        },
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      [
+        "ack",
+        "CONFIRMED: round 1 — checked invariants.md and the mirrors.",
+        "Yes — I confirm the design campaign is complete on the current corpus.",
+      ],
+      ZERO_FINDINGS_AUDIT,
+    );
+    const state = await runCampaign(deps, makeState(makeConfig()), kickoffs);
+
+    expect(state.status).toBe("completed");
+    expect(state.readerConvergentRounds).toBe(2);
+    expect(state.readerResidueMode).toBe(true);
+    // The third pre-audit pass carried the terminal record-don't-fix instruction.
+    expect(residueIncoming).toContain("terminal reader pass");
+    expect(residueIncoming).toContain("Reader-round residue");
+    // Three pre-audit passes plus the final owner review, three personas each.
+    expect(readers.ran.length).toBe(12);
+    // The acceptance is recorded, auditable in the transcript.
+    const notes = readTranscript(dir).filter((t) => t.role === "orchestrator");
+    expect(notes.some((t) => (t.note ?? "").includes("residue delta"))).toBe(true);
+    expect(saved.length).toBeGreaterThan(0);
+  });
+
+  it("disarms residue mode and resets the counter when the terminal pass edits beyond the package", async () => {
+    let secondPassAfterViolation = "";
+    const { deps } = makeDeps(
+      [
+        "Artifacts ready.\n<<REQUEST-READER-TEST>>",
+        "Round 1 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Re-running readers.\n<<REQUEST-READER-TEST>>",
+        "Round 2 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Re-running readers.\n<<REQUEST-READER-TEST>>",
+        (incoming) => {
+          if (!incoming.includes("terminal reader pass")) return "expected terminal pass\n<<AWAITING-HUMAN>>";
+          appendResidue();
+          writeFileSync(join(dir, "validation-design", "invariants.md"), "# Invariants\n\nINV-001 amended beyond the package.\n");
+          return "Fixed one more thing too.\n<<CAMPAIGN-COMPLETE>>";
+        },
+        (incoming) =>
+          incoming.includes("corpus changed") || incoming.includes("stale")
+            ? "Understood; re-running readers.\n<<REQUEST-READER-TEST>>"
+            : "expected the re-review requirement\n<<AWAITING-HUMAN>>",
+        (incoming) => {
+          secondPassAfterViolation = incoming;
+          return "No further edits.\n<<CAMPAIGN-COMPLETE>>";
+        },
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      [
+        "ack",
+        "CONFIRMED: round 1 — checked invariants.md and the mirrors.",
+        "CONFIRMED: round 2 — checked again; complete on the current corpus.",
+      ],
+      ZERO_FINDINGS_AUDIT,
+    );
+    const state = await runCampaign(deps, makeState(makeConfig()), kickoffs);
+
+    expect(state.status).toBe("completed");
+    // The violated terminal pass returned the campaign to the strict loop.
+    expect(state.readerResidueMode).toBeUndefined();
+    expect(state.readerConvergentRounds).toBe(0);
+    expect(secondPassAfterViolation).not.toContain("terminal reader pass");
+  });
+
+  it("resets the convergence counter on GATE-REFUSED", async () => {
+    let thirdPass = "";
+    const { deps } = makeDeps(
+      [
+        "Artifacts ready.\n<<REQUEST-READER-TEST>>",
+        "Round 1 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Re-running readers.\n<<REQUEST-READER-TEST>>",
+        "Round 2 dispositioned.\n<<AWAITING-HUMAN>>",
+        "Acknowledged the refusal; re-running readers.\n<<REQUEST-READER-TEST>>",
+        (incoming) => {
+          thirdPass = incoming;
+          return "No further edits.\n<<CAMPAIGN-COMPLETE>>";
+        },
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      [
+        "ack",
+        "CONFIRMED: round 1 — checked invariants.md and the mirrors.",
+        "GATE-REFUSED: the mirrors disagree; round 2 is not acceptable.",
+      ],
+      ZERO_FINDINGS_AUDIT,
+    );
+    const state = await runCampaign(deps, makeState(makeConfig()), kickoffs);
+
+    expect(state.status).toBe("completed");
+    expect(state.readerConvergentRounds).toBe(0);
+    expect(state.readerResidueMode).toBeUndefined();
+    expect(thirdPass).not.toContain("terminal reader pass");
+  });
+});
+
+describe("audit window confirmation formats", () => {
+  const REPORT = [
+    "AUD-101 (blocking) — invariants.md — INV-003's oracle cannot fail",
+    "Evidence: the falsification shape quotes no observable.",
+    "AUD-102 (minor) — system-map.md — heading style drifts",
+    "",
+    "What I checked: invariants.md, boundary-map.md.",
+  ].join("\n");
+
+  it("persists a bold em-dash blanket confirmation", async () => {
+    const { deps } = makeDeps(
+      [
+        "All done, gate confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 1")
+            ? "DISPOSITION: AUD-101 = fixed — rewrote the oracle\nDISPOSITION: AUD-102 = fixed — style aligned\nOwner, please confirm.\n<<AWAITING-HUMAN>>"
+            : "did not get the audit report\n<<AWAITING-HUMAN>>",
+        "Confirmed by owner.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 2")
+            ? "Verification acknowledged.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the verification report\n<<AWAITING-HUMAN>>",
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      ["ack", "**CONFIRMED — audit window closed.** Both dispositions verified against the corpus."],
+      [
+        REPORT,
+        "## Disposition verification\nAUD-101: VERIFIED — observable named\nAUD-102: VERIFIED — aligned\n\n## What I checked\nDispositions.",
+      ],
+    );
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.audit?.dispositions["AUD-101"]?.confirmed).toBe(true);
+    expect(state.audit?.dispositions["AUD-102"]?.confirmed).toBe(true);
+  });
+
+  it("persists per-finding table-row confirmations inside an otherwise refusing message", async () => {
+    const { deps } = makeDeps(
+      [
+        "All done, gate confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 1")
+            ? "DISPOSITION: AUD-101 = fixed — rewrote the oracle\nDISPOSITION: AUD-102 = fixed — style aligned\nOwner, please confirm.\n<<AWAITING-HUMAN>>"
+            : "did not get the audit report\n<<AWAITING-HUMAN>>",
+        "AUD-101 corrected as you ruled.\nDISPOSITION: AUD-101 = fixed — corrected per ruling\n<<AWAITING-HUMAN>>",
+        "Both now confirmed.\n<<CAMPAIGN-COMPLETE>>",
+        (incoming) =>
+          incoming.includes("audit iteration 2")
+            ? "Verification acknowledged.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the verification report\n<<AWAITING-HUMAN>>",
+        (incoming) =>
+          incoming.includes('verdict "clean"')
+            ? "Audit section written.\n<<CAMPAIGN-COMPLETE>>"
+            : "did not get the package instruction\n<<AWAITING-HUMAN>>",
+        ownerDocsStep(),
+      ],
+      [
+        "ack",
+        "Overall ruling: **GATE-REFUSED**.\n\n| Finding | Ruling |\n|---|---|\n| AUD-101 | **OBJECTION** — oracle still vague |\n| AUD-102 | **CONFIRMED** |",
+        "| Finding | Ruling |\n|---|---|\n| **AUD-101** | **CONFIRMED** |",
+      ],
+      [
+        REPORT,
+        "## Disposition verification\nAUD-101: VERIFIED — observable named\nAUD-102: VERIFIED — aligned\n\n## What I checked\nDispositions.",
+      ],
+    );
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.audit?.dispositions["AUD-101"]?.confirmed).toBe(true);
+    expect(state.audit?.dispositions["AUD-102"]?.confirmed).toBe(true);
+  });
+});

@@ -150,7 +150,9 @@ ${history}
               ":(exclude)validation-design",
               ":(exclude)validation-design/**",
             ],
-            { cwd: frozenTarget, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+            // A long-lived revision delta can far exceed execFileSync's 1 MiB
+            // default (Cormidia rev1: 16 MB unified diff → ENOBUFS).
+            { cwd: frozenTarget, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024 },
           ).trim() || "(no source/config changes)";
           unifiedDiff = execFileSync(
             "git",
@@ -166,7 +168,7 @@ ${history}
               ":(exclude)validation-design",
               ":(exclude)validation-design/**",
             ],
-            { cwd: frozenTarget, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+            { cwd: frozenTarget, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024 },
           ) || "# No source/config changes.\n";
           priorBlock = `- Prior design source base: \`${priorSource.baseCommit}\`\n- Prior source tree digest: \`${priorSource.sourceTree}\`\n- Prior source captured: ${priorSource.capturedAt}\n`;
         } catch (err) {
