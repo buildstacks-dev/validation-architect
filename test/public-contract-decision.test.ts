@@ -21,7 +21,12 @@ function grepTree(pattern: string): string[] {
       ["grep", "-l", pattern, "--", "src", "test", "skill", "docs", "enablement", "scripts", "bin"],
       { cwd: root, encoding: "utf8" },
     );
-    return out.split("\n").filter(Boolean);
+    // The decision record names rejected alternatives on purpose, and this
+    // detector file necessarily spells every pattern it hunts.
+    return out
+      .split("\n")
+      .filter(Boolean)
+      .filter((path) => !path.startsWith("docs/decisions/") && path !== "test/public-contract-decision.test.ts");
   } catch {
     return []; // git grep exits 1 on no match
   }
@@ -55,14 +60,7 @@ describe("decision 3: one canonical result schema ID", () => {
   });
 
   it("has no writable validation-result/v1 spelling in the tree", () => {
-    // The rejected alternative may appear only in the decision record and in
-    // this detector's own source.
-    const hits = grepTree("validation-result/v1").filter(
-      (path) =>
-        !path.startsWith("docs/decisions/") &&
-        path !== "test/public-contract-decision.test.ts",
-    );
-    expect(hits).toEqual([]);
+    expect(grepTree("validation-result/v1")).toEqual([]);
   });
 });
 
