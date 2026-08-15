@@ -161,9 +161,17 @@ export function generateReport(runDir: string): string {
   const stakeholderUse = sumUsage(entries, "stakeholder");
   const warnings = entries.filter((e) => e.role === "orchestrator" && e.note).map((e) => e.note as string);
   const readerReports = entries.filter((e) => e.role.startsWith("reader:"));
-  const mode = state.rambleMtimeMs !== undefined || existsSync(join(state.workspace, "rambling.txt"))
-    ? "human-amplified (rambling.txt present)"
-    : "pure-simulation (no rambling.txt — declared, not silent)";
+  // Issue #14: prefer the intent source recorded at kickoff; fall back to the
+  // filesystem heuristic for runs that predate the field.
+  const intentSource =
+    state.intentSource ??
+    (state.rambleMtimeMs !== undefined || existsSync(join(state.workspace, "rambling.txt"))
+      ? "human-rambling"
+      : "derived-from-repo");
+  const mode =
+    intentSource === "human-rambling"
+      ? "human-amplified (intent source: rambling.txt — the human's direct voice)"
+      : "derived-intent (no rambling.txt — product intent derived from the repo's docs/README/specs/source; declared, not silent)";
 
   const rubberStampWarning =
     verdicts.objections + verdicts.refusals === 0

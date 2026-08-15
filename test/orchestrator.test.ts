@@ -263,12 +263,45 @@ describe("runCampaign", () => {
     expect(designer.received[1]).toBe("CONFIRMED: phase 0 — checked: module map");
     const entries = readTranscript(dir);
     expect(entries.map((e) => e.role)).toEqual([
+      "orchestrator", // intent-source provenance note (issue #14)
       "stakeholder",
       "orchestrator",
       "designer",
       "stakeholder",
       "designer",
     ]);
+  });
+
+  it("records the derived-from-repo intent source when no rambling.txt exists (issue #14)", async () => {
+    const { deps } = makeDeps(["done\n<<CAMPAIGN-COMPLETE>>"], ["ack"]);
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true, auditDone: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.intentSource).toBe("derived-from-repo");
+    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
+    expect(notes.some((n) => n.note?.includes("product intent source: derived-from-repo"))).toBe(true);
+    expect(notes.some((n) => n.note?.includes("product intent source: human-rambling"))).toBe(false);
+  });
+
+  it("records the human-rambling intent source when rambling.txt is present (issue #14)", async () => {
+    writeFileSync(join(dir, "rambling.txt"), "my half-formed product thinking\n");
+    const { deps } = makeDeps(["done\n<<CAMPAIGN-COMPLETE>>"], ["ack"]);
+    const state = await runCampaign(deps, makeState(makeConfig(), { readersRan: true, auditDone: true }), kickoffs);
+    expect(state.status).toBe("completed");
+    expect(state.intentSource).toBe("human-rambling");
+    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
+    expect(notes.some((n) => n.note?.includes("product intent source: human-rambling"))).toBe(true);
+  });
+
+  it("does not re-record the intent source on resume (kickoff-only provenance)", async () => {
+    const { deps } = makeDeps(["continuing\n<<CAMPAIGN-COMPLETE>>"], []);
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    state.pending = { to: "designer", text: "resume here" };
+    state.intentSource = "human-rambling"; // recorded by the original kickoff
+    const final = await runCampaign(deps, state, kickoffs);
+    expect(final.status).toBe("completed");
+    expect(final.intentSource).toBe("human-rambling");
+    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
+    expect(notes.some((n) => n.note?.includes("product intent source"))).toBe(false);
   });
 
   it("runs the three readers on REQUEST-READER-TEST without counting an exchange", async () => {
@@ -469,7 +502,8 @@ describe("runCampaign", () => {
     const last = saved[saved.length - 1] as RunState;
     expect(last.designerSessionId).toBe("fake-designer-session");
     expect(last.codexThreadId).toBe("fake-codex-thread");
-    expect(last.seq).toBe(5);
+    // intent-source note + priming + compile note + designer + stakeholder + designer
+    expect(last.seq).toBe(6);
   });
 });
 
