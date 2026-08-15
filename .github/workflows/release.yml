@@ -1,0 +1,123 @@
+# Approval-gated lockstep release of validation-architect + validation-architect-design.
+#
+# The publish job is reachable ONLY through the protected `npm-publish`
+# environment (configure required reviewers in repo settings) and only when the
+# rebuilt tarball digests match the human-approved candidate preview exactly.
+# Publication uses npm trusted publishing (OIDC provenance) — no long-lived
+# registry token is stored. This workflow never runs on push; a human
+# dispatches it with the approval preview's exact values.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Exact commit SHA from the approval preview"
+        required: true
+      tag:
+        description: "Exact tag (vX.Y.Z) matching both package versions"
+        required: true
+      core_digest:
+        description: "sha256 of validation-architect tarball from the preview"
+        required: true
+      design_digest:
+        description: "sha256 of validation-architect-design tarball from the preview"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:package
+      - name: Verify tag/version relationship, lockstep, and digests
+        id: verify
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          DESIGN_VERSION=$(node -p "require('./design/package.json').version")
+          [ "$VERSION" = "$DESIGN_VERSION" ] || { echo "version skew: $VERSION vs $DESIGN_VERSION"; exit 1; }
+          [ "${{ inputs.tag }}" = "v$VERSION" ] || { echo "tag ${{ inputs.tag }} does not name v$VERSION"; exit 1; }
+          [ -z "$(git status --porcelain)" ] || { echo "dirty tree after build"; exit 1; }
+          pnpm pack --out /tmp/core.tgz
+          pnpm -C design pack --out /tmp/design.tgz
+          CORE_DIGEST=$(sha256sum /tmp/core.tgz | cut -d' ' -f1)
+          DESIGN_DIGEST=$(sha256sum /tmp/design.tgz | cut -d' ' -f1)
+          [ "$CORE_DIGEST" = "${{ inputs.core_digest }}" ] || { echo "core digest mismatch: built $CORE_DIGEST"; exit 1; }
+          [ "$DESIGN_DIGEST" = "${{ inputs.design_digest }}" ] || { echo "design digest mismatch: built $DESIGN_DIGEST"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-tarballs
+          path: /tmp/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: verify-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The protected environment IS the human approval binding: configure
+    # required reviewers on `npm-publish` so this job waits for an explicit
+    # person to approve the exact run whose inputs they previewed.
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing / provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-tarballs
+          path: /tmp
+      - name: Re-verify digests against the approved inputs
+        run: |
+          set -euo pipefail
+          [ "$(sha256sum /tmp/core.tgz | cut -d' ' -f1)" = "${{ inputs.core_digest }}" ]
+          [ "$(sha256sum /tmp/design.tgz | cut -d' ' -f1)" = "${{ inputs.design_digest }}" ]
+      - name: Preflight — neither version may already exist
+        run: |
+          set -euo pipefail
+          V=${{ needs.verify-candidate.outputs.version }}
+          for P in validation-architect validation-architect-design; do
+            if npm view "$P@$V" version >/dev/null 2>&1; then
+              echo "$P@$V is already published. STOP: follow docs/release/RUNBOOK.md reconciliation; do not republish or bump blindly."
+              exit 1
+            fi
+          done
+      - name: Publish core, then design (documented order)
+        run: |
+          set -euo pipefail
+          npm publish /tmp/core.tgz --provenance --access public
+          npm publish /tmp/design.tgz --provenance --access public
+      - name: Verify lockstep publication
+        run: |
+          set -euo pipefail
+          V=${{ needs.verify-candidate.outputs.version }}
+          CORE_OK=$(npm view "validation-architect@$V" version || echo MISSING)
+          DESIGN_OK=$(npm view "validation-architect-design@$V" version || echo MISSING)
+          echo "registry: core=$CORE_OK design=$DESIGN_OK commit=${{ inputs.commit }} tag=${{ inputs.tag }}"
+          if [ "$CORE_OK" != "$V" ] || [ "$DESIGN_OK" != "$V" ]; then
+            echo "PARTIAL OR AMBIGUOUS PUBLICATION. Do not rerun this workflow. Follow docs/release/RUNBOOK.md."
+            exit 1
+          fi
