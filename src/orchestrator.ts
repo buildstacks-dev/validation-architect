@@ -4,7 +4,6 @@ import {
   renderDispositionRecord,
   validateAuditReport,
 } from "./audit.js";
-import { workspaceCatalogProblems } from "./catalog.js";
 import { parseMarker, stripMarkers } from "./markers.js";
 import {
   auditPackageMessage,
@@ -15,7 +14,6 @@ import {
   auditorPrompt,
   corpusGateRequiredMessage,
   designerEmptyTurnNudge,
-  ownerDocsMessage,
   rambleRefreshNote,
   readerReportMessage,
   readerRereviewRequiredMessage,
@@ -38,6 +36,14 @@ import type {
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import {
+  compileWorkspaceModel,
+  workspaceModelSurfaceFingerprint,
+  type WorkspaceCompilation,
+} from "./workspace-compiler.js";
+import { COMPILER_VERSION } from "./versions.js";
+import { acceptedBundleIdentity } from "./version-compatibility.js";
+import { assertRunStateVersionCompatible } from "./run-state-version.js";
 
 const READER_PERSONAS: ReaderPersonaId[] = ["operator", "new-engineer", "coding-agent"];
 
@@ -73,6 +79,8 @@ export interface OrchestratorDeps {
   now?: () => number;
   /** Delay before the single retry of a failed agent turn (test hook). */
   retryDelayMs?: number;
+  /** Deterministic compiler injection for crash/gate tests; defaults to the workspace compiler. */
+  compileModel?: (workspace: string) => WorkspaceCompilation;
 }
 
 export interface Kickoffs {
@@ -102,71 +110,6 @@ function preview(text: string, n = 140): string {
 
 function freshAuditState(): AuditState {
   return { iteration: 0, phase: "window", windowExchanges: 0, findings: [], dispositions: {} };
-}
-
-const OWNER_BRIEFING_SECTIONS = [
-  "What this product can break",
-  "The promises",
-  "The seams",
-  "What we deliberately will NOT test",
-  "The decisions on your desk",
-  "What is still unknown",
-  "What gets built, in what order",
-] as const;
-
-function readCorpusFile(workspace: string, name: string): string | undefined {
-  const path = join(workspace, "validation-design", name);
-  if (!existsSync(path)) return undefined;
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
-/** Deterministic structural/staleness checks for the two owner-facing views. */
-export function ownerDocumentProblems(workspace: string): string[] {
-  const problems: string[] = [];
-  const briefing = readCorpusFile(workspace, "owner-briefing.md");
-  const ownerBacklog = readCorpusFile(workspace, "owner-backlog.md");
-  const harnessBacklog = readCorpusFile(workspace, "harness-backlog.md");
-
-  if (!briefing?.trim()) {
-    problems.push("validation-design/owner-briefing.md is missing or blank");
-  } else {
-    if (!/(?:non[- ]normative|not (?:a |the )?(?:second )?source of truth)/i.test(briefing)) {
-      problems.push("owner-briefing.md does not declare that it is non-normative / not a second source of truth");
-    }
-    for (const section of OWNER_BRIEFING_SECTIONS) {
-      const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("NOT", "(?:NOT|not)");
-      if (!new RegExp(`^#{1,6}\\s+(?:\\d+[.)]\\s*)?${escaped}(?:[,—:-].*)?$`, "im").test(briefing)) {
-        problems.push(`owner-briefing.md is missing section "${section}"`);
-      }
-    }
-  }
-
-  if (!ownerBacklog?.trim()) {
-    problems.push("validation-design/owner-backlog.md is missing or blank");
-  } else {
-    if (!/(?:non[- ]normative|not (?:a |the )?(?:second )?source of truth)/i.test(ownerBacklog)) {
-      problems.push("owner-backlog.md does not declare its non-normative status");
-    }
-    if (!/(?:backlog revision|generated from[^\n]*harness-backlog\.md|harness-backlog\.md[^\n]*revision)/i.test(ownerBacklog)) {
-      problems.push("owner-backlog.md does not name the harness-backlog revision it was generated from");
-    }
-  }
-
-  if (!harnessBacklog?.trim()) {
-    problems.push("validation-design/harness-backlog.md is missing or blank");
-  } else if (ownerBacklog) {
-    const expected = new Set((harnessBacklog.match(/\bHB-\d+\b/gi) ?? []).map((id) => id.toUpperCase()));
-    const represented = new Set((ownerBacklog.match(/\bHB-\d+\b/gi) ?? []).map((id) => id.toUpperCase()));
-    const missing = [...expected].filter((id) => !represented.has(id));
-    if (missing.length > 0) {
-      problems.push(`owner-backlog.md omits harness backlog tickets: ${missing.join(", ")}`);
-    }
-  }
-  return problems;
 }
 
 function fingerprintCorpus(workspace: string, excludedRootEntries: ReadonlySet<string>): string {
@@ -210,10 +153,7 @@ export function readerCoreFingerprint(workspace: string): string {
  * receive their own structural + fresh-reader gates.
  */
 export function auditedCoreFingerprint(workspace: string): string {
-  return fingerprintCorpus(
-    workspace,
-    new Set(["audit", "ratification-package.md", "owner-briefing.md", "owner-backlog.md"]),
-  );
+  return fingerprintCorpus(workspace, new Set(["audit", "ratification-package.md"]));
 }
 
 /**
@@ -229,6 +169,7 @@ export async function runCampaign(
   state: RunState,
   kickoffs: Kickoffs,
 ): Promise<RunState> {
+  assertRunStateVersionCompatible(state);
   const { designer, stakeholder, readers, auditor, transcript, ramble, saveState, log } = deps;
   const retryDelayMs = deps.retryDelayMs ?? 5000;
   const now = deps.now ?? Date.now;
@@ -277,36 +218,63 @@ export async function runCampaign(
     return state.status === "aborted";
   };
 
-  const deterministicCorpusProblems = (): { catalog: string[]; owner: string[] } => ({
-    catalog: workspaceCatalogProblems(state.workspace),
-    owner: ownerDocumentProblems(state.workspace),
-  });
+  const compileCurrentModel = (): WorkspaceCompilation => {
+    const compilation = deps.compileModel
+      ? deps.compileModel(state.workspace)
+      : compileWorkspaceModel(state.workspace, { regenerate: true });
+    const nextCompilation: NonNullable<RunState["compilation"]> = {
+      sourceFingerprint: compilation.source_fingerprint,
+      surfaceFingerprint: compilation.surface_fingerprint,
+      status: compilation.accepted ? "accepted" : "invalid",
+      compilerVersion: COMPILER_VERSION,
+      ...(compilation.identity ? { modelIdentity: compilation.identity } : {}),
+      ...(compilation.model ? { versions: compilation.model.versions } : {}),
+      diagnosticCodes: compilation.diagnostics.map((diagnostic) => diagnostic.code),
+    };
+    if (nextCompilation.status === "accepted" && nextCompilation.modelIdentity && nextCompilation.versions) {
+      nextCompilation.acceptedBundleIdentity = acceptedBundleIdentity({
+        sourceFingerprint: nextCompilation.sourceFingerprint,
+        surfaceFingerprint: nextCompilation.surfaceFingerprint,
+        modelIdentity: nextCompilation.modelIdentity,
+        versions: nextCompilation.versions,
+      });
+    }
+    state.compilation = nextCompilation;
+    return compilation;
+  };
 
   /** Queue a designer repair before any reader/auditor may observe the corpus. */
   const gateCorpus = (): boolean => {
-    const problems = deterministicCorpusProblems();
-    if (problems.catalog.length === 0) clearGate("catalog");
-    if (problems.owner.length === 0) clearGate("owner-docs");
-    if (problems.catalog.length === 0 && problems.owner.length === 0) return false;
+    const compilation = compileCurrentModel();
+    if (compilation.accepted) {
+      clearGate("compiler");
+      clearGate("catalog");
+      clearGate("owner-docs");
+      return false;
+    }
     state.readerReviewFingerprint = undefined;
-    const gate: CompletionGate = problems.catalog.length > 0 ? "catalog" : "owner-docs";
-    const all = [...problems.catalog, ...problems.owner];
+    const all = compilation.diagnostics
+      .filter((diagnostic) => diagnostic.severity === "error")
+      .map(
+        (diagnostic) =>
+          `${diagnostic.location.file}:${diagnostic.location.line}:${diagnostic.location.column} ${diagnostic.concept}: ${diagnostic.message} Correction: ${diagnostic.correction}`,
+      );
     // Persist the complete list in the workspace so the designer can read it
     // in slices; the environment message summarizes when the list is large.
     writeFileSync(
-      join(state.workspace, "CATALOG-GATE-PROBLEMS.md"),
-      `# Deterministic corpus gate — complete problem list\n\n${all.length} problem(s) at ${new Date().toISOString()}. Regenerated on every gate evaluation; fix by class, then emit <<REQUEST-READER-TEST>>.\n\n${all.map((p) => `- ${p}`).join("\n")}\n`,
+      join(state.workspace, "COMPILER-GATE-PROBLEMS.md"),
+      `# Deterministic compiler gate — complete problem list\n\n${all.length} problem(s). The structured report is validation-design/compiler-report.json. Fix model facts by class, then emit <<REQUEST-READER-TEST>>.\n\n${all.map((p) => `- ${p}`).join("\n")}\n`,
     );
     const noteLimit = 12;
     const note =
       all.length <= noteLimit
         ? all.join("; ")
-        : `${all.slice(0, noteLimit).join("; ")} … and ${all.length - noteLimit} more (full list in workspace CATALOG-GATE-PROBLEMS.md)`;
+        : `${all.slice(0, noteLimit).join("; ")} … and ${all.length - noteLimit} more (full list in workspace COMPILER-GATE-PROBLEMS.md)`;
     rejectGate(
-      gate,
+      "compiler",
       { to: "designer", text: corpusGateRequiredMessage(all) },
-      `designer repeatedly failed the deterministic ${gate} corpus gate`,
-      `deterministic corpus gate rejected: ${note}`,
+      "designer repeatedly failed the deterministic compiler corpus gate",
+      `deterministic compiler gate rejected: ${note}`,
     );
     return true;
   };
@@ -410,6 +378,26 @@ export async function runCampaign(
     }
     const pending: RunState["pending"] = state.pending;
     if (!pending) throw new Error("orchestrator invariant: pending message missing");
+
+    // A normal designer turn is checkpointed before the loop reaches this
+    // transition. If model bytes or a generated view changed, compile and
+    // checkpoint before the next stakeholder/auditor provider call. A crash
+    // in this deterministic transition therefore resumes the same pending
+    // provider message without repeating the turn that produced the edit.
+    const modelDirectory = join(state.workspace, "validation-design", "model");
+    if (
+      existsSync(modelDirectory) &&
+      state.compilation?.surfaceFingerprint !== workspaceModelSurfaceFingerprint(state.workspace)
+    ) {
+      const compilation = compileCurrentModel();
+      transcript.note(
+        "orchestrator",
+        compilation.accepted
+          ? `compiled model ${compilation.identity ?? "without identity"}; generated views are current`
+          : `model compile recorded ${compilation.diagnostics.filter((item) => item.severity === "error").length} error(s) before the next provider turn`,
+      );
+      persist();
+    }
 
     if (pending.to === "auditor") {
       const iteration: number = pending.iteration;
@@ -515,16 +503,23 @@ export async function runCampaign(
     }
 
     if (pending.to === "designer") {
-      const turn: AgentTurn = await withRetry("designer turn", log, () => designer.send(pending.text), retryDelayMs);
-      const marker = parseMarker(turn.text);
-      transcript.append({ role: "designer", text: turn.text, marker, usage: turn.usage });
-      log(`designer [${marker ?? "no-marker"}]: ${preview(turn.text)}`);
+      const checkpointedMarker = state.checkpointedDesignerMarker;
+      const turn: AgentTurn = checkpointedMarker
+        ? { text: "" }
+        : await withRetry("designer turn", log, () => designer.send(pending.text), retryDelayMs);
+      const marker = checkpointedMarker ?? parseMarker(turn.text);
+      if (!checkpointedMarker) {
+        transcript.append({ role: "designer", text: turn.text, marker, usage: turn.usage });
+        log(`designer [${marker ?? "no-marker"}]: ${preview(turn.text)}`);
+      } else {
+        log(`resuming checkpointed designer marker ${checkpointedMarker}`);
+      }
 
       // Dispositions are mutable only inside the bounded feedback window.
       // Once the verdict/package phase begins, its inputs are frozen: later
       // package or owner-doc prose cannot silently relabel a finding while
       // retaining the already-computed verdict.
-      const emittedDispositions = parseDispositions(turn.text);
+      const emittedDispositions = checkpointedMarker ? [] : parseDispositions(turn.text);
       if (state.audit?.phase === "window") {
         for (const d of emittedDispositions) {
           const previous = state.audit.dispositions[d.id];
@@ -573,7 +568,7 @@ export async function runCampaign(
           (terminalAudit.iteration === 1 &&
             terminalAudit.findings.length === 0 &&
             terminalAudit.phase !== "window"));
-      if (coreIsFrozen && terminalAudit) {
+      if (!checkpointedMarker && coreIsFrozen && terminalAudit) {
         if (!terminalAudit.auditedCoreFingerprint) {
           // Safe migration for active pre-fingerprint state: do not bless the
           // current bytes retroactively. Restart the bounded audit over them.
@@ -599,7 +594,20 @@ export async function runCampaign(
         clearGate("audited-core");
       }
 
+      // Provider output is durable before compilation, readers, or audit can
+      // run. A crash in any following deterministic transition resumes this
+      // marker and never resends the designer message that produced it.
+      if (
+        !checkpointedMarker &&
+        (marker === "REQUEST-READER-TEST" || marker === "CAMPAIGN-COMPLETE")
+      ) {
+        state.checkpointedDesignerMarker = marker;
+        persist();
+        continue;
+      }
+
       if (marker === "CAMPAIGN-COMPLETE") {
+        state.checkpointedDesignerMarker = undefined;
         // Both catalogs and the owner-facing views are unconditional corpus
         // requirements. This check runs before every completion transition,
         // including legacy/pre-set `audit.phase = done` state.
@@ -719,16 +727,15 @@ export async function runCampaign(
         }
         clearGate("audit-section");
         if (state.audit.phase === "package") {
-          state.audit.phase = "owner-docs";
-          state.pending = { to: "designer", text: ownerDocsMessage() };
-          transcript.note("orchestrator", "audit package accepted; requesting owner-briefing.md and owner-backlog.md");
-          log("gated CAMPAIGN-COMPLETE: owner-facing documents required");
+          state.audit.phase = "final-review";
+          await runFreshReaders(true);
           persist();
           continue;
         }
         if (state.audit.phase === "owner-docs") {
-          // gateCorpus above proved structure and catalog agreement. These
-          // final versions still need a fresh-context review after the audit.
+          // Legacy checkpoints used a separate authored owner-doc phase. The
+          // current compiler owns those projections, so resume straight into
+          // the same final fresh-reader review without another provider turn.
           state.audit.phase = "final-review";
           await runFreshReaders(true);
           persist();
@@ -756,6 +763,7 @@ export async function runCampaign(
         return state;
       }
       if (marker === "REQUEST-READER-TEST") {
+        state.checkpointedDesignerMarker = undefined;
         if (gateCorpus()) {
           if (state.status === "aborted") return state;
           continue;

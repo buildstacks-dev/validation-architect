@@ -167,6 +167,8 @@ export type RunStatus = "running" | "completed" | "aborted" | "failed";
 /** Independent retry budgets for completion/audit gates. */
 export type CompletionGate =
   | "reader-test"
+  | "compiler"
+  /** @deprecated Legacy state may still carry this key; new gates use compiler. */
   | "catalog"
   | "audit-report"
   | "audit-window"
@@ -174,12 +176,31 @@ export type CompletionGate =
   | "audited-core"
   | "owner-docs";
 
+export interface CompilationState {
+  sourceFingerprint: string;
+  surfaceFingerprint: string;
+  status: "accepted" | "invalid";
+  compilerVersion: string;
+  modelIdentity?: string | undefined;
+  versions?: CoreVersionBundle | undefined;
+  acceptedBundleIdentity?: string | undefined;
+  diagnosticCodes: string[];
+}
+
 /** Persisted after every turn so a run can be resumed after crash/auth loss. */
 export interface RunState {
   runId: string;
   fixture: string;
   workspace: string;
   status: RunStatus;
+  /** Exact interpreter provenance for this persisted state. Missing only on explicit legacy recovery inputs. */
+  coreVersions?: CoreVersionBundle | undefined;
+  versionRecovery?: {
+    name: string;
+    source: "unversioned-pre1-run-state";
+    targetVersions: CoreVersionBundle;
+    pendingIdentity: string;
+  } | undefined;
   statusReason?: string | undefined;
   exchanges: number;
   seq: number;
@@ -194,6 +215,12 @@ export interface RunState {
     | { to: "designer" | "stakeholder"; text: string }
     | { to: "auditor"; iteration: number }
     | undefined;
+  /**
+   * A designer completion marker whose provider turn has already been
+   * checkpointed. Resume processes this transition without sending the same
+   * message to the designer again.
+   */
+  checkpointedDesignerMarker?: "REQUEST-READER-TEST" | "CAMPAIGN-COMPLETE" | undefined;
   /** Set once the Phase-8 reader test has run; gates CAMPAIGN-COMPLETE. */
   readersRan?: boolean | undefined;
   /** Digest of the exact non-audit corpus seen by the latest reader pass. */
@@ -214,6 +241,8 @@ export interface RunState {
   readerResidueMode?: boolean | undefined;
   /** Corpus digest excluding ratification-package.md, captured at the terminal pass. */
   readerReviewCoreFingerprint?: string | undefined;
+  /** Last deterministic compile of the authoritative YAML model and projections. */
+  compilation?: CompilationState | undefined;
   /** Audit-stage state machine; absent until the first gated CAMPAIGN-COMPLETE. */
   audit?: AuditState | undefined;
   /** @deprecated Pre-0.2 shared counter; ignored so old state cannot poison a different gate. */
@@ -262,3 +291,4 @@ export interface FixtureInfo {
   displayName: string;
   hasRambling: boolean;
 }
+import type { CoreVersionBundle } from "./versions.js";

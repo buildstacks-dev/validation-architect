@@ -24,7 +24,7 @@ Evaluate captured runs against the following requirements. Use `pass`, `partial`
 12. It treats coverage as a navigation signal rather than a confidence verdict.
 13. It evaluates test sensitivity, oracle independence, boundary realism, reproducibility, and CI enforcement.
 14. It includes non-test evidence where the assurance target requires it.
-14a. When ratified harness-design artifacts exist (`validation-policy.yaml`, `invariants.md`), it audits conformance against them — undeclared-absent lanes are findings, declared-empty lanes are decisions — and keeps their namespaced claim IDs instead of re-deriving a parallel contract.
+14a. When `validation-design/model/` exists, it compiles the full logical YAML set, treats that identity as the claims baseline, joins tests/evidence separately, rejects stale generated views, and keeps namespaced IDs instead of re-deriving a parallel contract.
 14b. It tags findings case-level versus structural and routes structural findings to validation-harness-design's `harness-revision` mode rather than piling cases onto a wrong shape.
 14c. When the design contract declares them, it audits the extended conformance surfaces: boundary doubles reproduce declared failure semantics with a fake↔real conformance suite that has actually run, shared behavior is validated once with per-adapter conformance rather than cloned suites, the case catalog and implemented tests are diffed in both directions, the repository's agent instructions route coding agents to the harness artifacts, and protected incumbent paths under a declared coexistence posture are treated as read-only.
 

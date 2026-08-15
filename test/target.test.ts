@@ -122,6 +122,14 @@ describe("campaign mode resolution", () => {
     expect(resolveCampaignMode(target, false)).toBe("revision");
   });
 
+  it("revision by default when the current checked model exists", () => {
+    const target = makeTargetRepo(tmp);
+    mkdirSync(join(target, "validation-design", "model"), { recursive: true });
+    writeFileSync(join(target, "validation-design", "model", "project.yaml"), "schema: validation-architect/model/project/v1\n");
+    expect(existingCorpusDir(target)).toBe(join(target, "validation-design"));
+    expect(resolveCampaignMode(target, false)).toBe("revision");
+  });
+
   it("--fresh opts out of revision even when a corpus exists", () => {
     const target = makeTargetRepo(tmp, { corpus: true });
     expect(resolveCampaignMode(target, true)).toBe("greenfield");
@@ -319,7 +327,7 @@ describe("designerKickoff revision variant", () => {
     expect(k).toContain("retired invariants keep their IDs");
     expect(k).not.toContain("Run the full workflow: Phase 0 through Phase 8");
     // the shared machinery survives the mode switch
-    expect(k).toContain("case-catalog.yaml");
+    expect(k).toContain("model/families.yaml");
     expect(k).toContain("<<CAMPAIGN-COMPLETE>>");
   });
 

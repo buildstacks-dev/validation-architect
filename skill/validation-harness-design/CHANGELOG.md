@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+Replaces the Markdown-derived dual authority with the checked core model.
+
+- Machine facts now live only in the eight versioned files under `validation-design/model/`; catalog, backlog, owner, and planned-trace Markdown is compiler-generated.
+- Separates the design model from adapter-observed test inventory and exact-revision evidence, including honest non-test evidence declarations.
+- Preserves criticality, all six layer declarations, executable lane commands and triggers, expiring exceptions, and parallel-greenfield protections in checked policy data.
+- Constrains fresh readers to an ephemeral generated-only bundle whose projections and compiler report share one model identity.
+- Makes compilation, generated-view identity, and explicit legacy import part of onboarding, revision, reader, audit, and delivery guidance.
+- Defines one bidirectional structure→family→test→evidence graph for trace/explain and four identity-bound role projections; unresolved hops remain visible and fidelity stays separate.
+- Makes impact planning advisory and fail-safe: unknown/structural mappings widen to the full applicable lane, controls and safety checks stay paired, and full CI still runs exactly once.
+- Pins the complete interpretation bundle and forbids read-time upgrades; previous-major meaning changes require a named, reviewed, identity-bound migration to a new artifact.
+- Removes the separately maintained `validation-policy.yaml` / `case-catalog.yaml` contract and the authored owner-document phase.
+- Versioned with validation-harness-audit 0.7.0.
+
 ## 0.6.2
 
 Non-test-lane evidence declarations, derived from the first brownfield adoption sweep (Cormidia, 2026-08-11): nine implemented families' proof lives in certification records, human-validated golden corpora, triggered-obligation records, and campaign evidence — artifacts the trace CLI could not see, leaving only dishonest statuses (pending/pruned/blocked) available for genuinely-implemented work.

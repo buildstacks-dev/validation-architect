@@ -1,168 +1,123 @@
-# Policy File Layout and Inheritance
+# Checked policy and inheritance
 
 Read during Phase 0 (module scope) and Phase 8 (all scopes).
 
-`validation-policy.yaml` is the machine-readable output of this skill and the contract a later audit diffs conformance against. Prose design docs describe intent; this file is what gates behavior.
+The sole machine authority is the complete logical YAML set under
+`validation-design/model/`. Policy is one part of that graph, not a separate
+document with pointers to separately maintained catalogs.
 
-## Layout: distributed files, one registry
+## Required files
 
-For anything larger than a single module, a single monolithic policy file becomes a merge-conflict hotspot the moment two modules evolve in parallel. Use distributed files with a parent registry:
-
+```text
+validation-design/model/
+  project.yaml       # product revision and exact package/method/schema versions
+  owners.yaml        # stable owners and responsibilities
+  sources.yaml       # doc, rambling, simulated, and proposed provenance
+  structures.yaml    # journeys, invariants, boundaries, contracts, interfaces, sites, operations
+  policy.yaml        # fail-closed lanes and inheritance behavior
+  controls.yaml      # red-capable negative controls
+  families.yaml      # traced validation obligations and planned tests/evidence
+  backlog.yaml       # owned, sequenced implementation work
 ```
-validation-policy.yaml              # product: tiers, global invariants, cross-cutting gates, module registry
-learning-loop/
-  validation-policy.yaml            # module: extends parent, adds/tightens
-work-source/
-  validation-policy.yaml
-```
 
-**Parent holds:** criticality tier map, product-level invariant registry, artifact locations, cross-cutting gate requirements, CI cost tiering defaults, tooling selection, optional incumbent-harness coexistence constraints, and a `modules:` list naming each child policy path. Enumeration lives in one place; editing does not.
+Every file declares `schema: validation-architect/model/<name>/v1`. Missing,
+unreadable, partial, unsupported, or semantically invalid input fails before
+generated views are accepted.
 
-**Module holds:** `extends:` pointer, module-scoped invariants, boundary and contract locations, golden-set paths, and any tightened gate requirements.
-
-## Parent skeleton
+## Policy shape
 
 ```yaml
-schema_version: 1
-scope: product
-product: acme
-default_tier: C2
-
-tiers:
-  learning-loop: C2
-  billing: C3            # per-component override
-  scratch-tools: C1
-
-artifacts:
-  system_map: ./system-map.md
-  invariants: ./invariants.md
-  boundary_map: ./boundary-map.md
-  contracts: ./contracts/
-  case_catalog: ./case-catalog.md
-  case_catalog_manifest: ./case-catalog.yaml
-  harness_backlog: ./harness-backlog.md
-  llm_eval_plan: ./llm-eval-plan.md
-  golden_sets: ./golden-sets/
-  acceptance: ./acceptance/
-  harness_state: ./harness-state.yaml
-  agent_instructions: ./agents-md-contribution.md
-
-# Optional: use while a replacement harness is intentionally isolated.
-coexistence:
-  posture: parallel-greenfield
-  isolated_root: ./next-harness/
-  protected_paths: [./incumbent-tests/, ./incumbent-evals/]
-  incumbent_gates: read_only
-  ci_integration: additive_opt_in
-  cutover_requires: [equivalence_evidence, rollback_plan, human_ratification]
-
-invariants:
-  - id: ACME-INV-001
-    statement: "No work item is leased by more than one worker at a time."
-    enforcement: [runtime_guardrail, test]
-    applies_to: [work-source, learning-loop]
-
-layers:                        # all six lanes declared; an empty lane carries a reason — never silently absent
-  invariant_contract: {status: active}
-  hermetic_system:    {status: active}
-  live_sandbox:       {status: active, targets: [sandbox-repo], spend_bound: per_run_cap}
-  eval_qualification: {status: active}
-  # a product with no model call sites declares instead:
-  # eval_qualification: {status: empty, reason: "no model call sites"}
-  ops_hardening:      {status: active, obligations: [threat_model, contention_scale, soak]}
-  outcome_acceptance:
+schema: validation-architect/model/policy/v1
+default: blocking
+inheritance: tighten-only
+layers:
+  - {id: L1, title: Invariant and contract, status: active}
+  - {id: L2, title: Hermetic system, status: active}
+  - {id: L3, title: Live sandbox, status: declared-empty, reason: No disposable target}
+  - {id: L4, title: Eval qualification, status: declared-empty, reason: No model site}
+  - {id: L5, title: Ops hardening, status: active}
+  - {id: L6, title: Outcome acceptance, status: declared-empty, reason: No human-judged output}
+lanes:
+  - id: inner-loop
+    title: Fast local checks
+    kind: test
     status: active
-    rubric: ./acceptance/rubric.yaml
-    scenarios: ./acceptance/scenarios/
-    campaign_invariants: ./acceptance/campaign-invariants.yaml
-    cadence: triggered_only
-    authorization: per_campaign_human
-    release_relationship: disclosed_assurance # or release_gate
-  # A product with mechanically specified outputs declares instead:
-  # outcome_acceptance: {status: empty, reason: "no human-judged work product"}
-
-gates:
-  invariant_contract: {requirement: blocking, frequency: per_commit}
-  hermetic_system:    {requirement: blocking, frequency: per_commit}
-  live_sandbox:       {requirement: blocking, frequency: [pre_merge, pre_release]}
-  llm_contract:       {requirement: blocking, frequency: per_commit}
-  llm_quality:        {requirement: blocking, frequency: [prompt_change, model_change, nightly]}
-  judge_meta_eval:    {requirement: blocking, frequency: judge_change}
-  ops_hardening:      {requirement: blocking, frequency: [pre_ga, recurring]}
-  outcome_acceptance: {requirement: advisory, frequency: triggered_only, inconclusive_by_default: true}
-
-tooling:
-  runner: <selected>
-  eval_framework: <selected>
-  rejected:
-    - option: <name>
-      reason: <why>
-
-modules:
-  - path: learning-loop/validation-policy.yaml
-  - path: work-source/validation-policy.yaml
+    requirement: blocking
+    triggers: [before-push]
+    command: pnpm test -- --changed
+  - id: per-commit
+    title: Required deterministic checks
+    kind: test
+    status: active
+    requirement: blocking
+    triggers: [per-commit]
+    command: pnpm test
+  - id: triggered
+    title: Separately authorized live evidence
+    kind: evidence
+    status: declared-empty
+    requirement: blocking
+    triggers: []
+    reason: No disposable live target has been ratified
+  - {id: release, title: Release evidence, kind: evidence, status: declared-empty, requirement: blocking, triggers: [], reason: No separate release obligation}
+  - {id: scheduled, title: Recurring evidence, kind: evidence, status: active, requirement: blocking, triggers: [weekly]}
+exceptions: []
 ```
 
-## Module skeleton
+`project.yaml` also records intended use, a ratified C0–C4 tier, and its reason;
+structures may carry reasoned component overrides. Unknown gates fail closed.
+All six layers and the five execution lanes are declared; empty entries carry a
+reason. Active test lanes name the real command and active lanes name exact
+triggers. C2–C4 designs keep L5 active. A family references an active lane and
+layer, then records its oracle, risk, owner, provenance, controls, status, and
+ticket. Evidence lanes require an honest
+`complete | incomplete | inconclusive | unobserved` state and bounded artifact
+path; evidence never excuses an ordinary test-lane family.
 
-```yaml
-schema_version: 1
-scope: module
-module: learning-loop
-extends: ../validation-policy.yaml
-tier: inherit                       # or an explicit override with justification
+Waivers and provisional values live in `exceptions` with a target, owner,
+reason, and `YYYY-MM-DD` expiry; provisional values also state the temporary
+testable value. An optional `coexistence` block fixes the parallel-greenfield
+isolated root, protected paths, read-only incumbent gates, additive opt-in CI,
+and cutover evidence. Unsafe paths fail compilation.
 
-inherits:
-  - ACME-INV-001                  # referenced, never restated
+When outcome acceptance (`L-ACC`, L6) applies, scored rubric axes use an
+evidence lane; its mechanical campaign guardrails remain test-lane families at
+L1–L2. When it does not apply, L6 is declared empty with a reason.
 
-invariants:
-  - id: LL-INV-001
-    statement: "A learning attaches to an agent identity, never to an instance."
-    enforcement: [runtime_guardrail, test]
-  - id: LL-INV-002
-    tightens: ACME-INV-001
-    statement: "A learning-promotion lease is held by exactly one worker and expires within 60s."
+## Inheritance
 
-boundaries: ./boundary-map.md
-contracts: ./contracts/
-golden_sets: ./golden-sets/
-case_catalog: ./case-catalog.md
+`tighten-only` is semantic, not a file-copy convention. A module references
+parent structure IDs rather than restating their meaning. It may add families,
+activate a previously empty lane, add controls, or increase required coverage.
+It may not remove a parent obligation, convert required work to optional work,
+lower a ratified threshold, or reuse a retired ID.
 
-gates:
-  llm_quality: {requirement: blocking, threshold: 0.95}   # tightened from parent default
-```
+Represent modules as owned structures and families in the same checked graph.
+If an independently versioned child model is necessary, record its model path
+and version as provenance and compile it explicitly; never merge YAML trees by
+guess. A cross-model resolver must prove tighten-only behavior before either
+bundle is accepted.
 
-## Resolution semantics
+## Generated lifecycle
 
-**Order:** parent defaults → module overrides → per-component overrides. Later wins, subject to the tighten-only rule.
+The compiler deterministically produces `case-catalog.md`,
+`harness-backlog.md`, `owner-briefing.md`, `owner-backlog.md`,
+`planned-trace.md`, and `compiler-report.json`. These are readable projections,
+not editable inputs. Their generated notice and model identity make drift
+visible; regeneration replaces drift rather than attempting a lossy merge.
+Fresh readers receive only ephemeral copies of those projections plus the
+compiler report and an identity manifest; authored and source artifacts are
+excluded by the read sandbox.
 
-**Tighten-only (rule 9).** A module may make an inherited requirement stricter — advisory→blocking, threshold 0.90→0.95, adding a gate. A module may **not** loosen one — blocking→advisory, threshold downward, waiving an inherited gate. A loosening child is a policy load failure, not a merge. This single rule is what keeps distributed files from silently diverging into weaker-than-parent states.
+Legacy `validation-policy.yaml`, `case-catalog.md` plus `case-catalog.yaml`, and
+authored backlog tables are migration inputs only. Import requires an explicit
+reviewed mapping for ownership, provenance, structures, negative controls, and
+planned tests. Reading old artifacts never upgrades or rewrites them.
 
-**Waivers are explicit and expiring.** If a module genuinely must waive an inherited gate, it is not a policy edit — it is a `waivers:` entry with an owner, a reason, and an expiry date, surfaced by the audit as an active finding until it lapses or is renewed. Silence is never a waiver.
+## Audit interop
 
-**Provisional values expire like waivers.** A `PROPOSED` numeric tolerance adopted to keep a contract testable (Phase 4) is recorded as a `provisional_values:` entry with the parameter, the value, an owner, and an expiry:
-
-```yaml
-provisional_values:
-  - id: ACME-PROV-001
-    parameter: "BND-009 reconciliation freshness window"
-    value: 120s
-    owner: <human>
-    expires: 2026-10-01
-```
-
-Tests assert the provisional value; an expired provisional is an active finding. `OPEN` is reserved for parameters whose *semantics* are undecided — an `OPEN` that merely awaits tuning is a conformance finding.
-
-**Layer lanes follow the same asymmetry.** A module inherits each lane's status. It may *activate* a lane the parent declared empty (e.g. the module introduces the product's first model call site) — that is an addition, recorded in the module policy with its own golden sets and gates. It may never *empty* an active inherited lane except through an expiring waiver. An undeclared-absent lane anywhere in the chain is an audit finding; a declared-empty lane with a reason is a decision.
-
-**Effective policy.** Any tool consuming these files resolves the chain and can emit the effective policy for a given path. Design for that read: nothing in the format should require a human to mentally merge three files to know whether a gate is blocking.
-
-**Fail-closed defaults.** A gate class present in the parent but absent from a module resolves to the parent's requirement, not to "unspecified." An unrecognized key fails load rather than being ignored — silent key drift is how policy files rot.
-
-**ID namespacing.** Product invariants take the product prefix; module invariants take the module prefix. IDs are never reused after retirement — a retired invariant is marked `retired: <date, reason>` and kept, so historical audit findings stay traceable.
-
-**Parallel-greenfield coexistence.** `coexistence` is optional. When present, `isolated_root` is the only writable location for new harness artifacts and implementation until cutover. `protected_paths` and incumbent gates remain read-only; a child policy may add protected paths but never remove one. `ci_integration: additive_opt_in` forbids redirecting existing required commands or gates — it constrains integration with the *incumbent's* pipelines only; the isolated root's own additive CI lane is walking-skeleton scope and expected from the first skeleton ticket. Cutover is a separate human-ratified change that must satisfy every declared `cutover_requires` item and preserve a rollback path.
-
-## Interop with validation-harness-audit
-
-The layout above is the authoritative schema for `validation-policy.yaml`; validation-harness-audit consumes it rather than defining its own (its `references/harness-policy-conformance.md` describes the consuming side). The audit ingests the policy chain during discovery, seeds its claim catalog from the invariants and contracts — keeping the namespaced IDs — and diffs the built system against the declared lanes, gates, and waivers: an undeclared-absent lane is a finding, a declared-empty lane is a decision, an expired waiver is an active finding. Criticality tiers use the shared C0–C4 scale; the audit's `references/criticality-model.md` is the canonical rubric. If the audit skill is not installed, any reviewer can perform the same diff by hand: resolve the chain to the effective policy and compare each declared gate with what CI actually enforces.
+The audit compiles the model first, then joins an adapter-observed test
+inventory and exact-revision evidence. It checks lane use, status honesty,
+negative-control links, ownership, provenance, forward/backward closure, and
+generated-view identity. Design, inventory, and evidence keep distinct
+identities throughout.

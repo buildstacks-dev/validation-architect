@@ -39,10 +39,13 @@ export function loadTarget(targetPath: string): FixtureInfo {
   };
 }
 
-/** The corpus marker: a target that carries this already has a ratified design. */
+/** Current checked model or explicit legacy corpus: both require revision/import, never a second truth. */
 export function existingCorpusDir(targetDir: string): string | undefined {
   const corpus = join(targetDir, "validation-design");
-  return existsSync(join(corpus, "validation-policy.yaml")) ? corpus : undefined;
+  return existsSync(join(corpus, "model", "project.yaml")) ||
+    existsSync(join(corpus, "validation-policy.yaml"))
+    ? corpus
+    : undefined;
 }
 
 /**

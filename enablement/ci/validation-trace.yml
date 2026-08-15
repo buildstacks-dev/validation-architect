@@ -16,4 +16,4 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: Check design-to-implementation closure
-        run: pnpm exec validation-trace . --manifest validation-design/case-catalog.yaml
+        run: pnpm exec validation-trace . --model validation-design/model

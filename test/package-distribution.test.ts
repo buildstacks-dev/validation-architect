@@ -19,8 +19,16 @@ describe("package distribution contract", () => {
     expect(pkg.files).toEqual([
       "bin/validation-trace.js",
       "dist/catalog.js",
-      "dist/trace.js",
+      "dist/model-compiler.js",
+      "dist/model-inventory.js",
+      "dist/model-trace.js",
+      "dist/model-validation.js",
+      "dist/model-views.js",
+      "dist/model.js",
+      "dist/relationship-graph.js",
       "dist/trace-cli.js",
+      "dist/trace.js",
+      "dist/versions.js",
       "enablement/**",
       "skill/implement-harness-ticket/SKILL.md",
     ]);

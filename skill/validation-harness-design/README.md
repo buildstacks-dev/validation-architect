@@ -2,7 +2,7 @@
 
 A reusable Agent Skill for designing — and redesigning — the validation surface of a product or module **at design time**: before code exists on first entry, and re-entered whenever the architecture moves or the harness itself proves wrongly shaped.
 
-The output is not an exhaustive test-case list. It is the set of durable artifacts from which cases are derived for the life of the product: a reconciled system map, falsifiable invariants, a boundary map, per-boundary contracts, LLM eval plans with committed golden sets, outcome-acceptance artifacts when applicable, a risk-weighted allocation across six validation layers, a traced case catalog, a tooling decision, and a machine-readable `validation-policy.yaml` that a later audit can diff conformance against.
+Machine facts live once in the versioned, compiler-checked YAML files under `validation-design/model/`. Catalog, backlog, owner, and planned-trace Markdown are deterministic projections. Narrative rationale and golden sets remain authored artifacts; the actual test inventory and exact-revision evidence remain separate repository facts.
 
 ## The skill pair
 
@@ -54,19 +54,10 @@ Any mode may declare a `parallel-greenfield` coexistence posture: build under on
 
 ## Deliverables
 
-1. `system-map.md` — behavioral, structural, and reconciliation views.
-2. `invariants.md` — falsifiable, namespaced, enforcement-classified.
-3. `boundary-map.md` — seams, journey intersections, failure modes, per-boundary honest-fake column, controlled/live placement.
-4. `contracts/` — one file per boundary, plus journey acceptance criteria.
-5. `llm-eval-plan.md` + `golden-sets/` scaffolds.
-5b. `acceptance/` — for active `L-ACC`: rubric, realistic scenarios, sealed-plant policy, and campaign invariants.
-6. `validation-policy.yaml` — the contract a future audit diffs against.
-7. `case-catalog.md` + `case-catalog.yaml` — human and machine-readable risk/layer trace surfaces.
-8. `harness-backlog.md` — ticket-shaped, starting with the walking skeleton.
-9. `elicitation-log.md` — provenance of every accepted item.
-9b. `harness-state.yaml` — machine-written source revision, staleness, inventory, and ratification state.
-10. `agents-md-contribution.md` — a proposed `AGENTS.md`/`CLAUDE.md` section that routes every future coding agent to these artifacts: consult contracts and acceptance criteria on feature changes, deposit cases per the derivation grammar, never weaken a gate, re-enter `harness-revision` on structural mismatch.
-11. `owner-briefing.md` + `owner-backlog.md` — non-normative owner-facing ratification and progress companions.
+1. `model/project.yaml`, `owners.yaml`, `sources.yaml`, `structures.yaml`, `policy.yaml`, `controls.yaml`, `families.yaml`, and `backlog.yaml` — the sole machine authority.
+2. Compiler-generated `case-catalog.md`, `harness-backlog.md`, `owner-briefing.md`, `owner-backlog.md`, `planned-trace.md`, and `compiler-report.json`.
+3. Authored rationale such as system-map explanation, contract detail, eval/golden-set material, acceptance rubrics, elicitation records, and ratification notes—without duplicate machine-fact tables.
+4. `agents-md-contribution.md` — proposed standing instructions that route future coding agents to the model and generated views.
 
 ## Files
 

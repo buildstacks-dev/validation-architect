@@ -1,0 +1,49 @@
+{
+  "applicability": "applicable",
+  "cases": [
+    {
+      "evidence_ids": [
+        "EV-1"
+      ],
+      "id": "CF-1",
+      "status": "pass",
+      "summary": "Tenant rule passed."
+    }
+  ],
+  "completeness": "complete",
+  "evidence": [
+    {
+      "id": "EV-1",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "f3483f1fe3825d30b7f4df4670e88edcadacd13e17c96fd2baa0009f9ecef2ae"
+      },
+      "kind": "result",
+      "reference": "evidence/result.json"
+    }
+  ],
+  "extensions": {},
+  "identity": {
+    "environment": "local",
+    "lane": "per-commit",
+    "product_revision": "abc123",
+    "versions": {
+      "compiler": "validation-architect/compiler/v1",
+      "golden_set": "validation-architect/golden-set/v1",
+      "method": "0.7.0",
+      "model": "validation-architect/model/v1",
+      "package": "0.1.1",
+      "policy": "validation-architect/policy/v1",
+      "result": "validation-architect/result/v1"
+    }
+  },
+  "next_action": "No action required.",
+  "ownership": {
+    "owner": "OWN-1",
+    "root_id": "CF-1",
+    "structure_id": "CON-1"
+  },
+  "schema": "validation-architect/result/v1",
+  "summary": "The accepted rule passed.",
+  "verdict": "pass"
+}

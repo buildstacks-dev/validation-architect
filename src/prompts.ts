@@ -4,17 +4,7 @@ import { TRACEABILITY_CONVENTIONS } from "./conventions.js";
 import type { FidelityScope } from "./fidelity.js";
 import type { CampaignMode, FixtureInfo, ReaderPersonaId } from "./types.js";
 
-/**
- * Slim-candidate note (2026-08-01, Stage 4 of the re-scope close-out): the
- * vendored validation-harness-design skill now carries Phase-6/8 emission of
- * case-catalog.yaml, the owner-briefing.md / owner-backlog.md deliverables,
- * and the traceability-conventions shape in agents-md-contribution.md. The
- * fidelity rubric lives in validation-harness-audit's fidelity mode. Do NOT
- * slim the orchestrator-tier block below (or ownerDocsMessage /
- * fidelityAuditorPrompt) until a full live --target campaign proves the
- * upstream skill tier alone is enough — the gate + prompt remain the
- * contract until then.
- */
+/** The kickoff repeats only the compiler boundary the orchestrator enforces. */
 export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "greenfield"): string {
   // Revision mode (issue #1): the target repo already carries a ratified
   // corpus, mounted as the workspace baseline. A from-scratch Phase 0 here
@@ -51,15 +41,16 @@ ${workflowScope}
 
 ${scopeBullet}
 ${sourceEvidenceBullet}
-- The only artifact root is ./validation-design/ — every deliverable, checkpoint, and log the skill produces lands there (system-map.md, harness-design-state.md, elicitation-log.md, invariants.md, boundary-map.md, contracts/, llm-eval-plan.md, golden-sets/, validation-policy.yaml, case-catalog.md, case-catalog.yaml, harness-backlog.md, agents-md-contribution.md, owner-briefing.md, owner-backlog.md).
-- Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is specified in harness-backlog.md, not built. Catalog derivation is design work, not implementation: case-catalog.md must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
+- The only artifact root is ./validation-design/. Author narrative rationale there and put ALL machine facts under ./validation-design/model/ in the eight required YAML files listed below. The compiler owns case-catalog.md, harness-backlog.md, owner-briefing.md, owner-backlog.md, planned-trace.md, and compiler-report.json; never hand-edit those projections.
+- Design only. Do not implement the harness, install dependencies, run token-spending operations, or touch anything outside the workspace. The walking skeleton is declared in model/backlog.yaml, not built. Family derivation is design work: model/families.yaml must reach matrix closure (every derivation-matrix cell traced or risk-pruned by name) inside this campaign.
 
-## Machine-readable catalog + AGENTS.md conventions (orchestrator requirements)
+## Authoritative model + AGENTS.md conventions (orchestrator requirements)
 
 In addition to the skill's Phase 6/8 deliverables:
 
-1. Emit \`validation-design/case-catalog.yaml\` alongside \`case-catalog.md\` in the same step. One entry per family: id, layers, oracle, risk, prune/blocked status + reason, owning backlog ticket, wave. Schema id: \`validation-architect/case-catalog/v1\`. The markdown catalog remains the human artifact; the YAML is what the \`validation-trace\` CLI consumes. The two MUST agree (family ids, prune tokens, blocked-by) — disagreement is a corpus bug, and the environment rejects campaign completion while they disagree.
-2. Include the following block VERBATIM in \`agents-md-contribution.md\` (under its own heading). These conventions are normative; the product repo's CI will enforce them via the trace CLI:
+1. Maintain these logical sources: \`model/project.yaml\`, \`owners.yaml\`, \`sources.yaml\`, \`structures.yaml\`, \`policy.yaml\`, \`controls.yaml\`, \`families.yaml\`, and \`backlog.yaml\`. Their schema ids are \`validation-architect/model/<name>/v1\`. Project records intended use, ratified C0-C4 criticality with reason, revision, and exact package/method/model/compiler/policy/result/golden-set versions. Structures carry meaning, owner, provenance, optional changed paths, and reasoned component-tier overrides. Policy defaults blocking, inherits tighten-only, declares all L1-L6 layers and the inner-loop/per-commit/triggered/release/scheduled lanes, names commands for active test lanes and triggers for active lanes, and records expiring exceptions or parallel-greenfield constraints when applicable. Every implementable family carries structures, owner, provenance, active lane, active layer, oracle, risk, one owning ticket, and at least one declared negative control; test lanes declare planned test paths, evidence lanes declare an honest evidence state/path. Pruned/blocked facts require reasons. Markdown is generated and non-authoritative.
+2. Read \`validation-design/compiler-report.json\` after meaningful model edits and correct every source-located error before asking for readers. The environment recompiles and regenerates projections before readers, every audit pass, final review, delivery, and completion. Invalid models and stale projections fail closed.
+3. Include the following block VERBATIM in \`agents-md-contribution.md\` (under its own heading). These conventions are normative; the product repo's CI will enforce them via the trace CLI:
 
 ${TRACEABILITY_CONVENTIONS}
 
@@ -140,7 +131,7 @@ export function readerReportMessage(
   const instruction = finalOwnerReview
     ? `This is the mandatory post-audit review of the final owner-facing corpus. Resolve substantive findings surgically, including owner-document defects. Any corpus edit invalidates this review and the environment will run all three readers again. When no edits remain, emit <<CAMPAIGN-COMPLETE>> without changing the corpus.`
     : `Treat their confusions and gaps as Phase 8 findings: revise the artifacts surgically with inline changelogs, then present the final confirmation gate to the stakeholder.`;
-  return `[Environment: reader test complete. Three fresh-context readers examined ONLY ./validation-design/ (no product docs, no rambling, no conversation history). Their unedited reports follow. ${instruction}]
+  return `[Environment: reader test complete. Three fresh-context readers examined ONLY an ephemeral compiler-generated bundle from one model identity (no YAML source, authored design prose, product docs, rambling, or conversation history). Their unedited reports follow. ${instruction}]
 
 ${sections}`;
 }
@@ -152,15 +143,15 @@ Judge from these artifacts alone: Can you tell what must never break, and what t
   "new-engineer": `You are an engineer who joined this team today and has been asked to BUILD the validation harness described in ./validation-design/. Those artifacts are all you get — no product docs, no one to ask.
 
 Judge from these artifacts alone: Could you implement the walking skeleton from harness-backlog.md without inventing product behavior? Are contracts complete enough to write tests against (inputs, outputs, error behavior, idempotency — with numeric tolerances stated as provisional values rather than OPEN)? Is every unknown expected behavior clearly marked as an open finding rather than silently assumed? Do you know which layer each case belongs to and why? Is case-catalog.md derivation-closed — every derivation-matrix cell traced or risk-pruned by name — and is each backlog ticket gated only on conditions inside its own layer, with a named executor?`,
-  "coding-agent": `You are a coding agent landing a feature change in this product's repository. Your ONLY standing instructions are validation-design/agents-md-contribution.md (plus whatever it routes you to inside ./validation-design/).
+  "coding-agent": `You are a coding agent landing a feature change in this product's repository. Your only design context is the compiler-generated reader bundle.
 
-Judge from that file alone: Does it route you to the contracts you must honor and the case catalog you must extend? Would you know that a bug fix must deposit its detector, which layer a new case lands at, and what to do when your change contradicts the boundary map? Is anything you'd need mid-change missing or ambiguous?`,
+Judge from those projections alone: Can you map a changed path to the protected product structure, family, planned test/evidence, negative control, owner, and implementation ticket? Do you know the actual inner-loop command, which layer a new detector belongs at, and when an unresolved mapping requires wider validation or design revision? Is anything you'd need mid-change missing or ambiguous?`,
 };
 
-export function readerPrompt(persona: ReaderPersonaId): string {
-  return `${READER_PERSONAS[persona]}
+export function readerPrompt(persona: ReaderPersonaId, artifactRoot = "./validation-design/"): string {
+  return `${READER_PERSONAS[persona].replaceAll("./validation-design/", artifactRoot)}
 
-Rules: Read ONLY within ./validation-design/ — do not open ./docs/, ./rambling.txt, or anything else; the point of this exercise is what the artifacts alone can support. Do not modify anything. For every Grep or Glob call, set its path explicitly to ./validation-design/; pathless workspace searches are denied.
+Rules: Read ONLY the compiler-generated files within ${artifactRoot} — do not open model YAML, authored design prose, product docs, rambling, or anything else. First verify that compiler-report.json and bundle-identity.json name the same accepted model identity. Do not modify anything. For every Grep or Glob call, set its path explicitly to ${artifactRoot}; pathless workspace searches are denied.
 
 Output: a numbered list of concrete findings, each with severity (blocking / significant / minor), the artifact file it concerns, and the specific gap or confusion. If the artifacts genuinely support your role, say so explicitly and list what made them sufficient. No preamble.`;
 }
@@ -217,11 +208,13 @@ source walk occurred.
 
 Ignore ./validation-design/audit/ entirely in a first-pass audit. It contains orchestrator records from earlier/resumed passes, not design evidence, and must not compromise your fresh-context judgment.
 
+The machine authority is the complete ./validation-design/model/*.yaml set. Read validation-design/compiler-report.json and verify it is accepted, then assess the generated case-catalog.md, harness-backlog.md, owner-briefing.md, owner-backlog.md, and planned-trace.md as projections of that same recorded model identity. A deterministic clean report proves schema/link closure only; it does not settle design quality or fidelity.
+
 ## What to measure
 
 - Falsifiability of invariants: every non-retired invariant states an oracle that could actually fail; an invariant enforceable only by goodwill is a finding.
 - Traceability: invariants ↔ boundaries ↔ contracts ↔ case catalog, in both directions. A case citing a nonexistent invariant, a boundary with no contract, a contract clause no case exercises — each is a finding.
-- Policy discipline: validation-policy.yaml is fail-closed (gates default blocking, absences declared) and tighten-only (no module loosens an inherited requirement); every lane is active with content or declared empty WITH a reason — silent absence is a finding.
+- Policy discipline: model/policy.yaml is fail-closed (gates default blocking, absences declared) and tighten-only (no module loosens an inherited requirement); all six validation layers and five execution lanes are active with obligations or declared empty WITH a reason, and the inner-loop names its actual command — silent absence is a finding.
 - Layer placement: each case sits at the cheapest layer that can falsify it (the skill's cheapest-layer rule); an expensive-layer case a cheaper layer could falsify is a placement finding.
 - Provenance integrity: spot-check [rambling] citations against ./rambling.txt — a [rambling] label whose quoted passage does not exist there is a blocking finding; [simulated] entries must be flagged for human ratification, never laundered into [doc]; [stated] must not appear anywhere in this corpus.
 - Source conformance: when TARGET-SNAPSHOT.md is present, spot-check architectural and interface claims against ./target-source/ and use TARGET-DIFF.md in revision campaigns to confirm changed source/config was either incorporated or explicitly left as a finding.
@@ -246,6 +239,7 @@ function verificationAuditorPrompt(): string {
 A first audit iteration already ran; the designer then applied fixes and recorded a disposition for every finding. Your materials, all read-only:
 
 - ./validation-design/ — the corpus, as revised after round 1.
+- ./validation-design/model/*.yaml, compiler-report.json, and the generated views — one compiled identity; deterministic closure does not substitute for this judgment pass.
 - ./validation-design/audit/audit-report-1.md — the round-1 audit report.
 - ./validation-design/audit/audit-1-dispositions.md — the disposition record (fixed / disputed / deferred per finding).
 - ./docs/ and ./rambling.txt — ratified product truth and the human's unratified thinking, for evidence checks.
@@ -393,20 +387,6 @@ export function readerTestRequiredMessage(): string {
 }
 
 export function corpusGateRequiredMessage(problems: string[]): string {
-  // The manifest parser fails closed on the FIRST structural error, so a
-  // designer discovering the schema one rejection at a time can exhaust the
-  // gate's retry budget (observed: cormidia-rev1-20260810 aborted twice this
-  // way). State the whole required shape up front instead.
-  const schemaReference = problems.some((p) => p.includes("case-catalog.yaml"))
-    ? `
-
-Authoritative case-catalog.yaml shape (validation-architect/case-catalog/v1) — satisfy ALL of it in one pass; the validator stops at the first structural error, so a partial fix surfaces the next problem, not success:
-- top level: schema (exact id above), families (non-empty list), tickets (list; required even when empty).
-- every family: unique string id; section; status exactly one of "implementable" (normal covered family) | "pruned" | "blocked". implementable additionally requires layers and risk; pruned requires prune (token); blocked requires blocked_by.
-- every ticket: unique string id; wave (string); status exactly "pending" | "landed"; families (list, may be empty) citing only family ids that exist in the families list.
-- cross-checks after parsing: family ids, prune tokens, blocked_by and statuses must agree with case-catalog.md; ticket ownership/status must agree with harness-backlog.md.
-- case-catalog.md parsing convention: a markdown table DECLARES families only when its header row has a Layer column; tables without one (closure ledgers, evidence registers) are ignored by the parser, so enumerate freely there. Family-id cells in declaration tables must parse cleanly (a single id, an explicit list, or a brace form — not prose).`
-    : "";
   // A brownfield reconciliation can produce four-digit problem counts
   // (observed: 1638). Dumping them all into one environment message would
   // consume the designer's context; group by class instead and point at the
@@ -415,9 +395,9 @@ Authoritative case-catalog.yaml shape (validation-architect/case-catalog/v1) —
     problems.length <= 40
       ? problems.map((problem) => `- ${problem}`).join("\n")
       : summarizeProblemsByClass(problems);
-  return `[Environment: the deterministic corpus gate failed, so fresh readers and the independent auditor cannot run yet. Correct every problem below, then emit <<REQUEST-READER-TEST>> so the exact corrected corpus is reviewed. Do not emit CAMPAIGN-COMPLETE.
+  return `[Environment: the authoritative-model compiler failed, so fresh readers and the independent auditor cannot run yet. Edit only the logical YAML facts under validation-design/model/, read validation-design/compiler-report.json for the structured source spans and corrections, then emit <<REQUEST-READER-TEST>> so the regenerated projections are reviewed. Do not hand-edit generated Markdown and do not emit CAMPAIGN-COMPLETE.
 
-${problemBlock}${schemaReference}]`;
+${problemBlock}]`;
 }
 
 /** Group a large problem list into classes with counts and a few verbatim examples each. */
@@ -438,7 +418,7 @@ export function summarizeProblemsByClass(problems: string[]): string {
       const examples = members.slice(0, 3).map((m) => `    - ${m}`);
       return `- ${members.length}× ${key}\n${examples.join("\n")}`;
     });
-  return `${problems.length} problems in ${classes.size} classes. The COMPLETE per-item list is in ./CATALOG-GATE-PROBLEMS.md — read it (it is large; read it in slices) and fix systematically by class rather than one item at a time. Classes, largest first, with up to 3 verbatim examples each:
+  return `${problems.length} problems in ${classes.size} classes. The COMPLETE per-item list is in ./COMPILER-GATE-PROBLEMS.md and the structured report is ./validation-design/compiler-report.json — read them in slices and fix the YAML model systematically by class. Classes, largest first, with up to 3 verbatim examples each:
 
 ${lines.join("\n")}`;
 }
@@ -476,59 +456,11 @@ export function auditWindowRequiredMessage(
 }
 
 export function auditedCoreChangedMessage(): string {
-  return `[Environment: the audited core corpus changed after the terminal independent auditor pass. Completion is fail-closed: the catalog, backlog, policy, contracts, invariants, maps, eval plan, golden sets, and other normative design artifacts are now frozen because no third audit iteration is allowed. Revert every post-audit core edit to the version the auditor reviewed. You may still update only validation-design/ratification-package.md, owner-briefing.md, and owner-backlog.md. Then repeat the pending protocol marker. Repeated attempts to deliver an unaudited core abort the run.]`;
+  return `[Environment: the audited core corpus changed after the terminal independent auditor pass. Completion is fail-closed: the YAML model, generated projections, policy, contracts, rationale, eval plan, and golden sets are frozen because no third audit iteration is allowed. Revert every post-audit core edit to the version the auditor reviewed. You may update only validation-design/ratification-package.md with the audit/residue record. Then repeat the pending protocol marker. Repeated attempts to deliver an unaudited core abort the run.]`;
 }
 
 export function auditSectionRequiredMessage(): string {
   return `[Environment: CAMPAIGN-COMPLETE rejected — validation-design/ratification-package.md does not yet contain an "Audit" heading. Write the Audit section now (verdict, every finding by tier with its disposition, unresolved disputes and deferrals for the human), then emit <<CAMPAIGN-COMPLETE>> again.]`;
-}
-
-export function catalogAgreementRequiredMessage(
-  problems: string[],
-  nextMarker: "REQUEST-READER-TEST" | "CAMPAIGN-COMPLETE" = "CAMPAIGN-COMPLETE",
-): string {
-  return `[Environment: completion rejected — both case-catalog.md and case-catalog.yaml are mandatory and must agree. Fix every problem, then emit <<${nextMarker}>>. Findings:
-
-${problems.map((p) => `- ${p}`).join("\n")}]`;
-}
-
-/**
- * Owner-facing documents (issues #2 and #3). Sent once the audit loop has
- * closed and the ratification package's Audit section is written — a
- * separate environment message so the designer treats them as a distinct
- * pass, not an afterthought inside the package.
- */
-export function ownerDocsMessage(): string {
-  return `[Environment: the audit loop is closed and the ratification package's Audit section is written. Before the campaign can complete, write the two owner-facing documents. Both are NON-NORMATIVE by construction — generated from the ratified artifacts; if either disagrees with an artifact, the artifact wins and the disagreement is a bug in the document. Both should read aloud cleanly (audio-friendly).
-
-## 1. validation-design/owner-briefing.md (ratification moment — frozen at campaign close)
-
-Narrative, 2–4 pages, consequence language. No unexplained ID on first use; IDs appear only as parenthetical anchors. Fixed section shape:
-
-1. What this product can break (the tier, told as stakes, not as "C3")
-2. The promises (each invariant as one plain sentence)
-3. The seams (boundaries as "places where two systems can disagree about what happened")
-4. What we deliberately will NOT test, and why (pruned/thin lanes, declared-empty lanes)
-5. The decisions on your desk — one entry per ratification item, each with "what saying yes commits you to"
-6. What is still unknown (open findings, in terms of the incident you'd face, not the register ID)
-7. What gets built, in what order — one paragraph per backlog wave, in consequence language (e.g. "Wave 1 is the permission-to-effect chain — until it lands, the promise that agents can't grant themselves authority is designed but unproven"). Per-ticket depth does NOT belong here; that is the living companion.
-
-State at the top that this briefing is a summary of the ratified artifacts, not a second source of truth.
-
-## 2. validation-design/owner-backlog.md (living follow-along companion)
-
-One consequence-language paragraph per wave and per HB ticket: which promise the ticket defends, the plain story of the failure it exists to catch, and what "done" buys the owner. No unexplained ID on first use. State its non-normative status and the backlog revision it was generated from. Note that it must be regenerated when harness-backlog.md changes (the AGENTS.md contribution carries that staleness contract).
-
-When both files exist, emit <<CAMPAIGN-COMPLETE>> on its own line. The environment rejects completion until they do.]`;
-}
-
-export function ownerDocsRequiredMessage(
-  problems: string[],
-  nextMarker: "REQUEST-READER-TEST" | "CAMPAIGN-COMPLETE" = "CAMPAIGN-COMPLETE",
-): string {
-  return `[Environment: completion rejected — the owner-facing documents are missing, stale, or structurally incomplete. Correct owner-briefing.md and owner-backlog.md per the owner-document contract, then emit <<${nextMarker}>>. Problems:
-
-${problems.map((problem) => `- ${problem}`).join("\n")}]`;
 }
 
 export function designerEmptyTurnNudge(): string {

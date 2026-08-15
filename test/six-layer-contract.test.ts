@@ -21,7 +21,7 @@ describe("six-layer design/audit contract", () => {
       expect(text, path).toMatch(/L-ACC|outcome.acceptance/i);
       expect(text, path).not.toMatch(/five validation layers/i);
     }
-    expect(read(paths[6]!)).toContain("outcome_acceptance:");
+    expect(read(paths[6]!)).toContain("L-ACC");
     expect(read(paths[0]!)).toContain("| Outcome-acceptance scenario |");
   });
 
@@ -29,9 +29,9 @@ describe("six-layer design/audit contract", () => {
     const checklist = read("skill/validation-harness-audit/references/harness-policy-conformance.md");
     const standalone = read("skill/validation-harness-audit/STANDALONE_REVIEWER_PROMPT.md");
     const auditReadme = read("skill/validation-harness-audit/README.md");
-    expect(checklist).toContain("Every one of the six lanes");
+    expect(checklist).toContain("Every one of the six layers and five execution lanes");
     expect(checklist).toContain("Outcome-acceptance integrity");
-    expect(standalone).toContain("six declared validation layers");
+    expect(standalone).toContain("six validation layers");
     expect(standalone).toContain("For active `L-ACC`");
     expect(auditReadme).toContain("six validation layers");
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
@@ -40,7 +40,7 @@ describe("six-layer design/audit contract", () => {
   it("versions the design and audit contract pair together", () => {
     const designVersion = read("skill/validation-harness-design/VERSION").trim();
     const auditVersion = read("skill/validation-harness-audit/VERSION").trim();
-    expect(designVersion).toBe("0.6.2");
+    expect(designVersion).toBe("0.7.0");
     expect(auditVersion).toBe(designVersion);
     expect(read("skill/validation-harness-design/CHANGELOG.md")).toContain(`## ${designVersion}`);
     expect(read("skill/validation-harness-audit/CHANGELOG.md")).toContain(`## ${auditVersion}`);

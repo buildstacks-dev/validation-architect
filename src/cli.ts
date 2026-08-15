@@ -38,6 +38,13 @@ import {
   ramblePath,
   reanchorLegacyTargetWorkspace,
 } from "./workspace.js";
+import { compileWorkspaceModel } from "./workspace-compiler.js";
+import { CURRENT_CORE_VERSIONS } from "./versions.js";
+import {
+  assertRunStateVersionCompatible,
+  recoverUnversionedRunState,
+  UNVERSIONED_RUN_RECOVERY,
+} from "./run-state-version.js";
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 const runsRoot = join(repoRoot, "runs");
@@ -166,14 +173,6 @@ function auditSectionPresent(workspace: string): () => boolean {
   };
 }
 
-/** The enablement-bundle version installed: the delivered manifest's schema id. */
-function manifestSchemaOf(workspace: string): string | undefined {
-  const p = join(workspace, "validation-design", "case-catalog.yaml");
-  if (!existsSync(p)) return undefined;
-  const m = readFileSync(p, "utf8").match(/^schema:\s*(\S+)/m);
-  return m ? m[1] : undefined;
-}
-
 /**
  * Deliver a completed target-anchored run's corpus to the product repo as a
  * branch. Failure is reported, never fatal to the run record — `vda deliver`
@@ -182,6 +181,16 @@ function manifestSchemaOf(workspace: string): string | undefined {
 function tryDeliver(runDir: string, state: RunState): void {
   if (!state.target) return;
   try {
+    assertRunStateVersionCompatible(state);
+    const compilation = compileWorkspaceModel(state.workspace, { regenerate: false });
+    if (!compilation.accepted || !compilation.identity) {
+      throw new Error("delivery refused: authoritative model or generated views are not compiler-clean");
+    }
+    if (state.compilation?.modelIdentity !== compilation.identity) {
+      throw new Error(
+        `delivery refused: completed model identity ${state.compilation?.modelIdentity ?? "(missing)"} does not match current ${compilation.identity}`,
+      );
+    }
     const delivery = deliverArtifacts({
       workspace: state.workspace,
       target: state.target,
@@ -208,7 +217,7 @@ function tryDeliver(runDir: string, state: RunState): void {
         ...(delivery.sourceTree ? { sourceTree: delivery.sourceTree } : {}),
         corpusTree: delivery.corpusTree,
       },
-      manifestSchemaOf(state.workspace),
+      compilation.model?.versions.model,
     );
     console.log(
       `[vda] delivered to ${state.target} — branch ${delivery.branch} @ ${delivery.commit.slice(0, 12)}`,
@@ -224,6 +233,7 @@ function tryDeliver(runDir: string, state: RunState): void {
 }
 
 async function execCampaign(runDir: string, state: RunState): Promise<void> {
+  assertRunStateVersionCompatible(state);
   const fixture = state.target
     ? (() => {
         if (!state.targetBase) {
@@ -368,6 +378,7 @@ async function cmdRun(args: string[]): Promise<void> {
     fixture: fixture.name,
     workspace,
     status: "running",
+    coreVersions: structuredClone(CURRENT_CORE_VERSIONS),
     exchanges: 0,
     seq: 0,
     target,
@@ -396,6 +407,13 @@ function cmdDeliver(args: string[]): void {
   }
   const runDir = join(runsRoot, runId);
   const state = loadState(runDir);
+  try {
+    assertRunStateVersionCompatible(state);
+  } catch (err) {
+    console.error(`[vda] delivery refused before repository mutation: ${(err as Error).message}`);
+    process.exitCode = 2;
+    return;
+  }
   if (!state.target) {
     console.error(`run ${runId} is a fixture run (no --target); nothing to deliver. Artifacts: ${join(state.workspace, "validation-design")}`);
     process.exitCode = 2;
@@ -424,13 +442,20 @@ async function cmdResume(args: string[]): Promise<void> {
   const { positional, flags } = parseFlags(args);
   const runId = positional[0];
   if (!runId) {
-    console.error("usage: vda resume <runId> [--recover-target-base current] [--max-exchanges N] [--wall-minutes N]");
+    console.error(`usage: vda resume <runId> [--recover-target-base current] [--recover-core-state ${UNVERSIONED_RUN_RECOVERY}] [--max-exchanges N] [--wall-minutes N]`);
     process.exitCode = 2;
     return;
   }
   const runDir = join(runsRoot, runId);
   const state = loadState(runDir);
   try {
+    const coreRecovery = flags.get("recover-core-state");
+    if (coreRecovery !== undefined) {
+      recoverUnversionedRunState(state, coreRecovery);
+      saveState(runDir)(state);
+      console.log(`[vda] recorded named core-state recovery ${coreRecovery}; pending message identity was preserved`);
+    }
+    assertRunStateVersionCompatible(state);
     const recovery = prepareLegacyTargetState(runDir, state, flags.get("recover-target-base"));
     if (recovery === "reanchored") {
       console.log(`[vda] recovery workspace is ready; inspect it, then run: vda resume ${runId}`);
@@ -476,6 +501,7 @@ async function cmdReaders(args: string[]): Promise<void> {
   }
   const runDir = join(runsRoot, runId);
   const state = loadState(runDir);
+  assertRunStateVersionCompatible(state);
   const readers = new ClaudeReaderRunner({
     model: state.config.readerModel,
     authMode: state.config.claudeAuth,
@@ -517,6 +543,7 @@ async function cmdAudit(args: string[]): Promise<void> {
   }
   const runDir = join(runsRoot, runId);
   const state = loadState(runDir);
+  assertRunStateVersionCompatible(state);
   if (state.status !== "completed") {
     console.error(`run ${runId} is ${state.status}; post-hoc audit expects a completed run (use vda resume)`);
     process.exitCode = 2;
