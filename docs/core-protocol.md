@@ -4,7 +4,7 @@ This is the compact reference for the provider-neutral records implemented by
 the core. Product-specific probes, fixtures, runners, CI wiring, publication,
 and public package names remain adapter or later API work.
 
-## `validation-result/v1`
+## `validation-architect/result/v1`
 
 Every result answers three independent questions:
 
@@ -129,7 +129,7 @@ families across generated rules, representative history, deliberate corruption
 negatives, and independently reviewed shadow comparisons. Recall counts misses;
 extra selections and planning latency are reported separately. Even perfect
 recall does not authorize future CI omission. The plan's selected scope,
-expansions, and unresolved mappings round-trip through `validation-result/v1`.
+expansions, and unresolved mappings round-trip through `validation-architect/result/v1`.
 
 ## Versions and explicit migration
 

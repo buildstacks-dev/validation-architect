@@ -94,7 +94,7 @@ function expectedMatrixValidity(
   return false;
 }
 
-describe("validation-result/v1", () => {
+describe("validation-architect/result/v1", () => {
   it("exhaustively enforces the axis/reason truth table and the sole green state", () => {
     const applicability = ["applicable", "not_applicable"] as const;
     const completeness = ["complete", "incomplete"] as const;

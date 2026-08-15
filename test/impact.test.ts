@@ -101,7 +101,7 @@ describe("conservative changed-path impact planning", () => {
     expect(() => planChangedImpact({ ...base(), full_ci_command: "TOKEN=supersecret-value pnpm test" })).toThrow(/secret-free/);
   });
 
-  it("round-trips the exact revision/lane selections, expansions, and unknowns through validation-result/v1", () => {
+  it("round-trips the exact revision/lane selections, expansions, and unknowns through validation-architect/result/v1", () => {
     const input = base();
     input.changed_inputs = [{ id: "unknown", path: "unknown/file.ts", kind: "content" }];
     const plan = planChangedImpact(input);
