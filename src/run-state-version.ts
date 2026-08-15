@@ -6,6 +6,13 @@ export const UNVERSIONED_RUN_RECOVERY = "adopt-current-pre1-after-compiler-valid
 
 export function assertRunStateVersionCompatible(state: RunState): void {
   if (!state.coreVersions) throw new Error(`run ${state.runId} has no core version bundle; recover explicitly with --recover-core-state ${UNVERSIONED_RUN_RECOVERY}`);
+  if (
+    state.intentSource !== undefined &&
+    state.intentSource !== "human-rambling" &&
+    state.intentSource !== "derived-from-repo"
+  ) {
+    throw new Error(`run ${state.runId} has invalid intent source ${String(state.intentSource)}`);
+  }
   assertCurrentVersionBundle(state.coreVersions);
   const compilation = state.compilation;
   if (!compilation) return;

@@ -292,6 +292,7 @@ describe("workspace seeding (revision baseline)", () => {
         designerMaxTurns: 10,
       },
     } as RunState;
+    state.intentSource = "human-rambling";
 
     const recovery = reanchorLegacyTargetWorkspace(repoRoot, runDir, state);
     expect(recovery.workspace).not.toBe(legacyWorkspace);
@@ -325,6 +326,7 @@ describe("workspace seeding (revision baseline)", () => {
     expect(state.sourceRecoveryDirective).toContain("do not lose this interrupted owner turn");
     expect(state.designerSessionId).toBeUndefined();
     expect(state.codexThreadId).toBeUndefined();
+    expect(state.intentSource).toBeUndefined();
     expect(state.readerReviewFingerprint).toBeUndefined();
     expect(state.audit).toBeUndefined();
     expect(state.delivery).toBeUndefined();

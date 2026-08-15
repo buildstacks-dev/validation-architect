@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+Consumes the optional-intent contract introduced by design 0.8.0.
+
+- Treats a run's recorded intent source as immutable provenance: derived repository judgment remains `simulated`, while human rambling resolves to an exact passage.
+- Makes any `rambling` source in a `derived-from-repo` run blocking even if a file appears later, and makes a missing or unresolvable human-rambling source blocking.
+- Versioned with validation-harness-design 0.8.0.
+
 ## 0.7.0
 
 Consumes the checked-model design contract introduced by design 0.7.0.

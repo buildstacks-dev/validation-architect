@@ -4,6 +4,13 @@ Read this reference when the repository carries `validation-design/model/` or le
 
 **Evidence-cited families.** An evidence-lane family records `evidence: {state, path}` in `model/families.yaml`. Confirm the artifact exists, its state is honest, its lane genuinely cannot be asserted from the test tree, and every non-`complete` state remains visible partiality. An ordinary test-lane family still requires a citing spec.
 
+**Intent provenance.** When the campaign host records `derived-from-repo`,
+every owner judgment beyond literal docs remains `simulated` and any
+`rambling` source is blocking, even if a file appeared later. When it records
+`human-rambling`, the file must remain present and every such source must
+resolve to an exact location or passage. Never infer a different source from
+the filesystem after kickoff.
+
 The compiler-clean model identity is the declared harness. Generated Markdown is navigation, never another authority. Test inventory and exact-revision evidence remain separate inputs. The design skill's `references/policy-and-inheritance.md` owns the producer layout; this file describes the consuming side.
 
 The joined relationship graph uses the single chain `changed path → product
@@ -96,6 +103,7 @@ Run these checks in Phase 4 whenever the artifacts exist; each failure is a find
 17. **Negative controls.** Sample detector families and confirm each proves it can fire: a seeded violation (mutated fixture, planted defect, misbehaving double script) that the detector catches, landed red-then-green. A detector with no negative control anywhere in its family is a finding; walking-skeleton tests are not exempt.
 18. **Harness self-testing.** The harness's own machinery is under test: fixtures have self-tests, scanners and sweeps fail on an empty walk rather than passing, and policy loaders, CI configuration, and dispatch/registry surfaces are pinned by tests. A load-bearing guard with no test of its own is a finding.
 19. **Outcome-acceptance integrity.** For active `L-ACC`: the rubric is human-ratified and tighten-only; every scored row maps to a rubric axis and every mechanical guardrail maps down to a layer-1/2 detector with a negative control; scenario input is realistic and held constant; planted answers are unreachable from producer and grader; per-axis producer↔grader disjointness is enforced in code; self-report is a scored subject, never evidence; campaign invariants are separate from product invariants; the intermediate gate is durably resolved before downstream spend; preflight runs pre-mutation/pre-spend; each live run has fresh human authorization and no irreversible effect; the release relationship is explicit; and ceiling exhaustion, skipped work, missing calibration, or an unratified threshold yields `incomplete` / `inconclusive`, never pass. An uncalibrated grader emitting a score is blocking.
+20. **Intent-source integrity.** Apply the recorded kickoff source, not current file presence: `derived-from-repo` admits no `rambling` source and keeps repo-derived owner judgment `simulated`; `human-rambling` requires the file and exact citations. Any switch or laundering is blocking.
 
 ## 5. Findings routing
 

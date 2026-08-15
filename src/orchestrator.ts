@@ -184,6 +184,25 @@ export async function runCampaign(
     saveState(state);
   };
 
+  /**
+   * Intent grounding is selected once. Switching between a human file and
+   * derived intent mid-run would make already-issued prompts and provenance
+   * labels disagree, so stop before another provider call.
+   */
+  const intentSourceDrifted = (): boolean => {
+    if (!state.intentSource) return false;
+    const observed = ramble.exists() ? "human-rambling" : "derived-from-repo";
+    if (observed === state.intentSource) return false;
+    state.status = "aborted";
+    state.statusReason =
+      state.intentSource === "human-rambling"
+        ? "rambling.txt was removed after kickoff; restore it before resuming"
+        : "rambling.txt appeared after derived-intent kickoff; remove it before resuming, or start a fresh run to use it";
+    transcript.note("orchestrator", `intent source drift rejected: expected ${state.intentSource}, observed ${observed}`);
+    persist();
+    return true;
+  };
+
   const clearGate = (gate: CompletionGate) => {
     if (!state.gateRejections) return;
     delete state.gateRejections[gate];
@@ -356,17 +375,21 @@ export async function runCampaign(
 
   if (!state.pending) {
     // Fresh run: prime the stakeholder persona, then queue the designer kickoff.
-    // Issue #14 provenance: record which intent source grounds the owner seat
-    // so a reviewer can always tell the human's voice from derived intent.
-    state.intentSource = ramble.exists() ? "human-rambling" : "derived-from-repo";
-    transcript.note(
-      "orchestrator",
-      state.intentSource === "human-rambling"
-        ? "product intent source: human-rambling — rambling.txt present; the human's direct voice grounds the owner seat and keeps priority"
-        : "product intent source: derived-from-repo — no rambling.txt; the owner seat derives product intent from the repo's docs, README, specs, and source",
-    );
-    log("priming stakeholder persona");
+    // Persist the source before any provider call. A failed priming attempt can
+    // then resume without recomputing provenance from a changed filesystem.
+    if (!state.intentSource) {
+      state.intentSource = ramble.exists() ? "human-rambling" : "derived-from-repo";
+      transcript.note(
+        "orchestrator",
+        state.intentSource === "human-rambling"
+          ? "product intent source: human-rambling — rambling.txt present; the human's direct voice grounds the owner seat and keeps priority"
+          : "product intent source: derived-from-repo — no rambling.txt; the owner seat derives product intent from the repo's docs, README, specs, and source",
+      );
+    }
     ramble.prime();
+    persist();
+    if (intentSourceDrifted()) return state;
+    log("priming stakeholder persona");
     const ack: AgentTurn = await withRetry(
       "stakeholder priming",
       log,
@@ -385,6 +408,7 @@ export async function runCampaign(
       persist();
       return state;
     }
+    if (intentSourceDrifted()) return state;
     const pending: RunState["pending"] = state.pending;
     if (!pending) throw new Error("orchestrator invariant: pending message missing");
 
@@ -444,7 +468,7 @@ export async function runCampaign(
       const reportText = await withRetry(
         `auditor iteration ${iteration}`,
         log,
-        () => auditor.run(auditorPrompt(iteration, audit.reportProblems ?? []), state.workspace),
+        () => auditor.run(auditorPrompt(iteration, audit.reportProblems ?? [], state.intentSource), state.workspace),
         retryDelayMs,
       );
       transcript.append({ role: "auditor", text: reportText, note: `audit-iteration-${iteration}` });
@@ -505,7 +529,7 @@ export async function runCampaign(
       } else {
         audit.phase = "window";
         audit.windowExchanges = 0;
-        state.pending = { to: "designer", text: auditReportMessage(iteration, found) };
+        state.pending = { to: "designer", text: auditReportMessage(iteration, found, state.intentSource) };
       }
       persist();
       continue;
@@ -831,7 +855,7 @@ export async function runCampaign(
         continue;
       }
       state.emptyDesignerTurns = 0;
-      const refreshed = ramble.changed();
+      const refreshed = state.intentSource === "human-rambling" && ramble.changed();
       if (refreshed) transcript.note("orchestrator", "rambling.txt changed; stakeholder told to re-read");
       state.pending = {
         to: "stakeholder",

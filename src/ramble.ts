@@ -24,7 +24,7 @@ export class RambleWatcher {
     return statSync(this.path).mtimeMs;
   }
 
-  /** True when the file appeared or its mtime moved since the last check. */
+  /** True once when an existing, primed file's mtime moves. */
   changed(): boolean {
     const now = this.currentMtimeMs();
     if (now === undefined) return false;

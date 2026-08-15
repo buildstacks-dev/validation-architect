@@ -21,7 +21,7 @@ identity:
   versions:
     compiler: validation-architect/compiler/v1
     golden_set: validation-architect/golden-set/v1
-    method: 0.7.0
+    method: 0.8.0
     model: validation-architect/corpus/v1
     package: 0.3.0
     policy: validation-architect/policy/v1
