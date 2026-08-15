@@ -327,6 +327,7 @@ export function applyLegacyTargetRecovery(
   state.gateRejections = {};
   state.emptyDesignerTurns = undefined;
   state.rambleMtimeMs = undefined;
+  state.intentSource = undefined;
   state.startedAt = now.toISOString();
   state.updatedAt = state.startedAt;
   return state;

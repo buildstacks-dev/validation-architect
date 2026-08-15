@@ -208,6 +208,12 @@ describe("version provenance integration and resume safety", () => {
     expect(wrong.pending).toEqual({ to: "designer", text: "resume exactly this" });
   });
 
+  it("rejects an invalid persisted intent source before a provider turn", () => {
+    const run = state();
+    (run as unknown as { intentSource: string }).intentSource = "filesystem-whim";
+    expect(() => assertRunStateVersionCompatible(run)).toThrow(/invalid intent source/);
+  });
+
   it("uses a named pre-1.0 recovery without repeating or dropping the pending message", () => {
     const legacy = state(null);
     const pendingBefore = structuredClone(legacy.pending);

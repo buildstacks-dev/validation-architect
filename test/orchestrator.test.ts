@@ -292,7 +292,41 @@ describe("runCampaign", () => {
     expect(notes.some((n) => n.note?.includes("product intent source: human-rambling"))).toBe(true);
   });
 
+  it("persists the selected source before stakeholder priming can fail", async () => {
+    const { deps, saved } = makeDeps([], [new Error("priming failed"), new Error("priming failed again")]);
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    await expect(runCampaign(deps, state, kickoffs)).rejects.toThrow(/priming failed again/);
+    expect(saved[0]).toMatchObject({ intentSource: "derived-from-repo", seq: 1 });
+    expect(saved[0]?.pending).toBeUndefined();
+    const sourceNotes = readTranscript(dir).filter((entry) => entry.note?.includes("product intent source"));
+    expect(sourceNotes).toHaveLength(1);
+  });
+
+  it.each([
+    { source: "derived-from-repo" as const, mutate: () => writeFileSync(join(dir, "rambling.txt"), "late\n") },
+    {
+      source: "human-rambling" as const,
+      mutate: () => {
+        writeFileSync(join(dir, "rambling.txt"), "initial\n");
+        unlinkSync(join(dir, "rambling.txt"));
+      },
+    },
+  ])("refuses $source filesystem drift before another provider turn", async ({ source, mutate }) => {
+    mutate();
+    const { deps, designer, stakeholder } = makeDeps([], []);
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    state.intentSource = source;
+    state.pending = { to: "designer", text: "must remain pending" };
+    const final = await runCampaign(deps, state, kickoffs);
+    expect(final.status).toBe("aborted");
+    expect(final.statusReason).toMatch(/rambling\.txt/);
+    expect(final.pending).toEqual({ to: "designer", text: "must remain pending" });
+    expect(designer.received).toEqual([]);
+    expect(stakeholder.received).toEqual([]);
+  });
+
   it("does not re-record the intent source on resume (kickoff-only provenance)", async () => {
+    writeFileSync(join(dir, "rambling.txt"), "original human input\n");
     const { deps } = makeDeps(["continuing\n<<CAMPAIGN-COMPLETE>>"], []);
     const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
     state.pending = { to: "designer", text: "resume here" };

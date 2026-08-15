@@ -24,6 +24,13 @@ Every file declares `schema: validation-architect/model/<name>/v1`. Missing,
 unreadable, partial, unsupported, or semantically invalid input fails before
 generated views are accepted.
 
+In an autonomous host campaign, the host fixes the intent source at kickoff.
+With `derived-from-repo`, owner judgments beyond literal docs are `simulated`
+and require human ratification; `sources.yaml` must contain no `rambling`
+source. With `human-rambling`, every `rambling` source names an exact file
+location or passage. A mid-run file appearance or removal cannot change the
+selected source.
+
 ## Policy shape
 
 ```yaml

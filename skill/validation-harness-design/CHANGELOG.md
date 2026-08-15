@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 Makes `rambling.txt` an optional campaign input (issue #14): a product whose repository already carries detailed docs, specs, architecture records, and code no longer requires a human-authored rambling file, and no seat may demand one.
 

@@ -122,6 +122,9 @@ truth** — and it keeps priority as the human's direct voice:
   The transcript and report record the run's intent source (`human-rambling`
   vs `derived-from-repo`), so a reviewer can always tell the human's voice
   from derived intent — declared, never silent.
+- The source is fixed at kickoff. Appending an existing human file hot-reloads;
+  adding or removing the file would change provenance, so the run stops before
+  another provider call and must be restored or restarted.
 
 ## The audit stage
 

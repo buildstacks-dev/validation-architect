@@ -255,6 +255,10 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
         };
       })()
     : loadFixture(repoRoot, state.fixture);
+  const promptFixture =
+    state.intentSource === undefined
+      ? fixture
+      : { ...fixture, hasRambling: state.intentSource === "human-rambling" };
   // Runs started before the audit stage existed lack the vendored audit skill
   // in their workspace; backfill so resume enters the audit loop cleanly.
   ensureAuditSkill(repoRoot, state.workspace);
@@ -305,10 +309,10 @@ async function execCampaign(runDir: string, state: RunState): Promise<void> {
     state,
     {
       designer: [
-        designerKickoff(fixture, state.campaignMode ?? "greenfield"),
+        designerKickoff(promptFixture, state.campaignMode ?? "greenfield"),
         state.sourceRecoveryDirective,
       ].filter((message): message is string => message !== undefined).join("\n\n---\n\n"),
-      stakeholder: stakeholderKickoff(repoRoot, fixture),
+      stakeholder: stakeholderKickoff(repoRoot, promptFixture),
     },
   );
 
@@ -583,7 +587,7 @@ async function cmdAudit(args: string[]): Promise<void> {
   const iteration = nextPostHocAuditIteration(readTranscript(runDir));
   console.log(`[vda] running post-hoc audit of ${runId} (iteration ${iteration}, model ${model}, fresh context)`);
   const coreAtStart = auditedCoreFingerprint(state.workspace);
-  const text = await auditor.run(auditorPrompt(iteration), state.workspace);
+  const text = await auditor.run(auditorPrompt(iteration, [], state.intentSource), state.workspace);
   try {
     if (state.targetBase) verifyTargetSnapshot(state.workspace, state.targetBase);
     if (auditedCoreFingerprint(state.workspace) !== coreAtStart) {
