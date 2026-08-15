@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,25 +14,30 @@ const record = readFileSync(
   "utf8",
 );
 
-function grepTree(pattern: string): string[] {
-  try {
-    const out = execFileSync(
-      "git",
-      ["grep", "-l", pattern, "--", "src", "test", "skill", "docs", "enablement", "scripts", "bin"],
-      { cwd: root, encoding: "utf8" },
-    );
-    // The decision record names rejected alternatives on purpose, and this
-    // detector file necessarily spells every pattern it hunts.
-    return out
-      .split("\n")
-      .filter(Boolean)
-      .filter((path) => !path.startsWith("docs/decisions/") && path !== "test/public-contract-decision.test.ts");
-  } catch {
-    return []; // git grep exits 1 on no match
+function grepTree(pattern: string, binary = "git"): string[] {
+  const result = spawnSync(
+    binary,
+    ["grep", "-l", pattern, "--", "src", "test", "skill", "docs", "enablement", "scripts", "bin"],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 1) return []; // git grep's documented no-match status
+  if (result.status !== 0) {
+    throw new Error(`git grep detector failed (${result.status}): ${result.stderr}`);
   }
+  // The decision record names rejected alternatives on purpose, and this
+  // detector file necessarily spells every pattern it hunts.
+  return result.stdout
+    .split("\n")
+    .filter(Boolean)
+    .filter((path) => !path.startsWith("docs/decisions/") && path !== "test/public-contract-decision.test.ts");
 }
 
 describe("decision 1: bare package pair", () => {
+  it("fails closed when the repository scan cannot run", () => {
+    expect(() => grepTree("anything", "definitely-not-a-git-binary")).toThrow();
+  });
+
   it("keeps the core package name", () => {
     expect(pkg.name).toBe("validation-architect");
   });
