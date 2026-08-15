@@ -11,12 +11,17 @@ permissions:
 jobs:
   offline-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        # Lowest declared engine floor plus the normal supported version —
+        # the floor stays evidence-backed, not assumed.
+        node-version: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
