@@ -10,6 +10,18 @@ const root = join(import.meta.dirname, "..");
 const read = (path: string): string => readFileSync(join(root, path), "utf8");
 const corePackage = JSON.parse(read("package.json"));
 const designPackage = JSON.parse(read("design/package.json"));
+const node24ActionPins = [
+  ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
+  ["actions/setup-node", "820762786026740c76f36085b0efc47a31fe5020"],
+  ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
+  ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
+] as const;
+
+function expectNode24ActionPins(workflow: string): void {
+  for (const [action, commit] of node24ActionPins) {
+    expect(workflow).toContain(`uses: ${action}@${commit}`);
+  }
+}
 
 function shellBlocks(workflow: string): string[] {
   const lines = workflow.split("\n");
@@ -120,6 +132,7 @@ describe("gated release workflow", () => {
   it("pins third-party actions and validates immutable source identity", () => {
     expect(workflow).not.toMatch(/uses:\s*actions\/[^@\s]+@v\d/);
     expect(workflow.match(/uses:\s*actions\/[^@\s]+@[0-9a-f]{40}/g)?.length).toBeGreaterThanOrEqual(6);
+    expectNode24ActionPins(workflow);
     expect(workflow).toContain("git merge-base --is-ancestor");
     expect(workflow).toContain("refs/remotes/origin/main");
     expect(workflow).toContain("tag does not point to approved commit");
@@ -155,6 +168,7 @@ describe("declared runtime floor", () => {
   const workflow = read(".github/workflows/ci.yml");
 
   it("runs maintainer tooling only where pinned pnpm is supported", () => {
+    expectNode24ActionPins(workflow);
     expect(workflow).toContain('node-version: ["22.14.0", "24"]');
     expect(workflow).toContain("pnpm typecheck");
     expect(workflow).toContain("pnpm test:package");
