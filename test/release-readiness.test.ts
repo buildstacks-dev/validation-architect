@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import { CORE_PACKAGE_VERSION } from "../src/versions.js";
 
 /** Red-capable detectors for the approval-gated, two-package release path. */
@@ -102,6 +103,18 @@ describe("gated release workflow", () => {
     for (const body of shellBlocks(workflow)) {
       expect(body).not.toMatch(/\$\{\{\s*(?:inputs|needs|runner)\./);
     }
+  });
+
+  it("uses runner-only context after the job reaches a runner", () => {
+    const parsed = YAML.parse(workflow) as {
+      jobs: Record<string, { env?: Record<string, string> }>;
+    };
+    for (const [jobId, job] of Object.entries(parsed.jobs)) {
+      for (const [name, value] of Object.entries(job.env ?? {})) {
+        expect(value, `jobs.${jobId}.env.${name}`).not.toMatch(/\$\{\{\s*runner\./);
+      }
+    }
+    expect(workflow).toContain('CANDIDATE_DIR=$RUNNER_TEMP/candidate');
   });
 
   it("pins third-party actions and validates immutable source identity", () => {
