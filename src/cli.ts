@@ -24,6 +24,7 @@ import {
   captureTargetBase,
   deliverArtifacts,
   existingCorpusDir,
+  legacyOnlyCorpus,
   loadTarget,
   recoverTargetBaseFromWorkspace,
   resolveCampaignMode,
@@ -47,7 +48,11 @@ import {
 } from "./run-state-version.js";
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
-const runsRoot = join(repoRoot, "runs");
+// Runs live beside the source checkout. VDA_RUNS_ROOT relocates that ledger so
+// acceptance tests can drive the real CLI without touching the developer's runs.
+const runsRoot = process.env.VDA_RUNS_ROOT
+  ? resolve(process.env.VDA_RUNS_ROOT)
+  : join(repoRoot, "runs");
 // The per-repo ledger (#8): written only by the completion paths below.
 const registryPath = join(runsRoot, "registry.json");
 
@@ -349,6 +354,14 @@ async function cmdRun(args: string[]): Promise<void> {
     const fresh = flags.get("fresh") === "true";
     campaignMode = resolveCampaignMode(target, fresh);
     const corpus = existingCorpusDir(target);
+    const legacy = legacyOnlyCorpus(target);
+    if (campaignMode === "revision" && legacy) {
+      console.error(
+        `[vda] ${legacy} is a pre-model corpus (validation-policy.yaml with no model/project.yaml). Pre-1.0 ships no migration for it: re-derive the design with vda run --target ${target} --fresh. The existing corpus stays untouched — delivery lands on a branch you review before merging.`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     if (campaignMode === "revision" && corpus) {
       seedCorpusFrom = corpus;
       console.log(`[vda] existing corpus detected at ${corpus} — entering harness-revision mode (use --fresh to opt out)`);

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CORE_PACKAGE_VERSION } from "../src/versions.js";
 
 const root = resolve(__dirname, "..");
 
@@ -39,6 +40,22 @@ describe("package distribution contract", () => {
     const install = readFileSync(resolve(root, "enablement", "INSTALL.md"), "utf8");
     expect(install).toContain(`validation-architect@${pkg.version}`);
     expect(install).not.toContain("{{PACKAGE_VERSION}}");
+  });
+
+  /**
+   * Install snippets are copy-pasted by users, so a stale pin is a broken
+   * command, not a typo. README drifted to 0.1.0 while INSTALL.md — the only
+   * file previously asserted — stayed current.
+   */
+  it("pins the same package version everywhere it is quoted", () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as { version: string };
+    for (const doc of ["README.md", "enablement/INSTALL.md"]) {
+      const text = readFileSync(resolve(root, doc), "utf8");
+      const pinned = [...text.matchAll(/validation-architect@(\d+\.\d+\.\d+)/g)].map((m) => m[1]);
+      expect(pinned.length, `${doc} quotes no install pin`).toBeGreaterThan(0);
+      expect([...new Set(pinned)], `${doc} pins a stale version`).toEqual([pkg.version]);
+    }
+    expect(CORE_PACKAGE_VERSION).toBe(pkg.version);
   });
 
   it("runs compiled JavaScript without tsx", () => {

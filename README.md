@@ -251,13 +251,13 @@ pnpm trace generate <case-catalog.md> <harness-backlog.md> \
 
 # in a product repo: the packed/released package runs compiled JavaScript and
 # has no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.1.0
+pnpm add --save-dev --save-exact validation-architect@0.1.1
 pnpm exec validation-trace . \
   --model validation-design/model \
   --tests <tests-root>
 ```
 
-Before a registry release, replace `validation-architect@0.1.0` with the exact
+Before a registry release, replace `validation-architect@0.1.1` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
@@ -357,6 +357,9 @@ never checked in as fixtures: a real product is a path passed to
 `vda run --target`, and a live target must not carry an answer key.
 
 ## Run layout
+
+Runs live beside this checkout. `VDA_RUNS_ROOT` relocates that ledger — the
+acceptance tests use it to drive the real CLI without touching your runs.
 
 ```
 runs/<runId>/
