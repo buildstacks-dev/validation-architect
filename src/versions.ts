@@ -5,7 +5,7 @@
  */
 export const CORE_PACKAGE_VERSION = "0.1.1";
 export const METHOD_VERSION = "0.7.0";
-export const MODEL_SCHEMA = "validation-architect/model/v1";
+export const MODEL_SCHEMA = "validation-architect/corpus/v1";
 export const COMPILER_VERSION = "validation-architect/compiler/v1";
 export const POLICY_SCHEMA = "validation-architect/policy/v1";
 export const RESULT_SCHEMA = "validation-architect/result/v1";

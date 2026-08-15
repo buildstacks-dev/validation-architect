@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-architect/design-run/v1",
+  "title": "Validation Architect design run",
+  "description": "Campaign envelope and resumable checkpoint. The envelope is admitted by the host before the first turn and never enlarged by the library; the checkpoint is a compare-and-swap record whose pending idempotency key closes the crash window between a provider result and the next save.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["schema", "kind", "profile", "packageVersion", "methodVersion", "sourceRevision", "inputIdentity", "shape", "seats", "states", "transitions", "terminals", "outputSchemas", "limits"],
+      "properties": {
+        "schema": { "const": "validation-architect/design-run/v1" },
+        "kind": { "const": "envelope" },
+        "profile": { "enum": ["C0", "C1", "C2", "C3", "C4"] },
+        "shape": { "enum": ["sequence", "graph"] },
+        "seats": { "type": "array" },
+        "states": { "type": "array", "items": { "type": "string" } },
+        "transitions": { "type": "array", "items": { "type": "object", "required": ["from", "to", "seat", "turnCost"] } },
+        "terminals": { "type": "array", "items": { "type": "string" } },
+        "outputSchemas": { "type": "object" },
+        "limits": { "type": "object", "required": ["maxTurns", "maxWallMs"] }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["schema", "kind", "runId", "generation", "packageVersion", "sourceRevision", "envelope", "position", "receipts", "sessions", "artifacts", "usage"],
+      "properties": {
+        "schema": { "const": "validation-architect/design-run/v1" },
+        "kind": { "const": "checkpoint" },
+        "generation": { "type": "integer", "minimum": 0 },
+        "pendingTurn": { "type": "object", "required": ["idempotencyKey", "request"] },
+        "receipts": { "type": "array", "items": { "type": "object", "required": ["idempotencyKey", "seat", "state", "status"], "properties": { "status": { "enum": ["ok", "refused", "limit_exhausted", "error"] } } } },
+        "sessions": { "type": "object" },
+        "artifacts": { "type": "object" },
+        "usage": { "type": "object", "required": ["turns", "inputTokens", "outputTokens"] }
+      }
+    }
+  ]
+}
