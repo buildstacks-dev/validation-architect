@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2
+
+Non-test-lane evidence declarations, derived from the first brownfield adoption sweep (Cormidia, 2026-08-11): nine implemented families' proof lives in certification records, human-validated golden corpora, triggered-obligation records, and campaign evidence — artifacts the trace CLI could not see, leaving only dishonest statuses (pending/pruned/blocked) available for genuinely-implemented work.
+
+- Catalog rows may declare `EVIDENCE:<state>:<path>` (state ∈ complete | incomplete | inconclusive | unobserved; repo-relative path), flowing into `case-catalog.yaml` as `evidence_state`/`evidence_path` (additive to schema v1). The trace CLI verifies existence fail-closed and surfaces the state; non-`complete` states are visible declared partiality, never green-by-assertion.
+- Traceability conventions gain rule 10 (the declaration grammar and its limits); evidence never excuses an ordinary test-lane family from a citing spec.
+- Versioned together with audit 0.6.2, which gains the corresponding conformance checks.
+
 ## 0.6.1
 
 Completes the six-layer contract introduced in 0.6.0 across every load-bearing consumer.

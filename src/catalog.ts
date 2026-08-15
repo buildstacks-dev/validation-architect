@@ -15,6 +15,20 @@ export const MANIFEST_SCHEMA = "validation-architect/case-catalog/v1";
 
 export type FamilyStatus = "implementable" | "pruned" | "blocked";
 
+/**
+ * Honest execution state of a non-test-lane evidence artifact. Anything but
+ * "complete" is visible declared partiality — never green-by-assertion,
+ * never a failure by itself.
+ */
+export type EvidenceState = "complete" | "incomplete" | "inconclusive" | "unobserved";
+
+export const EVIDENCE_STATES: readonly EvidenceState[] = [
+  "complete",
+  "incomplete",
+  "inconclusive",
+  "unobserved",
+];
+
 export interface CatalogFamily {
   id: string;
   /** Which derivation matrix the family came from (markdown section title). */
@@ -36,6 +50,14 @@ export interface CatalogFamily {
   /** Owning backlog ticket (first backlog ticket that claims the family). */
   ticket?: string;
   wave?: string;
+  /**
+   * Non-test-lane evidence artifact (L3 certification record, L4 human-
+   * validated corpus, L5 triggered-obligation record, L-ACC campaign
+   * evidence), repo-relative. Declared in the catalog row as
+   * `EVIDENCE:<state>:<path>`; always paired with evidence_state.
+   */
+  evidence_path?: string;
+  evidence_state?: EvidenceState;
 }
 
 export interface CatalogTicket {
@@ -317,6 +339,15 @@ export function parseCatalogMarkdown(md: string): ParsedCatalog {
       const entry: CatalogFamily = { ...base, layers, risk };
       if (oracle && !isEmDash(oracle)) entry.oracle = oracle;
       if (remainder.length > 0) entry.blocked_remainder = remainder;
+      // Non-test-lane evidence declaration, same token grammar family as
+      // BLOCKED:/PRUNE-: `EVIDENCE:<state>:<path>` in the row text.
+      const evidence = `${familyText} ${remainderText}`.match(
+        /EVIDENCE:(complete|incomplete|inconclusive|unobserved):([^\s)`]+)/,
+      );
+      if (evidence) {
+        entry.evidence_state = evidence[1] as EvidenceState;
+        entry.evidence_path = evidence[2] as string;
+      }
       push(entry);
     }
   }
@@ -504,6 +535,28 @@ export function parseManifest(text: string): CaseCatalogManifest {
     }
     if (f.status === "pruned" && !f.prune) throw new Error(`pruned family ${f.id} has no prune token`);
     if (f.status === "blocked" && !f.blocked_by) throw new Error(`blocked family ${f.id} has no blocked_by`);
+    if (f.evidence_path !== undefined || f.evidence_state !== undefined) {
+      if (f.status !== "implementable") {
+        throw new Error(
+          `family ${f.id} declares evidence but is ${f.status} — evidence belongs on implementable families only`,
+        );
+      }
+      if (
+        typeof f.evidence_path !== "string" ||
+        !f.evidence_path ||
+        f.evidence_path.startsWith("/") ||
+        f.evidence_path.split("/").includes("..")
+      ) {
+        throw new Error(
+          `family ${f.id} evidence_path must be a repo-relative path with no traversal (paired with evidence_state)`,
+        );
+      }
+      if (!EVIDENCE_STATES.includes(f.evidence_state as EvidenceState)) {
+        throw new Error(
+          `family ${f.id} has invalid evidence_state "${String(f.evidence_state)}" — valid: "complete" | "incomplete" | "inconclusive" | "unobserved", always paired with evidence_path`,
+        );
+      }
+    }
   }
   if (!Array.isArray(doc.tickets)) throw new Error("manifest has no tickets list");
   const ticketIds = new Set<string>();
@@ -564,6 +617,14 @@ export function checkCatalogAgreement(manifest: CaseCatalogManifest, catalogMd: 
     const a = asList(mf.blocked_remainder).sort().join(",");
     const b = asList(md.blocked_remainder).sort().join(",");
     if (a !== b) out.push(`family ${id}: blocked remainder disagrees (manifest "${a}", markdown "${b}")`);
+
+    const evidenceKey = (f: CatalogFamily): string =>
+      f.evidence_path || f.evidence_state ? `${f.evidence_state ?? "?"}:${f.evidence_path ?? "?"}` : "";
+    if (evidenceKey(mf) !== evidenceKey(md)) {
+      out.push(
+        `family ${id}: evidence declaration disagrees (manifest "${evidenceKey(mf)}", markdown "${evidenceKey(md)}")`,
+      );
+    }
 
     // YAML auto-typing can hand us arrays/numbers/booleans where the schema
     // means strings (e.g. `layers: ["1", CI]`). Coerce to a canonical string

@@ -2,6 +2,8 @@
 
 Read this reference when the repository carries artifacts produced by the companion skill **validation-harness-design**: `validation-policy.yaml` (product and module files), `system-map.md`, `invariants.md`, `boundary-map.md`, `contracts/`, `llm-eval-plan.md`, golden-set directories, `acceptance/`, `case-catalog.md`, `case-catalog.yaml`, `harness-backlog.md`, `harness-state.yaml`, or `agents-md-contribution.md`. The policy's `artifacts:` block names where they live.
 
+**Evidence-cited families (design 0.6.2).** A catalog family may declare `EVIDENCE:<state>:<path>` (YAML: `evidence_state`/`evidence_path`) instead of owning a citing test spec, for oracles that live outside the test tree: L3 certification records, L4 human-validated corpora, L5 triggered-obligation records, L-ACC campaign evidence. Conformance checks: the artifact exists at the declared path; the state is honest against the artifact's own content (a record that says "failed/ungraded" must not be declared `complete`); the family's lane genuinely cannot be asserted from the test tree (an ordinary hermetic family hiding behind an evidence declaration is a finding); and any state other than `complete` appears in owner-facing rollups as declared partiality, never as green coverage.
+
 These artifacts were confirmed by a human at design time. They are the declared harness — the baseline this audit diffs the built system against. The schema authority for the policy file is the design skill's `references/policy-and-inheritance.md`; this file describes the consuming side only. When both skills evolve, the design skill's layout wins and this file follows it.
 
 ## 1. The six-layer taxonomy

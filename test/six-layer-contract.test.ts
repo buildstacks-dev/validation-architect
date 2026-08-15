@@ -40,7 +40,7 @@ describe("six-layer design/audit contract", () => {
   it("versions the design and audit contract pair together", () => {
     const designVersion = read("skill/validation-harness-design/VERSION").trim();
     const auditVersion = read("skill/validation-harness-audit/VERSION").trim();
-    expect(designVersion).toBe("0.6.1");
+    expect(designVersion).toBe("0.6.2");
     expect(auditVersion).toBe(designVersion);
     expect(read("skill/validation-harness-design/CHANGELOG.md")).toContain(`## ${designVersion}`);
     expect(read("skill/validation-harness-audit/CHANGELOG.md")).toContain(`## ${auditVersion}`);
