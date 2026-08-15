@@ -16,7 +16,7 @@ Every ticket implements **closure over ratified design**, not ad-hoc test ideas.
 | **1. Ticket** | `model/backlog.yaml` + generated `harness-backlog.md` | The `HB-*` entry: owned families, wave, status, owner, and dependencies. The YAML is authority; Markdown is the readable projection. |
 | **2. Family** | `model/families.yaml` + generated `case-catalog.md` | Every `CF-*` ID the ticket owns, with protected meaning, structures, layer, oracle, risk, status, controls, planned tests/evidence, and exclusions. |
 | **3. Enumeration** | `model/structures.yaml` plus authored rationale/golden material | The ratified seeds that define case count. Follow each family's structure and provenance IDs to the exact journey, invariant, boundary, contract, interface, model site, operation, or acceptance material. **Never invent cases** — a missing meaning or seed is a design-revision finding. |
-| **4. Tests** | Product repo test tree | Spec files at the ticket's assigned layer, each binding one or more enumeration items, each with a real negative control. Directory + header conventions below so `validation-trace` stays green. |
+| **4. Tests** | Product repo test tree | Spec files at the ticket's assigned layer, each binding one or more enumeration items, each with a real negative control. Directory + header conventions below so `validation-architect check` stays structurally closed. |
 
 **Case-count rule:** the number of implementable checks is the closure of level 3. A ticket that "feels done" with two tests when the enumeration has seven seeds is not done — it is a fidelity gap waiting for audit.
 
@@ -42,10 +42,6 @@ Follow these so the trace CLI closes by construction. They mirror the AGENTS.md 
 3. **Keep status honest.** Every implementable family must be observed by the modern trace graph before a ticket becomes `landed`; absence is red, and false landed status is a second red.
 4. **Update traceability in the same change.** If planned paths, meaning, control links, or status change, update `model/families.yaml`, `controls.yaml`, or `backlog.yaml` and recompile. Never hand-edit generated projections.
 
-If a host still invokes the explicit legacy `--manifest` adapter, retain its
-family-named directories and first-comment `CF-*` / `HB-*` citations. Those
-tokens are inventory adapter syntax, not design authority.
-
 Example header shape (adapt suffix/path to the repo's test runner):
 
 ```typescript
@@ -69,7 +65,7 @@ That is a **structural change**, not a backlog ticket. Do **not** pile ad-hoc ca
 1. **Re-enter `validation-harness-design` in `harness-revision` mode** (or ask the human to schedule that campaign), **or**
 2. **Stop and escalate to the human** with the gap spelled out: what you needed, which artifact lacks it, and which `F-PT-*` / open finding it resembles.
 
-Mechanical closure (`validation-trace` green) is not permission to invent design.
+Mechanical closure (`validation-architect check`) is not permission to invent design.
 
 ## Corpus layout (where to read)
 
@@ -99,20 +95,18 @@ Owner-facing companions are compiler-generated, non-normative follow-alongs — 
 4. **Place at layer.** Use the family's assigned layer and oracle from the model. Build hermetic doubles for fakeable layer-2 seams; reserve live/eval for declared evidence lanes. For `L-ACC`, keep scored axes human-rubric based and mechanical guardrails in layers 1–2. Never run a live campaign without explicit per-campaign human authorization.
 5. **Land red-then-green.** For each detector family: failing seed → green fix. Include negative-control tests in the same spec file where the design expects them.
 6. **Update traceability.** Same change: spec files, directory names, headers, and any affected model planned paths or ticket status. Mark `landed` only when every owned implementable family has citing specs, then recompile all generated views.
-7. **Run closure.** Execute `validation-trace` against the repo root (see below). Fix every red before declaring the ticket done. Green closure does not replace fidelity audit — it proves the graph is wired, not that oracles match intent.
+7. **Run closure.** Execute `validation-architect check` against the repo root (see below). Fix every red before declaring the ticket done. Structural closure does not replace fidelity audit — it proves the graph is wired, not that oracles match intent.
 
 For evidence lanes, missing, stopped, stale, or unauthorized work remains
 `incomplete` / `inconclusive`; it never becomes pass by omission.
 
-## Verify with `validation-trace`
+## Verify with `validation-architect check`
 
 The architect ships a deterministic, product-agnostic CLI in the `validation-architect` package. Install the version pinned by the delivered enablement bundle as a product-repo dev dependency, then run it from the **product repo** on every harness change; wire the included CI template into the repo's own CI per the campaign's lane config.
 
 ```bash
 pnpm add --save-dev --save-exact validation-architect@<pinned-version>
-pnpm exec validation-trace . \
-  --model validation-design/model \
-  --tests <tests_root>
+pnpm exec validation-architect check . --tests-root <tests_root>
 ```
 
 It fail-closes on:
@@ -123,7 +117,10 @@ It fail-closes on:
 - **Relationship closure** — broken owner/source/control/planned/evidence links or identity mismatch
 - **Generated drift** — a projection disagrees with the compiled model identity
 
-Optional: `--out trace-report.md` for the human-facing trace report. Exit code `0` only when all checks pass.
+Optional: `--json` emits the canonical result record. Broken closure exits `1`;
+structural closure with incomplete run evidence is explicitly `inconclusive`
+and exits `0`, never pass-by-absence. `validation-trace` is only the deprecated
+0.x alias for the same check path.
 
 **Boundary:** `validation-trace` proves **closure**, not **fidelity**. Whether your assertion actually falsifies the ratified seed is judgment work for the fidelity audit — still follow the enumeration here so you are not caught narrowing cases silently.
 

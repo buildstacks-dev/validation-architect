@@ -5,6 +5,19 @@
   "description": "Provider-bound local composition for validation-architect design campaigns: read-only fs/git repository adapter, atomic file-backed campaign store, one concrete TurnPort over the Claude Agent SDK and Codex SDK, and the validation-architect-design CLI.",
   "license": "LicenseRef-FSL-1.1-MIT",
   "licenseFile": "LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cormidia/validation-architect.git",
+    "directory": "design"
+  },
+  "homepage": "https://github.com/cormidia/validation-architect#readme",
+  "bugs": {
+    "url": "https://github.com/cormidia/validation-architect/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

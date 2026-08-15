@@ -12,8 +12,8 @@
  *   2. the DESIGN tarball's packed manifest depends on validation-architect
  *      at the EXACT version (workspace:* rewritten, no range), installs
  *      alongside the core tarball, and answers --help offline.
- * Plus the target-repo behavior: `validation-architect check` against a
- * committed model corpus, and the alias's preserved legacy trace path.
+ * Plus target-repo behavior: `validation-architect check` and its deprecated
+ * alias execute the same committed-model code path.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -128,6 +128,16 @@ try {
   execFileSync("tar", ["-xzf", coreTarball, "-C", extracted]);
   const packageRoot = join(extracted, "package");
   const packedManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  const expectedRepository = "git+https://github.com/cormidia/validation-architect.git";
+  if (
+    packedManifest.repository?.url !== expectedRepository ||
+    packedManifest.homepage !== "https://github.com/cormidia/validation-architect#readme" ||
+    packedManifest.bugs?.url !== "https://github.com/cormidia/validation-architect/issues" ||
+    packedManifest.publishConfig?.access !== "public" ||
+    packedManifest.publishConfig?.provenance !== true
+  ) {
+    throw new Error("packed core manifest is missing registry or provenance metadata");
+  }
   if (packedManifest.license !== "LicenseRef-FSL-1.1-MIT") {
     throw new Error(`packed core license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`);
   }
@@ -178,6 +188,16 @@ try {
   mkdirSync(designExtracted);
   execFileSync("tar", ["-xzf", designTarball, "-C", designExtracted]);
   const designManifest = JSON.parse(readFileSync(join(designExtracted, "package", "package.json"), "utf8"));
+  if (
+    designManifest.repository?.url !== expectedRepository ||
+    designManifest.repository?.directory !== "design" ||
+    designManifest.homepage !== packedManifest.homepage ||
+    designManifest.bugs?.url !== packedManifest.bugs?.url ||
+    designManifest.publishConfig?.access !== "public" ||
+    designManifest.publishConfig?.provenance !== true
+  ) {
+    throw new Error("packed design manifest is missing registry or provenance metadata");
+  }
   const corePin = designManifest.dependencies?.["validation-architect"];
   if (corePin !== packedManifest.version || !/^\d+\.\d+\.\d+$/.test(corePin ?? "")) {
     throw new Error(
@@ -326,6 +346,14 @@ console.log("surface ok");
   mkdirSync(join(target, "docs"), { recursive: true });
   mkdirSync(join(target, "tests"), { recursive: true });
   writeFileSync(join(target, "docs", "PRODUCT.md"), "# Product\n\nContract\n");
+  writeFileSync(
+    join(target, "tests", "fixture.test.ts"),
+    ["// Family: CF-X01-S", "// Ticket: HB-001", "it('holds', () => {});", ""].join("\n"),
+  );
+  git(scratch, ["init", "-q", "-b", "main", "target"]);
+  git(target, ["add", "-A"]);
+  git(target, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "source"]);
+  const sourceRevision = git(target, ["rev-parse", "HEAD"]).trim();
   // JSON is valid YAML: the corpus files mirror test/model-corpus-fixture.ts.
   const writeModel = (name, value) => writeFileSync(join(model, name), `${JSON.stringify(value, null, 2)}\n`);
   writeModel("project.yaml", {
@@ -333,7 +361,7 @@ console.log("surface ok");
     product: {
       id: "smoke-x",
       name: "Smoke X",
-      revision: "abc123",
+      revision: sourceRevision,
       intended_use: "Packaging smoke fixture",
       criticality: "C1",
       criticality_reason: "Synthetic local data with bounded consequences",
@@ -434,13 +462,8 @@ console.log("surface ok");
       },
     ],
   });
-  writeFileSync(
-    join(target, "tests", "fixture.test.ts"),
-    ["// Family: CF-X01-S", "// Ticket: HB-001", "it('holds', () => {});", ""].join("\n"),
-  );
-  git(scratch, ["init", "-q", "-b", "main", "target"]);
-  git(target, ["add", "-A"]);
-  git(target, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "init"]);
+  git(target, ["add", "validation-design"]);
+  git(target, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "design"]);
 
   const checkRun = tryRun(binPath("validation-architect"), ["check", target], consumer);
   if (checkRun.status !== 0) {
@@ -450,22 +473,9 @@ console.log("surface ok");
     throw new Error(`structural-only evidence must record inconclusive, got:\n${checkRun.stdout}`);
   }
 
-  // Equivalent coverage of the OLD smoke: the alias's legacy manifest trace
-  // still closes green against a case-catalog fixture, warning included.
-  const legacy = join(scratch, "legacy-target");
-  mkdirSync(join(legacy, "validation-design"), { recursive: true });
-  mkdirSync(join(legacy, "tests", "cf-smoke-001"), { recursive: true });
-  writeFileSync(
-    join(legacy, "validation-design", "case-catalog.yaml"),
-    `schema: validation-architect/case-catalog/v1\nproduct: smoke\nconventions:\n  tests_root: tests\nfamilies:\n  - id: CF-SMOKE-001\n    section: Smoke\n    layers: "1"\n    oracle: contract\n    risk: low\n    status: implementable\n    ticket: HB-001\n    wave: "1"\ntickets:\n  - id: HB-001\n    title: Smoke\n    status: landed\n    wave: "1"\n    families: [CF-SMOKE-001]\n`,
-  );
-  writeFileSync(
-    join(legacy, "tests", "cf-smoke-001", "smoke.test.js"),
-    `// CF-SMOKE-001 (HB-001; smoke contract)\nit("smoke", () => {});\n`,
-  );
-  const aliasTrace = tryRun(binPath("validation-trace"), [legacy, "--quiet"], consumer);
-  if (aliasTrace.status !== 0 || !aliasTrace.stderr.includes("[validation-trace] green")) {
-    throw new Error(`clean-target alias trace did not close green (${aliasTrace.status})\n${aliasTrace.stderr}`);
+  const aliasTrace = tryRun(binPath("validation-trace"), [target], consumer);
+  if (aliasTrace.status !== checkRun.status || aliasTrace.stdout !== checkRun.stdout) {
+    throw new Error(`validation-trace did not execute the exact check path (${aliasTrace.status} vs ${checkRun.status})`);
   }
   if (!aliasTrace.stderr.includes(TRACE_WARNING)) {
     throw new Error("alias trace run must carry the deprecation warning");

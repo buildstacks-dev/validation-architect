@@ -2,9 +2,21 @@
   "name": "validation-architect",
   "version": "0.1.1",
   "private": false,
-  "description": "Two-agent autonomous validation-harness design: a Claude designer drives the validation-harness-design skill while a Codex stakeholder plays the domain-expert human, grounded in product docs and the human's rambling.txt.",
+  "description": "Provider-neutral validation architecture: deterministic contracts, campaign orchestration, schemas, skills, and CLI.",
   "license": "LicenseRef-FSL-1.1-MIT",
   "licenseFile": "LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cormidia/validation-architect.git"
+  },
+  "homepage": "https://github.com/cormidia/validation-architect#readme",
+  "bugs": {
+    "url": "https://github.com/cormidia/validation-architect/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

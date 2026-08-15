@@ -10,7 +10,7 @@ describe("TRACEABILITY_CONVENTIONS (issue #4)", () => {
     expect(TRACEABILITY_CONVENTIONS).toContain("Negative controls remain paired");
     expect(TRACEABILITY_CONVENTIONS).toContain("Legacy headers are adapter syntax, not authority");
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-design/model/*.yaml");
-    expect(TRACEABILITY_CONVENTIONS).toContain("validation-trace");
+    expect(TRACEABILITY_CONVENTIONS).toContain("validation-architect check");
     expect(TRACEABILITY_CONVENTIONS).toContain("implement-harness-ticket");
     expect(TRACEABILITY_CONVENTIONS).toContain("planned-trace.md");
     expect(TRACEABILITY_CONVENTIONS).toContain("full applicable suite");

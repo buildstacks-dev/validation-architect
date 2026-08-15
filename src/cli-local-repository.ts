@@ -10,6 +10,11 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /** Directories that are never repository facts. */
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
+const DESIGN_ROOT = "validation-design";
+
+function isDesignPath(path: string): boolean {
+  return path === DESIGN_ROOT || path.startsWith(`${DESIGN_ROOT}/`);
+}
 
 function safeRelativePath(value: string): boolean {
   if (value.length === 0 || value.length > 4096) return false;
@@ -56,6 +61,39 @@ export class CliLocalRepository {
     }
   }
 
+  #paths(args: string[]): string[] {
+    const output = this.#git(args);
+    return output.length === 0 ? [] : output.split("\0").filter(Boolean);
+  }
+
+  #dirtyProductPaths(): string[] {
+    return [
+      ...this.#paths(["diff", "--no-renames", "--name-only", "-z"]),
+      ...this.#paths(["diff", "--cached", "--no-renames", "--name-only", "-z"]),
+      ...this.#paths(["ls-files", "--others", "--exclude-standard", "-z"]),
+    ].filter((path) => !isDesignPath(path));
+  }
+
+  /** Exact latest first-parent commit whose product tree changed. Commits and
+   * working-tree overlays confined to validation-design/ do not make their
+   * own embedded source revision stale by construction. */
+  #productRevision(): string {
+    let revision = this.#git(["rev-parse", "HEAD"]);
+    for (;;) {
+      let parent: string;
+      try {
+        parent = this.#git(["rev-parse", `${revision}^`]);
+      } catch {
+        return revision;
+      }
+      const changed = this.#paths([
+        "diff", "--no-renames", "--name-only", "-z", parent, revision,
+      ]).filter((path) => !isDesignPath(path));
+      if (changed.length > 0) return revision;
+      revision = parent;
+    }
+  }
+
   /** Canonical absolute path when the target stays inside the root, else null. */
   #resolveContained(path: string): string | null {
     if (!safeRelativePath(path)) return null;
@@ -78,7 +116,13 @@ export class CliLocalRepository {
   }
 
   async revision(): Promise<string> {
-    return this.#git(["rev-parse", "HEAD"]);
+    const dirty = [...new Set(this.#dirtyProductPaths())].sort();
+    if (dirty.length > 0) {
+      throw new Error(
+        `The product tree at ${this.#root} has uncommitted changes (${dirty.join(", ")}); an exact source revision cannot be checked. Only a validation-design/ overlay may be uncommitted.`,
+      );
+    }
+    return this.#productRevision();
   }
 
   async readFile(path: string): Promise<string | null> {

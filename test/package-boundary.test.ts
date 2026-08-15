@@ -23,6 +23,10 @@ interface Manifest {
   exports?: Record<string, unknown>;
   files?: string[];
   dependencies?: Record<string, string>;
+  repository?: { type?: string; url?: string; directory?: string };
+  homepage?: string;
+  bugs?: { url?: string };
+  publishConfig?: { access?: string; provenance?: boolean };
 }
 
 function trackedManifests(): Array<{ path: string; manifest: Manifest }> {
@@ -80,6 +84,18 @@ describe("lockstep versions and license pair", () => {
     expect(readFileSync(join(root, "design", "LICENSE.md"), "utf8")).toBe(
       readFileSync(join(root, "LICENSE.md"), "utf8"),
     );
+  });
+
+  it("both publishable manifests carry complete registry metadata and provenance", () => {
+    for (const pkg of [corePkg, designPkg]) {
+      expect(pkg.repository?.type).toBe("git");
+      expect(pkg.repository?.url).toBe("git+https://github.com/cormidia/validation-architect.git");
+      expect(pkg.homepage).toBe("https://github.com/cormidia/validation-architect#readme");
+      expect(pkg.bugs?.url).toBe("https://github.com/cormidia/validation-architect/issues");
+      expect(pkg.publishConfig).toEqual({ access: "public", provenance: true });
+    }
+    expect(corePkg.repository?.directory).toBeUndefined();
+    expect(designPkg.repository?.directory).toBe("design");
   });
 });
 

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,7 +45,6 @@ function makeTarget(options: { withSpec?: boolean } = {}): string {
   const target = join(tmp, "product");
   mkdirSync(join(target, "docs"), { recursive: true });
   writeFileSync(join(target, "docs", "PRODUCT.md"), "# Product\n\nContract\n");
-  writeValidModel(target);
   if (options.withSpec !== false) {
     mkdirSync(join(target, "tests"), { recursive: true });
     writeFileSync(
@@ -55,7 +54,11 @@ function makeTarget(options: { withSpec?: boolean } = {}): string {
   }
   git(tmp, ["init", "-q", "-b", "main", "product"]);
   git(target, ["add", "-A"]);
-  git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+  git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "source"]);
+  const sourceRevision = git(target, ["rev-parse", "HEAD"]).trim();
+  writeValidModel(target, sourceRevision);
+  git(target, ["add", "validation-design"]);
+  git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "design"]);
   return target;
 }
 
@@ -127,6 +130,18 @@ describe("compile", () => {
     expect(await main(["compile", target])).toBe(1);
     expect(err.join("")).toContain("[error]");
   });
+
+  it("refuses to publish a generated view through a symlink", async () => {
+    const target = makeTarget();
+    const catalog = join(target, "validation-design", "case-catalog.md");
+    const outside = join(tmp, "outside.md");
+    writeFileSync(outside, "keep\n");
+    rmSync(catalog);
+    symlinkSync(outside, catalog);
+    expect(await main(["compile", target, "--write"])).toBe(1);
+    expect(err.join("")).toContain("symlink");
+    expect(readFileSync(outside, "utf8")).toBe("keep\n");
+  });
 });
 
 describe("plan and explain", () => {
@@ -158,7 +173,7 @@ describe("report", () => {
   it("ingests a validation-result file and prints the validated record", async () => {
     const target = makeTarget();
     expect(await main(["check", target, "--json"])).toBe(0);
-    const record = JSON.parse(out.join("")) as { identity: { versions: unknown } };
+    const record = JSON.parse(out.join("")) as { identity: { product_revision: string; versions: unknown } };
     out = [];
     const inputPath = join(tmp, "ingest.json");
     writeFileSync(inputPath, JSON.stringify({ kind: "validation-result", value: record }));
@@ -167,7 +182,7 @@ describe("report", () => {
       contextPath,
       JSON.stringify({
         identity: {
-          product_revision: "abc123",
+          product_revision: record.identity.product_revision,
           lane: "per-commit",
           environment: "repository-port",
           versions: record.identity.versions,
