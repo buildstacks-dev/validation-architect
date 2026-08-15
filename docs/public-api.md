@@ -77,10 +77,11 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
 - **Checkpoint** (`design-run/v1`, kind `checkpoint`): generation, exact
   package version, source revision, envelope, position, the pending
   idempotency key saved *before* a turn is invoked, accepted receipts, native
-  session identities, and unwritten artifacts. `save` names the generation it
-  extends; a stale generation raises `stale_generation` instead of
-  overwriting. Replaying a pending idempotency key must reconcile to the same
-  settled result and never spend a second turn.
+  session identities, admitted repository/intake snapshot, and unwritten
+  artifacts. `save` names the generation it extends; a stale generation raises
+  `stale_generation` instead of overwriting. Before replay, the library
+  reconstructs the exact pending request; the same idempotency key must then
+  reconcile to one settled result without a second spend.
 - **TurnResult** has no success-by-omission: `ok | refused | limit_exhausted |
   error` are all typed outcomes, and a host-supplied `parsed` value is
   re-validated against the requested schema, never trusted by presence.
@@ -103,9 +104,11 @@ const outcome = await design(
 
 Profiles are exact: C0 spends 1 turn (audit recorded as
 `not_required_by_profile`, never clean), C1 spends 2, C2 spends 4, C3/C4 run
-the bounded relay graph (60 relay exchanges, 3 fresh readers, ≤2 audit
-iterations, ≤12 stakeholder exchanges per audit window, 84 turns total; a host
-may tighten any bound, the library never enlarges one). Designer and
+the bounded relay graph (60 relay exchanges, 3 fresh reader personas across
+at most 3 passes, ≤2 audit iterations, ≤12 stakeholder
+exchanges per audit window, 104 turns total; every turn is capped at 32,768
+tokens and the campaign at 300 wall minutes). A host may tighten any bound;
+the library never enlarges one. Designer and
 Stakeholder are cross-provider persistent sessions; readers and auditors are
 fresh sessions (an auditor may share the designer's model — session
 independence is what the method requires). Identity is verified on every

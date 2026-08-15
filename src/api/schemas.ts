@@ -27,7 +27,7 @@ import {
   type CampaignEnvelope,
   type Provenance,
 } from "./campaign-contracts.js";
-import { invalidInput, unsupportedSchemaMajor } from "./errors.js";
+import { invalidCheckpoint, invalidInput, unsupportedSchemaMajor } from "./errors.js";
 import {
   assertValid,
   isRecord,
@@ -233,7 +233,9 @@ export function validateDesignRunEnvelope(value: unknown): CampaignEnvelope {
 export function validateDesignRunCheckpoint(value: unknown): CampaignCheckpoint {
   const problems: string[] = [];
   validateCheckpoint(value, problems);
-  assertValid(`${DESIGN_RUN_SCHEMA} checkpoint`, problems);
+  if (problems.length > 0) {
+    throw invalidCheckpoint(`${DESIGN_RUN_SCHEMA} checkpoint failed validation: ${problems.join("; ")}`);
+  }
   return value as CampaignCheckpoint;
 }
 

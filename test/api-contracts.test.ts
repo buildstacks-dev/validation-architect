@@ -51,7 +51,7 @@ function envelope(): CampaignEnvelope {
     ],
     terminals: ["done"],
     outputSchemas: {},
-    limits: { maxTurns: 2, maxWallMs: 60_000 },
+    limits: { maxTurns: 2, maxWallMs: 60_000, maxTokensPerTurn: 4096 },
   };
 }
 
@@ -68,6 +68,10 @@ function checkpoint(generation = 1): CampaignCheckpoint {
     receipts: [],
     sessions: {},
     artifacts: {},
+    intake: "fixture intake",
+    mode: "greenfield",
+    repository: { revision: "rev-1", identity: "a".repeat(64), inventory: [], files: [] },
+    startedAtEpochMs: 1,
     usage: { turns: 0, inputTokens: 0, outputTokens: 0 },
   };
 }
@@ -181,6 +185,8 @@ describe("design-run checkpoint validation", () => {
     ["envelope", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "envelope")],
     ["position", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "position")],
     ["generation", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "generation")],
+    ["repository", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "repository")],
+    ["startedAtEpochMs", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "startedAtEpochMs")],
     ["usage", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "usage")],
   ])("rejects a checkpoint missing %s", (_field, mutate) => {
     const value = checkpoint();
@@ -190,7 +196,13 @@ describe("design-run checkpoint validation", () => {
 
   it("rejects duplicate receipts and unsafe artifact paths", () => {
     const duplicated = checkpoint();
-    const receipt = { idempotencyKey: "k1", seat: { seat: "designer" as const, instance: "designer" }, state: "step:1", status: "ok" as const };
+    const receipt = {
+      idempotencyKey: "k1",
+      seat: { seat: "designer" as const, instance: "designer" },
+      state: "step:1",
+      nextState: "step:2",
+      status: "error" as const,
+    };
     duplicated.receipts = [receipt, { ...receipt }];
     expect(() => validateDesignRunCheckpoint(duplicated)).toThrow(PublicContractError);
 
@@ -203,7 +215,7 @@ describe("design-run checkpoint validation", () => {
     const value = checkpoint();
     const request = {
       ...turnRequest(),
-      metadata: { runId: "run-1", phase: "step:1", turnIndex: 1 },
+      metadata: { runId: "run-1", phase: "step:2", turnIndex: 1 },
     };
     value.pendingTurn = { idempotencyKey: request.idempotencyKey, request };
     expect(validateDesignRunCheckpoint(value)).toBeTruthy();
