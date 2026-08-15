@@ -1,15 +1,19 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateManifest, serializeManifest } from "./catalog.js";
 import { runTrace } from "./trace.js";
 import { runModelTrace } from "./model-trace.js";
 
 /**
- * validation-trace — deterministic design→implementation closure checks
- * (issue #5). Product-agnostic: reads only the case-catalog manifest and the
- * ratified conventions; meant to run in the TARGET repo's CI on every
- * commit. Exits non-zero on any red — fail-closed by construction.
+ * validation-trace — the DEPRECATED ALIAS for `validation-architect check`
+ * (decision record 2026-08-15, Decision 2). Retained through 0.x, removed at
+ * 1.0: every invocation prints one deterministic warning line on stderr and
+ * then behaves exactly as before for the check path — the warning never
+ * alters exit status. The former `generate` subcommand is superseded by the
+ * supported `validation-architect compile` workflow.
  */
+
+export const TRACE_ALIAS_DEPRECATION =
+  'validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.';
 
 const USAGE = `usage:
   validation-trace <target-repo> [--model <path> | --manifest <path>] [--tests <path>] [--out <report.md>] [--quiet]
@@ -17,10 +21,9 @@ const USAGE = `usage:
       preserves the explicit legacy catalog/header inventory adapter.
       Exit code: 0 all green, 1 any red, 2 usage/setup error.
 
-  validation-trace generate <case-catalog.md> <harness-backlog.md> [--product <name>]
-      [--tests-root <path>] [-o <case-catalog.yaml>]
-      Derive the machine-readable manifest from the markdown catalog +
-      backlog (bootstrap helper for corpora that predate the manifest).`;
+  Deprecated alias: prefer "validation-architect check". The former
+  "validation-trace generate" subcommand moved to "validation-architect
+  compile".`;
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -43,33 +46,12 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, 
   return { positional, flags };
 }
 
-function cmdGenerate(args: string[]): number {
-  const { positional, flags } = parseFlags(args);
-  const [catalogPath, backlogPath] = positional;
-  if (!catalogPath || !backlogPath) {
-    console.error(USAGE);
-    return 2;
-  }
-  const opts: Parameters<typeof generateManifest>[2] = {};
-  const product = flags.get("product");
-  if (product) opts.product = product;
-  const testsRoot = flags.get("tests-root");
-  if (testsRoot) opts.conventions = { tests_root: testsRoot };
-  const { manifest, problems } = generateManifest(
-    readFileSync(resolve(catalogPath), "utf8"),
-    readFileSync(resolve(backlogPath), "utf8"),
-    opts,
+function cmdGenerate(): number {
+  // Decision-record disposition: `generate` migrated to the compile workflow.
+  console.error(
+    'validation-trace generate has been removed: the supported workflow is "validation-architect compile", which validates the corpus and regenerates its views (use --write to write them).',
   );
-  for (const p of problems) console.error(`[generate] problem: ${p}`);
-  const yaml = serializeManifest(manifest);
-  const out = flags.get("o") ?? flags.get("out");
-  if (out) {
-    writeFileSync(resolve(out), yaml);
-    console.error(`[generate] wrote ${out} (${manifest.families.length} families, ${manifest.tickets.length} tickets)`);
-  } else {
-    process.stdout.write(yaml);
-  }
-  return problems.length > 0 ? 1 : 0;
+  return 2;
 }
 
 function cmdCheck(args: string[]): number {
@@ -106,9 +88,13 @@ function cmdCheck(args: string[]): number {
   return 0;
 }
 
+// One deterministic deprecation line on stderr on EVERY invocation; the
+// warning never alters exit status (Decision 2).
+console.error(TRACE_ALIAS_DEPRECATION);
+
 const [first, ...rest] = process.argv.slice(2);
 if (first === "generate") {
-  process.exitCode = cmdGenerate(rest);
+  process.exitCode = cmdGenerate();
 } else if (first === "--help" || first === "-h") {
   console.log(USAGE);
   process.exitCode = 0;

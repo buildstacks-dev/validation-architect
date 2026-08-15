@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FidelityRunResult } from "../src/fidelity.js";
+import { fidelityToValidationResult } from "../src/fidelity-result-adapter.js";
 import {
   auditToValidationResult,
   campaignToValidationResult,
   compilerToValidationResult,
-  fidelityToValidationResult,
   higherLaneToValidationResult,
   traceToValidationResult,
   type ResultMappingContext,

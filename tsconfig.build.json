@@ -2,9 +2,23 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "declaration": true,
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/catalog.ts", "src/trace.ts", "src/trace-cli.ts"],
+  // The published build is the dependency closure of these entry files: the
+  // full public API, the trace/catalog modules the alias bin needs, and the
+  // core CLI with its CLI-only local repository composition. Campaign-host /
+  // provider modules (cli.ts, orchestrator.ts, designer.ts, ...) must never
+  // enter this closure; test/package-boundary.test.ts and the package smoke
+  // verify the emitted dist and the packed file list.
+  "include": [
+    "src/api/index.ts",
+    "src/catalog.ts",
+    "src/trace.ts",
+    "src/trace-cli.ts",
+    "src/core-cli.ts",
+    "src/cli-local-repository.ts"
+  ],
   "exclude": ["test/**", "fixtures/**", "runs/**"]
 }

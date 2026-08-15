@@ -246,19 +246,39 @@ pnpm trace <target-repo> --model validation-design/model \
 # explicit legacy catalog/header inventory adapter
 pnpm trace <target-repo> --manifest validation-design/case-catalog.yaml \
   [--tests path] [--out report.md]
-pnpm trace generate <case-catalog.md> <harness-backlog.md> \
-  [--product name] [--tests-root path] [-o case-catalog.yaml]
 
-# in a product repo: the packed/released package runs compiled JavaScript and
-# has no runtime dependency on tsx or this source checkout
+# in a product repo: the packed/released packages run compiled JavaScript and
+# have no runtime dependency on tsx or this source checkout
 pnpm add --save-dev --save-exact validation-architect@0.1.1
-pnpm exec validation-trace . \
-  --model validation-design/model \
-  --tests <tests-root>
+pnpm exec validation-architect check .            # the CI gate (result/v1)
+pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
 Before a registry release, replace `validation-architect@0.1.1` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
+
+**Two lockstep packages** (VA-PKG-001). This repository publishes a pair that
+version together:
+
+- **`validation-architect`** (this root) — the provider-neutral core: the nine
+  public entry points (`compile`/`check`/`explain`/`plan`/`ingest`/`render`/
+  `migrate`/`design`/`resume`), the three ports and conformance fakes, six
+  schema assets under `schemas/`, the three skill trees, the enablement
+  handoff, and the `validation-architect` CLI. Its only runtime dependency is
+  `yaml`; no provider SDK ever ships with it.
+- **`validation-architect-design`** (`design/`) — the provider-bound local
+  composition: read-only fs/git repository adapter, atomic file-backed
+  campaign store, one concrete TurnPort over the Claude Agent SDK and Codex
+  SDK (same confinement pattern as the in-repo campaign host), and the
+  `validation-architect-design` CLI. Depends on the core at the exact same
+  version. Run standalone campaigns with
+  `npx validation-architect-design@<exact> . --profile C2 --intake-file intake.md`.
+
+**Deprecated alias.** `validation-trace` remains a bin of the core package
+through 0.x as a deprecated alias for `validation-architect check`: every
+invocation prints one deterministic warning line on stderr, exit codes are
+identical, and it is removed at 1.0. Its former `generate` subcommand is
+superseded by `validation-architect compile`.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
 `--designer-model` / `--stakeholder-model` / `--reader-model` ·
@@ -402,11 +422,13 @@ runs/<runId>/
 | `skill/` | this repo's design + audit skills, plus `implement-harness-ticket` (Enable leg) |
 | `fixtures/` | three synthetic products (the deterministic offline corpus) |
 | `test/` | offline suite (fake adapters, no tokens) |
-| `bin/validation-trace.js` · `tsconfig.build.json` | production package bin and narrow compiled build for the product-agnostic trace CLI |
+| `src/core-cli.ts` · `src/cli-local-repository.ts` | the `validation-architect` CLI: public api composed over a CLI-only read-only fs/git repository |
+| `bin/validation-architect.js` · `bin/validation-trace.js` · `tsconfig.build.json` | production package bins (core CLI + deprecated trace alias) and the compiled public-closure build |
+| `design/` | the `validation-architect-design` package: local adapters, provider TurnPort, design CLI, offline tests |
 
 ## License
 
-This repository and its published package are licensed under the
+This repository and its published packages are licensed under the
 **Functional Source License 1.1 with MIT future grant**
 ([FSL-1.1-MIT](LICENSE.md)) — fair source, not open source. In plain English:
 you are free to read, use, modify, and self-host the software, including

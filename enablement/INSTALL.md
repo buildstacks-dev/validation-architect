@@ -10,19 +10,19 @@ This directory is the executable handoff that accompanies the ratified design co
    ```
 
 2. Install `skills/implement-harness-ticket/` in the repository's supported agent-skill location (for example `.agents/skills/implement-harness-ticket/`) and land the ratified `validation-design/agents-md-contribution.md` in the standing agent instructions.
-3. Review `ci/validation-trace.yml`, then copy it into the repository's CI workflow directory. It assumes the package and lockfile from step 1 are committed.
+3. Review `ci/validation-trace.yml` (the workflow file keeps its historical name through 0.x; it now invokes `validation-architect check`), then copy it into the repository's CI workflow directory. It assumes the package and lockfile from step 1 are committed.
 4. Prove the same command locally before enabling the gate:
 
    ```bash
-   pnpm exec validation-trace . \
-     --model validation-design/model \
-     --tests <tests-root>
+   pnpm exec validation-architect check . --tests-root <tests-root>
    ```
 
-This invokes the checked-model graph. `--manifest` is retained only for an
-explicit legacy token/header inventory adapter. `validation-trace` proves
-deterministic closure only; the complete Core Checks suite still runs, and
-fidelity remains a separate architect audit. A live outcome-acceptance (`L-ACC`)
-campaign is never implied by installation or CI: it still requires fresh human
-authorization for its target, scenario set, spend/time ceiling, and permitted
-effects.
+This invokes the checked-model graph through the public `check()` entry point.
+`validation-trace` remains a deprecated alias for the check through 0.x — it
+prints one deterministic warning on stderr and is removed at 1.0; its former
+`generate` subcommand is superseded by `validation-architect compile`. The
+check proves deterministic closure only; the complete Core Checks suite still
+runs, and fidelity remains a separate architect audit. A live
+outcome-acceptance (`L-ACC`) campaign is never implied by installation or CI:
+it still requires fresh human authorization for its target, scenario set,
+spend/time ceiling, and permitted effects.

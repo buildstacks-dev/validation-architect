@@ -1,11 +1,14 @@
-# Per-repo pnpm configuration only — this is deliberately NOT a monorepo.
+# Workspace: the root is the CORE package `validation-architect`; `design/` is
+# the provider-bound `validation-architect-design` package (VA-PKG-001). The
+# two publish in lockstep and design depends on the core at exact equality
+# (pnpm rewrites `workspace:*` to the exact version on pack).
 #
 # pnpm >= 10 moved settings out of .npmrc and into this file, and pnpm >= 11
 # refuses every command when the file exists without a `packages:` key — down to
-# `pnpm --version`. A single-package repo therefore declares the root as its one
-# package rather than omitting the key.
+# `pnpm --version`.
 packages:
   - '.'
+  - 'design'
 
 # Commands never mutate the shared install implicitly. `pnpm install` is an
 # explicit prerequisite; run/exec must remain read-only with respect to

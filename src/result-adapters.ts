@@ -1,4 +1,3 @@
-import type { FidelityRunResult } from "./fidelity.js";
 import type { TraceResult } from "./trace.js";
 import type { ExplainedImpactPlan } from "./impact.js";
 import type { RelationshipGraph } from "./relationship-graph.js";
@@ -23,7 +22,10 @@ export interface ResultMappingContext {
   plan?: ResultPlan;
 }
 
-function mappedResult(
+/** Shared fail-closed mapping core. Exported for the sibling adapters that
+ * live outside the published build (fidelity stays campaign-host-only so the
+ * public compile closure never pulls provider-adjacent modules). */
+export function mappedResult(
   context: ResultMappingContext,
   outcome: {
     completeness: "complete" | "incomplete";
@@ -181,27 +183,6 @@ export function auditToValidationResult(audit: AuditState, context: ResultMappin
     cases,
     namespace: "validation-architect.audit",
     detail: audit,
-  });
-}
-
-export function fidelityToValidationResult(fidelity: FidelityRunResult, context: ResultMappingContext): ValidationResultV1 {
-  const outcomes = {
-    ok: { completeness: "complete", verdict: "pass", summary: "Fidelity review found no implementation mismatch.", next: "Retain the exact revision-bound report." },
-    findings: { completeness: "complete", verdict: "fail", reason: "traceability_broken", summary: `Fidelity review found ${fidelity.findings.length} mismatch(es).`, next: "Route each finding to implementation or structural revision." },
-    "protocol-violation": { completeness: "incomplete", verdict: "inconclusive", reason: "harness_failure", summary: "Fidelity reporter violated its protocol.", next: "Discard the report and rerun a compliant fresh reviewer." },
-    "refused-closure": { completeness: "incomplete", verdict: "inconclusive", reason: "traceability_broken", summary: "Fidelity review refused because deterministic closure is red.", next: "Repair trace closure before spending on fidelity judgment." },
-  } as const;
-  const outcome = outcomes[fidelity.status];
-  const cases: ResultCaseRecord[] = fidelity.findings.map((finding) => ({ id: finding.id, status: "fail", summary: finding.title, evidence_ids: context.evidence.map((item) => item.id) }));
-  return mappedResult(context, {
-    completeness: outcome.completeness,
-    verdict: outcome.verdict,
-    ...("reason" in outcome ? { reason: outcome.reason } : {}),
-    summary: outcome.summary,
-    next_action: outcome.next,
-    cases,
-    namespace: "validation-architect.fidelity",
-    detail: fidelity,
   });
 }
 
