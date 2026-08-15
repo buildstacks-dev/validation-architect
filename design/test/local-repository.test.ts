@@ -27,17 +27,28 @@ afterEach(() => {
 });
 
 describe("LocalRepository", () => {
-  it("binds revision() to the exact HEAD commit", async () => {
+  it("binds revision() to the exact product-source commit", async () => {
     const port = new LocalRepository({ root: repo });
     expect(await port.revision()).toBe(git(repo, ["rev-parse", "HEAD"]));
   });
 
-  it("refuses a dirty working tree by default and allows it only with allowDirty", async () => {
+  it("refuses uncommitted product drift but permits a validation-design overlay", async () => {
     writeFileSync(join(repo, "README.md"), "drifted\n");
-    await expect(new LocalRepository({ root: repo }).revision()).rejects.toThrow(/dirty/);
-    await expect(new LocalRepository({ root: repo, allowDirty: true }).revision()).resolves.toBe(
-      git(repo, ["rev-parse", "HEAD"]),
-    );
+    await expect(new LocalRepository({ root: repo }).revision()).rejects.toThrow(/uncommitted/);
+    writeFileSync(join(repo, "README.md"), "readme\n");
+    mkdirSync(join(repo, "validation-design"));
+    writeFileSync(join(repo, "validation-design", "README.md"), "overlay\n");
+    await expect(new LocalRepository({ root: repo }).revision()).resolves.toBe(git(repo, ["rev-parse", "HEAD"]));
+  });
+
+  it("walks through committed design-only changes without self-staling the source revision", async () => {
+    const sourceRevision = git(repo, ["rev-parse", "HEAD"]);
+    mkdirSync(join(repo, "validation-design"));
+    writeFileSync(join(repo, "validation-design", "README.md"), "committed corpus\n");
+    git(repo, ["add", "validation-design"]);
+    git(repo, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "design"]);
+    expect(git(repo, ["rev-parse", "HEAD"])).not.toBe(sourceRevision);
+    await expect(new LocalRepository({ root: repo }).revision()).resolves.toBe(sourceRevision);
   });
 
   it("errors when the target is not a git repository", async () => {
@@ -62,7 +73,7 @@ describe("LocalRepository", () => {
   it("rejects a symlink that escapes the root and never lists symlinks", async () => {
     writeFileSync(join(tmp, "secret.txt"), "outside\n");
     symlinkSync(join(tmp, "secret.txt"), join(repo, "docs", "leak.txt"));
-    const port = new LocalRepository({ root: repo, allowDirty: true });
+    const port = new LocalRepository({ root: repo });
     await expect(port.readFile("docs/leak.txt")).rejects.toThrow(/rejected/);
     expect(await port.listFiles(["docs/**"])).toEqual(["docs/PRODUCT.md"]);
   });
@@ -72,7 +83,7 @@ describe("LocalRepository", () => {
     writeFileSync(join(repo, "node_modules", "dep", "x.test.ts"), "");
     mkdirSync(join(repo, "tests"), { recursive: true });
     writeFileSync(join(repo, "tests", "a.test.ts"), "");
-    const port = new LocalRepository({ root: repo, allowDirty: true });
+    const port = new LocalRepository({ root: repo });
     expect(await port.listFiles(["tests/**"])).toEqual(["tests/a.test.ts"]);
     expect(await port.listFiles(["**/*.test.ts"])).toEqual(["tests/a.test.ts"]);
   });

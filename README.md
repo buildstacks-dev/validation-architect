@@ -225,7 +225,7 @@ pnpm vda report <runId>       # regenerate report.md
 
 # fidelity audit (spends Claude quota, one fresh session): do the citing
 # specs actually falsify their ratified seeds? Scoped per wave / ticket set;
-# REFUSES when validation-trace is red (fix closure before asking judgment);
+# REFUSES when validation-architect check is red (fix closure before asking judgment);
 # also refuses a dirty checkout, audits a detached captured HEAD/tree, and
 # invalidates the result if the checkout moves; findings only — no patches.
 pnpm vda fidelity <target-repo> --wave 1
@@ -238,14 +238,6 @@ pnpm vda fidelity <target-repo> --tickets HB-014,HB-015 --out fid.md
 pnpm vda repos                          # every registered target
 pnpm vda repos ~/code/myproduct         # explicit query (UNKNOWN if absent)
 pnpm vda repos --stale-days 7
-
-# deterministic checked-model→implementation closure over a target repo
-# from this source checkout
-pnpm trace <target-repo> --model validation-design/model \
-  [--tests path] [--out report.md]
-# explicit legacy catalog/header inventory adapter
-pnpm trace <target-repo> --manifest validation-design/case-catalog.yaml \
-  [--tests path] [--out report.md]
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
@@ -272,7 +264,14 @@ version together:
   SDK (same confinement pattern as the in-repo campaign host), and the
   `validation-architect-design` CLI. Depends on the core at the exact same
   version. Run standalone campaigns with
-  `npx validation-architect-design@<exact> . --profile C2 --intake-file intake.md`.
+  `npx validation-architect-design@<exact> . --profile C2`; optional
+  `--intake-file intake.md` augments intent derived from repository docs.
+  Its repository adapter binds the latest product-source commit while allowing
+  only `validation-design/` to differ, so committing the corpus cannot stale
+  its own embedded revision. Its local turn ledger replays locally settled
+  keys; an ambiguous provider/local crash boundary fails closed without a
+  second provider call because neither bundled SDK offers native settlement
+  reconciliation.
 
 **Deprecated alias.** `validation-trace` remains a bin of the core package
 through 0.x as a deprecated alias for `validation-architect check`: every
@@ -326,7 +325,7 @@ once, then:
    second, diverging design.
 4. **Install enablement, then use agents as callers.** Follow the delivered
    `validation-design/enablement/INSTALL.md`: pin this package (which supplies
-   the compiled `validation-trace` bin), install the bundled
+   `validation-architect check` and its deprecated alias), install the bundled
    `implement-harness-ticket` skill in the repo's supported skill location,
    land the ratified `agents-md-contribution.md`, and review/copy the included
    CI template. The delivery branch does not silently rewrite a product
@@ -410,7 +409,7 @@ runs/<runId>/
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
 | `src/model.ts` · `src/model-compiler.ts` · `src/model-views.ts` | versioned design graph, deterministic compiler, generated views |
 | `src/model-inventory.ts` · `src/workspace-compiler.ts` · `src/legacy-model-import.ts` | separate inventory join, atomic workspace compilation, explicit legacy import |
-| `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
+| `src/catalog.ts` · `src/trace.ts` | legacy catalog/trace internals retained for repository compatibility |
 | `src/fidelity.ts` | fidelity audit: scope resolution, closure preflight, findings-only guard |
 | `src/registry.ts` | per-repo fleet ledger + staleness flags behind `vda repos` |
 | `src/target.ts` | target-repo anchoring: loading, revision-mode detection, branch delivery |

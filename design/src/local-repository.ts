@@ -1,9 +1,9 @@
 /**
  * Read-only fs/git RepositoryPort for local design campaigns. Every read is
  * confined to the target root (absolute paths, traversal, and symlink escapes
- * are refused); revision identity comes from `git rev-parse HEAD`, and a
- * dirty working tree is refused by default so the campaign binds to an exact
- * commit rather than uncommitted drift.
+ * are refused). Revision identity is the exact latest product-source commit:
+ * commits or a working overlay confined to validation-design/ do not make
+ * the corpus stale by self-reference, while product-tree drift is refused.
  */
 
 import { execFileSync } from "node:child_process";
@@ -12,12 +12,15 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { RepositoryPort } from "validation-architect";
 
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
+const DESIGN_ROOT = "validation-design";
 
 export interface LocalRepositoryOptions {
   /** Target repository root; must be a Git checkout. */
   root: string;
-  /** Opt out of the dirty-working-tree refusal (default false). */
-  allowDirty?: boolean;
+}
+
+function isDesignPath(path: string): boolean {
+  return path === DESIGN_ROOT || path.startsWith(`${DESIGN_ROOT}/`);
 }
 
 function safeRelativePath(value: string): boolean {
@@ -42,11 +45,9 @@ function globToRegExp(pattern: string): RegExp {
 
 export class LocalRepository implements RepositoryPort {
   readonly #root: string;
-  readonly #allowDirty: boolean;
 
   constructor(options: LocalRepositoryOptions) {
     this.#root = realpathSync.native(resolve(options.root));
-    this.#allowDirty = options.allowDirty ?? false;
   }
 
   #git(args: string[]): string {
@@ -57,6 +58,36 @@ export class LocalRepository implements RepositoryPort {
       }).trim();
     } catch (error) {
       throw new Error(`git ${args.join(" ")} failed in ${this.#root}: ${(error as Error).message}`);
+    }
+  }
+
+  #paths(args: string[]): string[] {
+    const output = this.#git(args);
+    return output.length === 0 ? [] : output.split("\0").filter(Boolean);
+  }
+
+  #dirtyProductPaths(): string[] {
+    return [
+      ...this.#paths(["diff", "--no-renames", "--name-only", "-z"]),
+      ...this.#paths(["diff", "--cached", "--no-renames", "--name-only", "-z"]),
+      ...this.#paths(["ls-files", "--others", "--exclude-standard", "-z"]),
+    ].filter((path) => !isDesignPath(path));
+  }
+
+  #productRevision(): string {
+    let revision = this.#git(["rev-parse", "HEAD"]);
+    for (;;) {
+      let parent: string;
+      try {
+        parent = this.#git(["rev-parse", `${revision}^`]);
+      } catch {
+        return revision;
+      }
+      const changed = this.#paths([
+        "diff", "--no-renames", "--name-only", "-z", parent, revision,
+      ]).filter((path) => !isDesignPath(path));
+      if (changed.length > 0) return revision;
+      revision = parent;
     }
   }
 
@@ -82,16 +113,13 @@ export class LocalRepository implements RepositoryPort {
   }
 
   async revision(): Promise<string> {
-    const revision = this.#git(["rev-parse", "HEAD"]);
-    if (!this.#allowDirty) {
-      const status = this.#git(["status", "--porcelain"]);
-      if (status.length > 0) {
-        throw new Error(
-          `The working tree at ${this.#root} is dirty; a design campaign binds to an exact commit. Commit or stash first, or pass allowDirty/--allow-dirty deliberately.`,
-        );
-      }
+    const dirty = [...new Set(this.#dirtyProductPaths())].sort();
+    if (dirty.length > 0) {
+      throw new Error(
+        `The product tree at ${this.#root} has uncommitted changes (${dirty.join(", ")}); a design campaign requires an exact source revision. Only a validation-design/ overlay may be uncommitted.`,
+      );
     }
-    return revision;
+    return this.#productRevision();
   }
 
   async readFile(path: string): Promise<string | null> {

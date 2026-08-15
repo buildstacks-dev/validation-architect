@@ -90,10 +90,10 @@ function makeTargetRepo(): string {
 }
 
 /** A workspace whose corpus compiles clean, exactly as a finished campaign leaves it. */
-function makeWorkspace(): string {
+function makeWorkspace(sourceRevision = "abc123"): string {
   const workspace = join(tmp, "ws");
   mkdirSync(workspace, { recursive: true });
-  writeValidModel(workspace);
+  writeValidModel(workspace, sourceRevision);
   return workspace;
 }
 
@@ -237,7 +237,7 @@ describe("pre-1.0 run state recovery through the CLI", () => {
 describe("vda deliver refuses a workspace that is not compiler-clean", () => {
   function completedTargetRun(runId: string): { target: string; workspace: string } {
     const target = makeTargetRepo();
-    const workspace = makeWorkspace();
+    const workspace = makeWorkspace(git(target, ["rev-parse", "HEAD"]).trim());
     writeRun(runId, {
       workspace,
       target,
@@ -322,7 +322,7 @@ describe("a pre-model corpus is refused with the re-derive instruction", () => {
 
   it("leaves a current model corpus in ordinary revision mode", () => {
     const target = makeTargetRepo();
-    writeValidModel(target);
+    writeValidModel(target, git(target, ["rev-parse", "HEAD"]).trim());
     git(target, ["add", "-A"]);
     git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "corpus"]);
     // --max-exchanges 0 is rejected by config validation, which halts the run
@@ -339,14 +339,14 @@ describe("a pre-model corpus is refused with the re-derive instruction", () => {
  * branch without disturbing the user's checkout.
  */
 describe("a compiler-clean corpus traces green and delivers", () => {
-  it("passes validation-trace --model against the product's tests root", () => {
+  it("passes the validation-trace alias through the same public check path", () => {
     const target = makeTargetRepo();
-    const workspace = makeWorkspace();
+    const workspace = makeWorkspace(git(target, ["rev-parse", "HEAD"]).trim());
     // The corpus under audit is the one the campaign produced.
     execFileSync("cp", ["-R", join(workspace, "validation-design"), target]);
 
-    const result = trace([target, "--model", "validation-design/model", "--tests", "tests"]);
-    expect(result.output).not.toMatch(/\bRED\b/);
+    const result = trace([target]);
+    expect(result.stdout).toContain("verdict: inconclusive");
     expect(result.code).toBe(0);
     // Decision 2: exactly one deterministic deprecation line on stderr, and
     // the warning never alters exit status.
@@ -359,7 +359,7 @@ describe("a compiler-clean corpus traces green and delivers", () => {
     const result = trace(["--help"]);
     expect(result.code).toBe(0);
     expect(result.stderr).toContain("deprecated alias");
-    expect(result.stdout).toContain("validation-trace <target-repo>");
+    expect(result.stdout).toContain("validation-architect check [dir]");
   });
 
   it("routes the retired generate subcommand to validation-architect compile with exit 2", () => {
@@ -370,7 +370,7 @@ describe("a compiler-clean corpus traces green and delivers", () => {
 
   it("delivers the corpus to a branch and leaves the working tree clean", () => {
     const target = makeTargetRepo();
-    const workspace = makeWorkspace();
+    const workspace = makeWorkspace(git(target, ["rev-parse", "HEAD"]).trim());
     const headBefore = git(target, ["rev-parse", "HEAD"]).trim();
     writeRun("clean-delivery", {
       workspace,

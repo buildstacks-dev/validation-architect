@@ -12,7 +12,7 @@ import { compileWorkspaceModel } from "../src/workspace-compiler.js";
  * orchestrator tests and the CLI acceptance tests so both exercise the same
  * corpus shape the compiler actually accepts.
  */
-export function writeValidModel(root: string): void {
+export function writeValidModel(root: string, sourceRevision = "abc123"): void {
   const model = join(root, "validation-design", "model");
   mkdirSync(model, { recursive: true });
   const write = (name: string, value: unknown) =>
@@ -23,7 +23,7 @@ export function writeValidModel(root: string): void {
     product: {
       id: "fixture-x",
       name: "Fixture X",
-      revision: "abc123",
+      revision: sourceRevision,
       intended_use: "Offline orchestrator fixture",
       criticality: "C1",
       criticality_reason: "Synthetic local data with bounded consequences",

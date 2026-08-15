@@ -35,11 +35,12 @@ describe("designer seat confinement policy (pure)", () => {
     }
   });
 
-  it("allows a write beneath validation-design/", () => {
+  it("denies writes beneath validation-design because artifacts return as data", () => {
     const decision = evaluateDesignerToolUse(workspace, "Write", {
       file_path: join(workspace, "validation-design", "model", "families.yaml"),
     });
-    expect(decision.allow).toBe(true);
+    expect(decision.allow).toBe(false);
+    expect(decision.reason).toContain("structured output");
   });
 
   it("denies a write outside validation-design/", () => {
@@ -106,7 +107,7 @@ describe("read-only seat policy (auditor/reader)", () => {
 });
 
 describe("SDK option building wires the same policy into hook and canUseTool", () => {
-  it("PreToolUse hook denies an out-of-workspace read and allows an artifact write", async () => {
+  it("PreToolUse hook denies both an out-of-workspace read and a target write", async () => {
     const options = buildDesignerQueryOptions({ workspace });
     const hook = options.hooks?.PreToolUse?.[0]?.hooks?.[0];
     expect(hook).toBeTypeOf("function");
@@ -116,7 +117,7 @@ describe("SDK option building wires the same policy into hook and canUseTool", (
       { signal: new AbortController().signal },
     )) as { hookSpecificOutput?: { permissionDecision?: string } };
     expect(denied.hookSpecificOutput?.permissionDecision).toBe("deny");
-    const allowed = (await hook!(
+    const write = (await hook!(
       {
         hook_event_name: "PreToolUse",
         tool_name: "Write",
@@ -125,7 +126,7 @@ describe("SDK option building wires the same policy into hook and canUseTool", (
       undefined,
       { signal: new AbortController().signal },
     )) as { hookSpecificOutput?: { permissionDecision?: string } };
-    expect(allowed.hookSpecificOutput?.permissionDecision).toBe("allow");
+    expect(write.hookSpecificOutput?.permissionDecision).toBe("deny");
   });
 
   it("canUseTool applies the identical decision, deny fail-closed for Bash", async () => {
@@ -143,16 +144,23 @@ describe("SDK option building wires the same policy into hook and canUseTool", (
       { file_path: join(workspace, "validation-design", "notes.md") },
       { ...context, toolUseID: "tool-2", requestId: "req-2" },
     );
-    expect(write?.behavior).toBe("allow");
+    expect(write?.behavior).toBe("deny");
   });
 
   it("designer options carry the sandbox, tool allowlist, and no Bash", () => {
     const options = buildDesignerQueryOptions({ workspace });
-    expect(options.tools).toEqual(["Read", "Grep", "Glob", "Edit", "Write"]);
+    expect(options.tools).toEqual(["Read", "Grep", "Glob"]);
     expect(options.disallowedTools).toContain("Bash");
-    const sandbox = options.sandbox as { enabled: boolean; network: { allowedDomains: string[] } };
+    expect(options.disallowedTools).toEqual(expect.arrayContaining(["Edit", "Write"]));
+    const sandbox = options.sandbox as {
+      enabled: boolean;
+      network: { allowedDomains: string[] };
+      filesystem: { denyWrite: string[]; allowWrite: string[] };
+    };
     expect(sandbox.enabled).toBe(true);
     expect(sandbox.network.allowedDomains).toEqual([]);
+    expect(sandbox.filesystem.denyWrite).toContain("/");
+    expect(sandbox.filesystem.allowWrite).toEqual([]);
   });
 
   it("read-only options grant no write or edit tool and honor model overrides", () => {

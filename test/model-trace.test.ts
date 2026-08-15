@@ -74,8 +74,10 @@ describe("checked-model Validation Trace host adapter", () => {
     expect(result.reds.join("\n")).toContain("TESTS_ROOT_ABSENT");
   });
 
-  it("keeps the manifest CLI path as an explicit legacy adapter", () => {
-    expect(readFileSync(join(process.cwd(), "src", "trace-cli.ts"), "utf8")).toMatch(/--manifest.*explicit legacy catalog\/header inventory adapter/s);
+  it("keeps the deprecated binary as a thin shim over the core check path", () => {
+    const shim = readFileSync(join(process.cwd(), "src", "trace-cli.ts"), "utf8");
+    expect(shim).toContain('coreMain(["check", ...argv])');
+    expect(shim).not.toContain("runModelTrace");
   });
 
   it("projects current model facts for fidelity scope and refuses trace-red before a provider call", async () => {

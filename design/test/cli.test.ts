@@ -13,7 +13,7 @@ vi.mock("@openai/codex-sdk", () => ({
   }),
 }));
 
-import { main } from "../src/cli.js";
+import { defaultStateDirectory, main } from "../src/cli.js";
 
 function collect(): { io: { stdout: (line: string) => void; stderr: (line: string) => void }; out: string[]; err: string[] } {
   const out: string[] = [];
@@ -29,6 +29,7 @@ describe("validation-architect-design CLI", () => {
     expect(help).toContain("validation-architect-design [target-dir] --profile");
     expect(help).toContain("resume <runId>");
     expect(help).toContain("--out");
+    expect(help).toContain("[--intake-file <file>]");
   });
 
   it("exits 2 with usage when invoked without arguments", async () => {
@@ -46,10 +47,9 @@ describe("validation-architect-design CLI", () => {
     expect(invalid.err.join("\n")).toContain("--profile");
   });
 
-  it("requires --intake-file for a new campaign", async () => {
-    const { io, err } = collect();
-    expect(await main([".", "--profile", "C0"], io)).toBe(2);
-    expect(err.join("\n")).toContain("--intake-file");
+  it("defaults checkpoint/provider state outside the target checkout", () => {
+    const target = "/tmp/example-product";
+    expect(defaultStateDirectory(target)).not.toContain(`${target}/`);
   });
 
   it("requires a runId for resume", async () => {
@@ -61,5 +61,17 @@ describe("validation-architect-design CLI", () => {
     const { io, err } = collect();
     expect(await main([".", "--profile"], io)).toBe(2);
     expect(err.join("\n")).toContain("--profile requires a value");
+  });
+
+  it("rejects unknown flags instead of silently ignoring them", async () => {
+    const { io, err } = collect();
+    expect(await main([".", "--profile", "C0", "--mystery", "x"], io)).toBe(2);
+    expect(err.join("\n")).toContain("unknown flag --mystery");
+  });
+
+  it("rejects flags that belong to the other command", async () => {
+    const { io, err } = collect();
+    expect(await main(["resume", "run-1", "--profile", "C0"], io)).toBe(2);
+    expect(err.join("\n")).toContain("--profile is not valid for resume");
   });
 });

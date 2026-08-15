@@ -7,8 +7,10 @@
  * (the provider port is loaded lazily, only when a campaign actually runs).
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   canonicalProvenance,
   design,
@@ -23,16 +25,17 @@ import { LocalCampaignStore } from "./local-store.js";
 const PROFILES: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
 
 const USAGE = `usage:
-  validation-architect-design [target-dir] --profile <C0|C1|C2|C3|C4> --intake-file <file>
-      [--run-id <id>] [--state-dir <dir>] [--out <dir>] [--allow-dirty]
+  validation-architect-design [target-dir] --profile <C0|C1|C2|C3|C4> [--intake-file <file>]
+      [--run-id <id>] [--state-dir <dir>] [--out <dir>]
       [--model-designer <m>] [--model-stakeholder <m>] [--model-auditor <m>] [--model-reader <m>]
-      Start a design campaign against <target-dir> (default "."). The state
-      directory defaults to <target-dir>/.validation-architect/design-runs
-      and is always printed. The bundle is written nowhere unless --out is
-      given — the CLI is the publisher, the library never writes.
+      Start a design campaign against <target-dir> (default "."). Optional
+      intake augments repository docs; when absent, intent derives
+      from the admitted repository snapshot. State defaults outside the target
+      under the user state home and is always printed. The bundle is written
+      nowhere unless --out is given.
 
   validation-architect-design resume <runId> [target-dir] [--state-dir <dir>] [--out <dir>]
-      [--allow-dirty] [--model-designer <m>] [--model-stakeholder <m>] [--model-auditor <m>] [--model-reader <m>]
+      [--model-designer <m>] [--model-stakeholder <m>] [--model-auditor <m>] [--model-reader <m>]
       Resume an INTERRUPTED campaign from its checkpoint (same package
       version, same source revision, untouched envelope). A settled failed
       run stays failed.
@@ -45,7 +48,14 @@ interface ParsedArgs {
   help: boolean;
 }
 
-const BOOLEAN_FLAGS = new Set(["allow-dirty", "help"]);
+const BOOLEAN_FLAGS = new Set(["help"]);
+const VALUE_FLAGS = new Set([
+  "profile", "intake-file", "run-id", "state-dir", "out",
+  "model-designer", "model-stakeholder", "model-auditor", "model-reader",
+]);
+const COMMON_FLAGS = ["state-dir", "out", "model-designer", "model-stakeholder", "model-auditor", "model-reader"];
+const START_FLAGS = new Set([...COMMON_FLAGS, "profile", "intake-file", "run-id"]);
+const RESUME_FLAGS = new Set(COMMON_FLAGS);
 
 class UsageError extends Error {}
 
@@ -61,6 +71,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (argument.startsWith("--")) {
       const key = argument.slice(2);
+      if (!BOOLEAN_FLAGS.has(key) && !VALUE_FLAGS.has(key)) throw new UsageError(`unknown flag --${key}`);
       if (BOOLEAN_FLAGS.has(key)) {
         flags.set(key, "true");
         continue;
@@ -85,11 +96,43 @@ function models(flags: Map<string, string>): Record<string, string> {
   return overrides;
 }
 
+export function defaultStateDirectory(targetDir: string): string {
+  const stateHome = process.env["XDG_STATE_HOME"] || join(homedir(), ".local", "state");
+  const target = existsSync(targetDir) ? realpathSync.native(targetDir) : resolve(targetDir);
+  const targetKey = createHash("sha256").update(target).digest("hex").slice(0, 16);
+  return join(stateHome, "validation-architect", "design-runs", targetKey);
+}
+
 function stateDirectory(flags: Map<string, string>, targetDir: string, stderr: (line: string) => void): string {
   const explicit = flags.get("state-dir");
-  const directory = resolve(explicit ?? join(targetDir, ".validation-architect", "design-runs"));
+  const directory = resolve(explicit ?? defaultStateDirectory(targetDir));
   stderr(`[validation-architect-design] state directory: ${directory}${explicit ? "" : " (default)"}`);
   return directory;
+}
+
+function bundleTarget(outputRoot: string, path: string): string {
+  const target = resolve(outputRoot, path);
+  const rel = relative(outputRoot, target);
+  if (rel === ".." || rel.startsWith(`..${sep}`)) throw new Error(`Bundle path escapes --out: ${path}`);
+  let directory = outputRoot;
+  for (const segment of relative(outputRoot, dirname(target)).split(sep).filter(Boolean)) {
+    directory = join(directory, segment);
+    if (!existsSync(directory)) break;
+    const entry = lstatSync(directory);
+    if (entry.isSymbolicLink() || !entry.isDirectory()) {
+      throw new Error(`Bundle output parent is not a real directory: ${directory}`);
+    }
+  }
+  if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
+    throw new Error(`Bundle output refuses to follow a symlink: ${target}`);
+  }
+  return target;
+}
+
+function writeBundleFile(outputRoot: string, path: string, content: string): void {
+  const target = bundleTarget(outputRoot, path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, content);
 }
 
 function reportOutcome(
@@ -114,14 +157,14 @@ function reportOutcome(
   );
   stdout(`usage: ${bundle.usage.turns} turns, ${bundle.usage.inputTokens} in / ${bundle.usage.outputTokens} out tokens`);
   if (outDir) {
-    for (const file of bundle.files) {
-      const target = join(outDir, file.path);
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, file.content);
-    }
-    const provenancePath = join(outDir, "provenance.json");
-    mkdirSync(dirname(provenancePath), { recursive: true });
-    writeFileSync(provenancePath, `${canonicalProvenance(bundle.provenance)}\n`);
+    mkdirSync(resolve(outDir), { recursive: true });
+    const outputRoot = realpathSync.native(resolve(outDir));
+    const files = [
+      ...bundle.files,
+      { path: "provenance.json", content: `${canonicalProvenance(bundle.provenance)}\n` },
+    ];
+    for (const file of files) bundleTarget(outputRoot, file.path);
+    for (const file of files) writeBundleFile(outputRoot, file.path, file.content);
     stdout(`bundle written: ${bundle.files.length} file(s) + provenance.json under ${resolve(outDir)}`);
   } else {
     stdout(`bundle: ${bundle.files.length} unwritten file(s); pass --out <dir> to publish them`);
@@ -155,55 +198,72 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
 
   const isResume = args.positional[0] === "resume";
   try {
-    const allowDirty = args.flags.has("allow-dirty");
-
+    const allowedFlags = isResume ? RESUME_FLAGS : START_FLAGS;
+    for (const key of args.flags.keys()) {
+      if (!allowedFlags.has(key)) throw new UsageError(`flag --${key} is not valid for ${isResume ? "resume" : "start"}`);
+    }
     if (isResume) {
       const runId = args.positional[1];
       if (!runId) {
         io.stderr(USAGE);
         return 2;
       }
+      if (args.positional.length > 3) throw new UsageError("resume accepts only <runId> and one target directory");
       const targetDir = resolve(args.positional[2] ?? ".");
       // The provider port (and with it the SDK modules) loads only when a
       // campaign actually runs; --help and usage errors never touch it.
       const { LocalTurnPort } = await import("./provider-port.js");
-      const store = new LocalCampaignStore({ directory: stateDirectory(args.flags, targetDir, io.stderr) });
+      const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+      const store = new LocalCampaignStore({ directory: stateDir });
       const outcome = await resume(runId, {
-        repository: new LocalRepository({ root: targetDir, allowDirty }),
-        turns: new LocalTurnPort({ workspace: targetDir, models: models(args.flags) }),
+        repository: new LocalRepository({ root: targetDir }),
+        turns: new LocalTurnPort({ workspace: targetDir, stateDirectory: stateDir, models: models(args.flags) }),
         store,
       });
       return reportOutcome(outcome, args.flags.get("out"), io.stdout);
     }
 
     const targetDir = resolve(args.positional[0] ?? ".");
+    if (args.positional.length > 1) throw new UsageError("start accepts at most one target directory");
     const profile = args.flags.get("profile");
     if (!profile || !(PROFILES as readonly string[]).includes(profile)) {
       io.stderr(`validation-architect-design: --profile must be one of ${PROFILES.join(", ")}`);
       return 2;
     }
     const intakeFile = args.flags.get("intake-file");
-    if (!intakeFile) {
-      io.stderr("validation-architect-design: --intake-file <file> is required (the campaign's product summary and sources)");
-      return 2;
-    }
-    const intake = readFileSync(resolve(intakeFile), "utf8");
+    const intake = intakeFile ? readFileSync(resolve(intakeFile), "utf8") : undefined;
     const runId =
-      args.flags.get("run-id") ?? `design-${new Date().toISOString().replaceAll(/[:.]/g, "-").slice(0, 19)}`;
+      args.flags.get("run-id") ?? `design-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
     io.stderr(`[validation-architect-design] run id: ${runId}`);
     // Lazy provider-port import: after every usage gate, before the campaign.
     const { LocalTurnPort } = await import("./provider-port.js");
-    const store = new LocalCampaignStore({ directory: stateDirectory(args.flags, targetDir, io.stderr) });
+    const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+    const store = new LocalCampaignStore({ directory: stateDir });
+    const repository = new LocalRepository({ root: targetDir });
+    const mode = await repository.readFile("validation-design/model/project.yaml") === null ? "greenfield" : "revision";
     const outcome = await design(
-      { runId, profile: profile as ProfileTier, intake },
       {
-        repository: new LocalRepository({ root: targetDir, allowDirty }),
-        turns: new LocalTurnPort({ workspace: targetDir, models: models(args.flags) }),
+        runId,
+        profile: profile as ProfileTier,
+        ...(intake !== undefined ? { intake } : {}),
+        mode,
+        admit: (envelope) => {
+          io.stderr(`[validation-architect-design] admitted ${envelope.profile} envelope: ${envelope.limits.maxTurns} turns, ${envelope.limits.maxWallMs}ms wall`);
+          return envelope;
+        },
+      },
+      {
+        repository,
+        turns: new LocalTurnPort({ workspace: targetDir, stateDirectory: stateDir, models: models(args.flags) }),
         store,
       },
     );
     return reportOutcome(outcome, args.flags.get("out"), io.stdout);
   } catch (error) {
+    if (error instanceof UsageError) {
+      io.stderr(`validation-architect-design: ${error.message}`);
+      return 2;
+    }
     if (isPublicContractError(error)) {
       io.stderr(`[validation-architect-design] ${error.code}: ${error.message}`);
       return 1;

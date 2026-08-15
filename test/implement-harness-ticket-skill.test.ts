@@ -80,9 +80,10 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toMatch(/green by absence|no green by absence/);
     expect(text).toMatch(/detector-deposit|detector deposit/);
 
-    // Model-native trace conventions and explicit legacy boundary
+    // Model-native trace conventions and the supported public check path
     expect(text).toMatch(/repository adapter.*explicit family\/control links|explicit family\/control links/);
-    expect(text).toMatch(/legacy.*--manifest/);
+    expect(text).toContain("validation-architect check");
+    expect(text).not.toMatch(/--manifest|--model/);
     expect(text).toMatch(/observed.*before.*landed/);
     expect(text).toMatch(/same change/);
 

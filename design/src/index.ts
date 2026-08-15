@@ -19,6 +19,7 @@ export {
   evaluateReadOnlyToolUse,
   modelForSeat,
   type LocalTurnPortConfig,
+  type LocalTurnPolicyConfig,
   type LocalTurnPortModels,
   type ToolDecision,
 } from "./provider-port.js";

@@ -35,12 +35,15 @@ function checkpoint(runId: string, generation: number): CampaignCheckpoint {
     generation,
     packageVersion: "0.1.1",
     sourceRevision: "rev-1",
-    envelope: buildEnvelope({ runId, profile: "C0", intake: "intake" }, "rev-1"),
+    envelope: buildEnvelope({ runId, profile: "C0", intake: "intake", admit: (value) => value }, "rev-1"),
     position: "start",
     receipts: [],
     sessions: {},
     artifacts: {},
     intake: "intake",
+    mode: "greenfield",
+    repository: { revision: "rev-1", identity: "a".repeat(64), inventory: [], files: [] },
+    startedAtEpochMs: 1,
     usage: { turns: 0, inputTokens: 0, outputTokens: 0 },
   };
 }
@@ -52,6 +55,13 @@ describe("LocalCampaignStore compare-and-swap", () => {
     expect(loaded?.generation).toBe(1);
     expect(loaded?.envelope.profile).toBe("C0");
     expect(await store.load("absent")).toBeNull();
+    expect(statSync(join(store.directory, "run-a.json")).mode & 0o777).toBe(0o600);
+  });
+
+  it("recovers a lock left by a dead writer without weakening CAS", async () => {
+    writeFileSync(join(store.directory, "run-dead.json.lock"), "2147483647", { mode: 0o600 });
+    await store.save(checkpoint("run-dead", 1), 0);
+    expect((await store.load("run-dead"))?.generation).toBe(1);
   });
 
   it("raises the typed stale_generation conflict instead of overwriting", async () => {
@@ -64,6 +74,21 @@ describe("LocalCampaignStore compare-and-swap", () => {
       expect(isPublicContractError(error, "stale_generation")).toBe(true);
     }
     expect((await store.load("run-a"))?.generation).toBe(2);
+  });
+
+  it("serializes two independent writers so exactly one wins the same generation", async () => {
+    await store.save(checkpoint("run-race", 1), 0);
+    const other = new LocalCampaignStore({ directory: store.directory });
+    const left = checkpoint("run-race", 2);
+    left.artifacts = { "validation-design/left.md": "left" };
+    const right = checkpoint("run-race", 2);
+    right.artifacts = { "validation-design/right.md": "right" };
+    const results = await Promise.allSettled([store.save(left, 1), other.save(right, 1)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(isPublicContractError(rejected?.reason, "stale_generation")).toBe(true);
+    const loaded = await store.load("run-race");
+    expect(Object.keys(loaded?.artifacts ?? {})).toHaveLength(1);
   });
 
   it("requires the next generation to extend the expected one exactly", async () => {
@@ -102,7 +127,7 @@ describe("crash reconciliation through the campaign engine", () => {
     // Process one: dies mid-turn AFTER the pending save.
     await expect(
       design(
-        { runId: "run-crash", profile: "C0", intake: "fixture" },
+        { runId: "run-crash", profile: "C0", intake: "fixture", admit: (value) => value },
         {
           repository,
           turns: {

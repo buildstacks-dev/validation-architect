@@ -6,8 +6,8 @@
  * validation-design/.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   RENDER_VIEWS,
   canonicalJson,
@@ -92,6 +92,13 @@ interface ParsedArgs {
 const BOOLEAN_FLAGS = new Set(["write", "json", "help"]);
 /** Flags that consume every following non-flag argument. */
 const LIST_FLAGS = new Set(["changed"]);
+const COMMAND_FLAGS: Record<string, ReadonlySet<string>> = {
+  check: new Set(["lane", "tests-root", "json"]),
+  compile: new Set(["tests-root", "write"]),
+  plan: new Set(["changed", "lane", "tests-root"]),
+  explain: new Set(["tests-root"]),
+  report: new Set(["context", "view", "selector"]),
+};
 
 function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -175,8 +182,20 @@ async function cmdCompile(args: ParsedArgs): Promise<number> {
     process.stderr.write(`[${finding.severity}] ${location} ${finding.message} Correction: ${finding.correction}\n`);
   }
   if (args.flags.has("write")) {
-    for (const [view, content] of Object.entries(output.views)) {
-      const target = join(dir, "validation-design", view);
+    const targetRoot = realpathSync.native(dir);
+    const designRoot = join(targetRoot, "validation-design");
+    if (existsSync(designRoot) && (lstatSync(designRoot).isSymbolicLink() || !lstatSync(designRoot).isDirectory())) {
+      throw new Error("validation-design must be a real directory before generated views can be written.");
+    }
+    mkdirSync(designRoot, { recursive: true });
+    const writes = Object.entries(output.views).map(([view, content]) => {
+      const target = resolve(designRoot, view);
+      const rel = relative(designRoot, target);
+      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error(`Generated view path escapes validation-design: ${view}`);
+      if (existsSync(target) && lstatSync(target).isSymbolicLink()) throw new Error(`Generated view refuses to follow a symlink: ${view}`);
+      return { view, content, target };
+    });
+    for (const { view, content, target } of writes) {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, content);
       process.stderr.write(`[validation-architect] wrote validation-design/${view}\n`);
@@ -257,6 +276,10 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     args = parseArgs(rest);
+    const allowed = COMMAND_FLAGS[command] as ReadonlySet<string>;
+    for (const key of args.flags.keys()) {
+      if (!allowed.has(key)) throw new UsageError(`unknown flag --${key}`);
+    }
   } catch (error) {
     process.stderr.write(`validation-architect ${command}: ${(error as Error).message}\n\n${usage}\n`);
     return 2;

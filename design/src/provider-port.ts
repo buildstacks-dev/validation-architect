@@ -2,9 +2,9 @@
  * The ONE concrete TurnPort of the design package: logical seats map to SDK
  * calls. Designer turns run in a persistent Claude Agent SDK session under
  * the same confinement enforcement pattern as the core's campaign host
- * (PreToolUse hook + canUseTool + OS sandbox: reads confined to the
- * workspace, writes only beneath validation-design/, Bash denied
- * fail-closed). The stakeholder is a persistent Codex thread resumed by its
+ * (PreToolUse hook + canUseTool + OS sandbox), but are read-only: artifacts
+ * return as structured data and no provider tool writes the target. The
+ * stakeholder is a persistent Codex thread resumed by its
  * exact native thread id; auditors and readers are fresh read-only Claude
  * sessions. Importing this module performs no SDK call; the class takes a
  * config object and the option-building is pure so the hook callbacks are
@@ -15,9 +15,17 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback, Options, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { Codex, type Thread } from "@openai/codex-sdk";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { ExecutionIdentity, TurnPort, TurnRequest, TurnResult, TurnUsageReport } from "validation-architect";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, parse, relative, resolve, sep } from "node:path";
+import {
+  validateTurnRequest,
+  type ExecutionIdentity,
+  type TurnPort,
+  type TurnRequest,
+  type TurnResult,
+  type TurnUsageReport,
+} from "validation-architect";
+import { TurnLedger } from "./turn-ledger.js";
 
 // ── configuration ────────────────────────────────────────────────────────────
 
@@ -28,13 +36,18 @@ export interface LocalTurnPortModels {
   reader?: string;
 }
 
-export interface LocalTurnPortConfig {
+export interface LocalTurnPolicyConfig {
   /** Campaign workspace root: the target checkout the seats may read. */
   workspace: string;
   /** Model overrides per seat; defaults below. */
   models?: LocalTurnPortModels;
   /** Claude turn ceiling per send (tool-use steps, not campaign turns). */
   maxTurnsPerSend?: number;
+}
+
+export interface LocalTurnPortConfig extends LocalTurnPolicyConfig {
+  /** Durable state root shared with the campaign store; never the target. */
+  stateDirectory: string;
 }
 
 export const DEFAULT_MODELS: Required<LocalTurnPortModels> = {
@@ -94,9 +107,8 @@ function safeGlobPattern(value: unknown): boolean {
 }
 
 /**
- * Designer-seat policy: reads and searches confined to the workspace, writes
- * only beneath validation-design/, Bash denied fail-closed (this adapter
- * grants the designer no shell at all), every other tool denied.
+ * Designer-seat policy: confined reads/searches only. Artifacts cross the
+ * structured TurnResult boundary; a provider tool never writes the target.
  */
 export function evaluateDesignerToolUse(
   workspace: string,
@@ -104,7 +116,6 @@ export function evaluateDesignerToolUse(
   input: Record<string, unknown>,
 ): ToolDecision {
   const workspaceRoot = realpathSync.native(workspace);
-  const artifactRoot = join(workspaceRoot, "validation-design");
   const deny = (reason: string): ToolDecision => ({ allow: false, reason });
   const allow = (reason: string): ToolDecision => ({ allow: true, reason });
 
@@ -131,16 +142,10 @@ export function evaluateDesignerToolUse(
     return allow("Workspace search allowed.");
   }
 
-  if (toolName === "Edit" || toolName === "Write") {
-    const file = input["file_path"];
-    if (typeof file !== "string" || !pathWithin(artifactRoot, workspaceRoot, file, true)) {
-      return deny(`${toolName} is limited to regular paths beneath validation-design/.`);
-    }
-    return allow("Validation-design artifact write allowed.");
-  }
+  if (toolName === "Edit" || toolName === "Write") return deny(`${toolName} is denied; return artifacts in structured output.`);
 
   if (toolName === "Bash") {
-    return deny("Bash is denied fail-closed in the design adapter; the designer works through Read/Grep/Glob/Edit/Write only.");
+    return deny("Bash is denied fail-closed in the design adapter; the designer uses confined read/search tools only.");
   }
 
   return deny(`Tool ${toolName} is not available to the design campaign.`);
@@ -207,7 +212,8 @@ const ESCAPE_TOOLS = [
   "ExitWorktree",
 ] as const;
 
-function sandboxFor(workspace: string, artifactWrites: boolean): NonNullable<Options["sandbox"]> {
+function sandboxFor(workspace: string) {
+  const filesystemRoot = parse(workspace).root;
   return {
     enabled: true,
     failIfUnavailable: true,
@@ -220,10 +226,10 @@ function sandboxFor(workspace: string, artifactWrites: boolean): NonNullable<Opt
       allowLocalBinding: false,
     },
     filesystem: {
-      denyRead: [],
+      denyRead: [filesystemRoot],
       allowRead: [workspace],
-      denyWrite: [workspace],
-      allowWrite: artifactWrites ? [join(workspace, "validation-design")] : [],
+      denyWrite: [filesystemRoot],
+      allowWrite: [],
     },
     credentials: {
       envVars: [
@@ -231,7 +237,7 @@ function sandboxFor(workspace: string, artifactWrites: boolean): NonNullable<Opt
         { name: "OPENAI_API_KEY", mode: "deny" },
       ],
     },
-  } as NonNullable<Options["sandbox"]>;
+  } satisfies NonNullable<Options["sandbox"]>;
 }
 
 function claudeOptions(
@@ -239,19 +245,19 @@ function claudeOptions(
   model: string,
   tools: string[],
   decide: (toolName: string, input: Record<string, unknown>) => ToolDecision,
-  artifactWrites: boolean,
   maxTurns: number,
   resumeSession?: string,
 ): Options {
   const hook = policyHook(decide);
-  const sandbox = sandboxFor(workspace, artifactWrites);
+  const sandbox = sandboxFor(workspace);
+  const disallowed = [...ESCAPE_TOOLS, "Edit", "Write"];
   return {
     cwd: workspace,
     model,
     permissionMode: "dontAsk",
     tools,
     allowedTools: tools,
-    disallowedTools: [...ESCAPE_TOOLS],
+    disallowedTools: disallowed,
     strictMcpConfig: true,
     mcpServers: {},
     settingSources: [],
@@ -261,13 +267,32 @@ function claudeOptions(
       permissions: {
         defaultMode: "dontAsk",
         disableBypassPermissionsMode: "disable",
-        deny: [...ESCAPE_TOOLS],
+        deny: disallowed,
       },
       disableSkillShellExecution: true,
       disableBundledSkills: true,
       disableClaudeAiConnectors: true,
       includeGitInstructions: false,
       workflowKeywordTriggerEnabled: false,
+    },
+    managedSettings: {
+      permissions: {
+        defaultMode: "dontAsk",
+        disableBypassPermissionsMode: "disable",
+        deny: disallowed,
+      },
+      sandbox,
+      disableSkillShellExecution: true,
+      disableBundledSkills: true,
+      disableClaudeAiConnectors: true,
+      includeGitInstructions: false,
+      workflowKeywordTriggerEnabled: false,
+      allowedMcpServers: [],
+      allowManagedMcpServersOnly: true,
+      disableSideloadFlags: true,
+      strictPluginOnlyCustomization: ["hooks", "agents", "mcp"],
+      allowManagedHooksOnly: true,
+      allowedHttpHookUrls: [],
     },
     hooks: { PreToolUse: [{ hooks: [hook] }] },
     canUseTool: async (toolName, input): Promise<PermissionResult> => {
@@ -282,14 +307,13 @@ function claudeOptions(
 }
 
 /** Persistent designer session options: the confinement pattern above. */
-export function buildDesignerQueryOptions(config: LocalTurnPortConfig, resumeSession?: string): Options {
+export function buildDesignerQueryOptions(config: LocalTurnPolicyConfig, resumeSession?: string): Options {
   const workspace = realpathSync.native(config.workspace);
   return claudeOptions(
     workspace,
     modelForSeat("designer", config.models),
-    ["Read", "Grep", "Glob", "Edit", "Write"],
+    ["Read", "Grep", "Glob"],
     (toolName, input) => evaluateDesignerToolUse(workspace, toolName, input),
-    true,
     config.maxTurnsPerSend ?? 50,
     resumeSession,
   );
@@ -297,7 +321,7 @@ export function buildDesignerQueryOptions(config: LocalTurnPortConfig, resumeSes
 
 /** Fresh read-only auditor/reader session options. */
 export function buildReadOnlyQueryOptions(
-  config: LocalTurnPortConfig,
+  config: LocalTurnPolicyConfig,
   seat: "auditor" | "reader",
 ): Options {
   const workspace = realpathSync.native(config.workspace);
@@ -306,13 +330,12 @@ export function buildReadOnlyQueryOptions(
     modelForSeat(seat, config.models),
     ["Read", "Grep", "Glob"],
     (toolName, input) => evaluateReadOnlyToolUse(workspace, toolName, input),
-    false,
     config.maxTurnsPerSend ?? 50,
   );
 }
 
 /** Read-only Codex thread options for the stakeholder seat. */
-export function buildStakeholderThreadOptions(config: LocalTurnPortConfig): {
+export function buildStakeholderThreadOptions(config: LocalTurnPolicyConfig): {
   model: string;
   sandboxMode: "read-only";
   workingDirectory: string;
@@ -344,53 +367,104 @@ function usageFrom(raw: Record<string, unknown> | undefined | null): TurnUsageRe
 
 export class LocalTurnPort implements TurnPort {
   readonly #config: LocalTurnPortConfig;
+  readonly #ledger: TurnLedger;
   #codex: Codex | undefined;
-  /**
-   * A resumed campaign seat is identified by the native session id the engine
-   * recorded on its FIRST turn. The Claude CLI may rotate the underlying
-   * session id on each resumed query; the port tracks the latest native id
-   * per recorded identity so the conversation actually continues, while the
-   * identity it reports for a resume stays the exact id the engine pinned
-   * (verifyIdentity requires equality — a different id IS a session change).
-   */
-  readonly #sessionAliases = new Map<string, string>();
 
   constructor(config: LocalTurnPortConfig) {
-    this.#config = config;
+    mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
+    const workspace = realpathSync.native(config.workspace);
+    const stateDirectory = realpathSync.native(config.stateDirectory);
+    if (containedBy(resolve(config.workspace), stateDirectory) || containedBy(workspace, stateDirectory)) {
+      throw new Error("LocalTurnPort stateDirectory must be outside the target workspace.");
+    }
+    this.#config = { ...config, workspace, stateDirectory };
+    this.#ledger = new TurnLedger(stateDirectory);
   }
 
   async runTurn(request: TurnRequest): Promise<TurnResult> {
-    // NEVER retry: one SDK invocation per turn request; any provider failure
-    // becomes the typed "error" outcome and the engine settles it.
+    const requestProblems: string[] = [];
+    validateTurnRequest(request, requestProblems);
+    if (requestProblems.length > 0) {
+      return { status: "error", reason: `Invalid TurnRequest: ${requestProblems.join("; ")}` };
+    }
+    let claim;
     try {
-      switch (request.seat.seat) {
-        case "designer":
-          return await this.#claudeTurn(request, "designer");
-        case "auditor":
-          return await this.#claudeTurn(request, "auditor");
-        case "reader":
-          return await this.#claudeTurn(request, "reader");
-        case "stakeholder":
-          return await this.#codexTurn(request);
-        default:
-          return { status: "error", reason: `Unknown seat ${String(request.seat.seat)}` };
-      }
+      claim = await this.#ledger.claim(request);
     } catch (error) {
       return { status: "error", reason: (error as Error).message };
     }
+    if (claim.kind === "replay") return claim.result;
+
+    const abortController = new AbortController();
+    const wallMs = request.limits.maxWallMs;
+    const timeout = wallMs === undefined ? undefined : setTimeout(() => abortController.abort(), wallMs);
+    let result: TurnResult;
+    try {
+      result = await this.#invoke(request, abortController);
+      if (
+        result.status === "ok" &&
+        request.limits.maxTokens !== undefined &&
+        result.usage !== undefined &&
+        result.usage.outputTokens > request.limits.maxTokens
+      ) {
+        result = {
+          status: "limit_exhausted",
+          reason: `Provider output used ${result.usage.outputTokens} tokens, above the admitted ${request.limits.maxTokens}.`,
+          identity: result.identity,
+          usage: result.usage,
+        };
+      }
+    } catch (error) {
+      result = abortController.signal.aborted
+        ? { status: "limit_exhausted", reason: `Provider turn exceeded its admitted ${wallMs}ms wall limit.` }
+        : { status: "error", reason: (error as Error).message };
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
+    try {
+      this.#ledger.settle(claim, result);
+      return result;
+    } catch (error) {
+      return {
+        status: "error",
+        reason: `Provider turn settled but its idempotency record could not be committed: ${(error as Error).message}`,
+        ...(result.identity ? { identity: result.identity } : {}),
+        ...(result.usage ? { usage: result.usage } : {}),
+      };
+    }
   }
 
-  async #claudeTurn(request: TurnRequest, seat: "designer" | "auditor" | "reader"): Promise<TurnResult> {
+  async #invoke(request: TurnRequest, abortController: AbortController): Promise<TurnResult> {
+    switch (request.seat.seat) {
+      case "designer":
+        return this.#claudeTurn(request, "designer", abortController);
+      case "auditor":
+        return this.#claudeTurn(request, "auditor", abortController);
+      case "reader":
+        return this.#claudeTurn(request, "reader", abortController);
+      case "stakeholder":
+        return this.#codexTurn(request, abortController.signal);
+      default:
+        return { status: "error", reason: `Unknown seat ${String(request.seat.seat)}` };
+    }
+  }
+
+  async #claudeTurn(
+    request: TurnRequest,
+    seat: "designer" | "auditor" | "reader",
+    abortController: AbortController,
+  ): Promise<TurnResult> {
     if (seat !== "designer" && request.session.mode === "resume") {
       return { status: "error", reason: `Seat ${seat} is fresh-per-turn; a resume request is a host bug.` };
     }
     const model = modelForSeat(seat, this.#config.models);
     const requested = request.session.mode === "resume" ? request.session.sessionId : undefined;
-    const nativeToResume = requested ? this.#sessionAliases.get(requested) ?? requested : undefined;
     const options =
       seat === "designer"
-        ? buildDesignerQueryOptions(this.#config, nativeToResume)
+        ? buildDesignerQueryOptions(this.#config, requested)
         : buildReadOnlyQueryOptions(this.#config, seat);
+    options.abortController = abortController;
+    if (request.outputSchema) options.outputFormat = { type: "json_schema", schema: request.outputSchema };
     const stream = query({ prompt: request.prompt, options });
     let session: string | undefined;
     let text: string | undefined;
@@ -405,7 +479,9 @@ export class LocalTurnPort implements TurnPort {
         if (typeof sid === "string") session = sid;
         usage = usageFrom(message["usage"] as Record<string, unknown> | undefined) ?? usage;
         if (message["subtype"] === "success" && typeof message["result"] === "string") {
-          text = message["result"];
+          text = message["structured_output"] === undefined
+            ? message["result"]
+            : JSON.stringify(message["structured_output"]);
         } else if (message["subtype"] !== "success") {
           return {
             status: "error",
@@ -419,19 +495,21 @@ export class LocalTurnPort implements TurnPort {
     if (text === undefined || session === undefined) {
       return { status: "error", reason: `Claude ${seat} query produced no result/session identity.` };
     }
-    if (requested) this.#sessionAliases.set(requested, session);
-    const identity: ExecutionIdentity = { provider: "anthropic", model, session: requested ?? session };
+    const identity: ExecutionIdentity = { provider: "anthropic", model, session };
     return { status: "ok", text, identity, ...(usage ? { usage } : {}) };
   }
 
-  async #codexTurn(request: TurnRequest): Promise<TurnResult> {
+  async #codexTurn(request: TurnRequest, signal: AbortSignal): Promise<TurnResult> {
     this.#codex ??= new Codex();
     const options = buildStakeholderThreadOptions(this.#config);
     const thread: Thread =
       request.session.mode === "resume"
         ? this.#codex.resumeThread(request.session.sessionId, options)
         : this.#codex.startThread(options);
-    const result = await thread.run(request.prompt);
+    const result = await thread.run(request.prompt, {
+      signal,
+      ...(request.outputSchema ? { outputSchema: request.outputSchema } : {}),
+    });
     const model = options.model;
     const session = thread.id ?? undefined;
     if (typeof session !== "string" || session.length === 0) {

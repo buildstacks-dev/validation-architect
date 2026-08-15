@@ -4,4 +4,6 @@
  *
  * License: FSL-1.1-MIT (Functional Source License 1.1, MIT future grant).
  * Copyright 2026 Bikram Gupta. See LICENSE.md in this package. */
-import "../dist/trace-cli.js";
+import { traceAliasMain } from "../dist/trace-cli.js";
+
+process.exitCode = await traceAliasMain(process.argv.slice(2));

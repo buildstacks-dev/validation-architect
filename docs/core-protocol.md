@@ -101,12 +101,13 @@ not oracle fidelity; independent fidelity review remains separate.
 The current CLI route is:
 
 ```bash
-pnpm exec validation-trace . --model validation-design/model --tests <tests-root>
+pnpm exec validation-architect check . --tests-root <tests-root>
 ```
 
-`--manifest` retains the old token/header parser only as an explicit legacy
-inventory adapter. Hosts own repository reads and CI wiring; core graph inputs
-are provider- and product-neutral.
+`validation-trace` is the deprecated 0.x alias for this exact `check` path;
+legacy `--model`/`--manifest` flags are no longer accepted by the public bin.
+Hosts own repository reads and CI wiring; core graph inputs are provider- and
+product-neutral.
 
 ## Conservative changed-path impact planning
 
