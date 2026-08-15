@@ -51,7 +51,6 @@ tag, workflow run URL, and the registry's provenance statements.
   pins the core at exact equality (pnpm rewrites `workspace:*` on pack).
 - Package SemVer is the released identity of code, prompts, and skills; a
   method/prompt change is at least a minor and appears in the changelog.
-- Consumers exact-pin. `0.3.0` is the first public candidate; `0.2.0`
-  guidance is superseded everywhere.
+- Consumers exact-pin.
 - Each released version starts its own FSL two-year MIT conversion clock —
   prefer few, deliberate releases over fast-iterating ones.
