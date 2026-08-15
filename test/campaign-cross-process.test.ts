@@ -31,7 +31,7 @@ import { FileCampaignStore } from "${repoRoot}/test/file-campaign-store.js";
 const store = new FileCampaignStore(process.argv[2]);
 try {
   await design(
-    { runId: "cross-run", profile: "C0", intake: "cross-process fixture" },
+    { runId: "cross-run", profile: "C0", intake: "cross-process fixture", admit: (envelope) => envelope },
     {
       repository: new FakeRepositoryPort({ revision: "rev-x", files: {} }),
       turns: { async runTurn() { throw new Error("child process died mid-turn"); } },

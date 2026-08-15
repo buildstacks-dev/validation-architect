@@ -60,10 +60,14 @@ const designerComplete = (identity = DESIGNER_ID, extra: Record<string, unknown>
 
 const cleanAudit = (identity = AUDITOR_ID): TurnResult => ok({ verdict: "clean", findings: [] }, identity);
 
-function makePorts(script: ScriptedTurn[], store: CampaignStorePort = new InMemoryCampaignStore()): DesignPorts & { scripted: ScriptedTurnPort } {
+function makePorts(
+  script: ScriptedTurn[],
+  store: CampaignStorePort = new InMemoryCampaignStore(),
+  files: Record<string, string> = {},
+): DesignPorts & { scripted: ScriptedTurnPort } {
   const scripted = new ScriptedTurnPort(script);
   return {
-    repository: new FakeRepositoryPort({ revision: "rev-1", files: {} }),
+    repository: new FakeRepositoryPort({ revision: "rev-1", files }),
     turns: scripted,
     store,
     scripted,
@@ -75,6 +79,7 @@ const request = (runId: string, profile: DesignRequest["profile"], extra: Partia
   profile,
   intake: "A small fixture product.",
   ...extra,
+  admit: extra.admit ?? ((envelope) => envelope),
 });
 
 describe("exact profile sequences", () => {
@@ -158,6 +163,22 @@ describe("identity and independence", () => {
       { result: designerComplete({ ...DESIGNER_ID, session: "hijacked" }) },
     ]);
     await expect(design(request("run-hijack", "C2"), ports)).rejects.toSatisfy((error: unknown) =>
+      isPublicContractError(error, "identity_mismatch"),
+    );
+  });
+
+  it("refuses a fresh seat that reuses its prior native session", async () => {
+    const repeated = { provider: "anthropic", model: "fable", session: "reader-reused" };
+    const ports = makePorts([
+      { result: designerComplete() },
+      { result: ok({ findings: [] }, repeated) },
+      { result: ok({ findings: [] }, { ...repeated, session: "reader-eng-1" }) },
+      { result: ok({ findings: [] }, { ...repeated, session: "reader-agent-1" }) },
+      { result: designerComplete() },
+      { result: ok({ message: "Round accepted.", approved: true }, STAKEHOLDER_ID) },
+      { result: ok({ findings: [] }, repeated) },
+    ]);
+    await expect(design(request("run-fresh-reuse", "C3"), ports)).rejects.toSatisfy((error: unknown) =>
       isPublicContractError(error, "identity_mismatch"),
     );
   });
@@ -250,6 +271,23 @@ describe("envelope admission", () => {
     ).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
     expect(ports.scripted.consumed).toBe(0);
   });
+
+  it.each([
+    ["drops a required limit", (envelope: ReturnType<typeof buildEnvelope>) => {
+      const answer = structuredClone(envelope) as ReturnType<typeof buildEnvelope> & { limits: Record<string, number> };
+      Reflect.deleteProperty(answer.limits, "maxTokensPerTurn");
+      return answer;
+    }],
+    ["sets a non-positive limit", (envelope: ReturnType<typeof buildEnvelope>) => ({
+      ...envelope,
+      limits: { ...envelope.limits, maxTokensPerTurn: 0 },
+    })],
+  ])("refuses admission that %s before any spend", async (_label, mutate) => {
+    const ports = makePorts([{ result: designerComplete() }]);
+    await expect(design(request(`run-bad-admit-${String(_label).replaceAll(" ", "-")}`, "C0", { admit: mutate }), ports))
+      .rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
+    expect(ports.scripted.consumed).toBe(0);
+  });
 });
 
 describe("crash matrix", () => {
@@ -279,6 +317,20 @@ describe("crash matrix", () => {
 
     const resumed = await resume("run-crash-a", makePorts([{ result: designerComplete() }], store.inner));
     expect(resumed.status).toBe("complete");
+  });
+
+  it("does not start a new turn after the admitted wall-clock deadline", async () => {
+    const store = new CrashingStore();
+    store.crashOnSave = 2;
+    await expect(design(request("run-wall", "C0"), makePorts([{ result: designerComplete() }], store))).rejects.toThrow("simulated crash");
+    const checkpoint = (await store.inner.load("run-wall")) as CampaignCheckpoint;
+    checkpoint.startedAtEpochMs = Date.now() - checkpoint.envelope.limits.maxWallMs - 1;
+    checkpoint.generation += 1;
+    await store.inner.save(checkpoint, checkpoint.generation - 1);
+    const resumedPorts = makePorts([{ result: designerComplete() }], store.inner);
+    const outcome = await resume("run-wall", resumedPorts);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "limit_exhausted" });
+    expect(resumedPorts.scripted.consumed).toBe(0);
   });
 
   it("crash after the pending save resumes the exact pending idempotency key", async () => {
@@ -379,6 +431,7 @@ describe("resume binding", () => {
     const checkpoint = (await store.load("run-ver")) as CampaignCheckpoint;
     const forged = structuredClone(checkpoint);
     forged.packageVersion = "0.0.9";
+    forged.envelope.packageVersion = "0.0.9";
     forged.generation = checkpoint.generation + 1;
     await store.save(forged, checkpoint.generation);
     await expect(resume("run-ver", makePorts([{ result: designerComplete() }], store))).rejects.toSatisfy(
@@ -403,11 +456,70 @@ describe("resume binding", () => {
     const checkpoint = (await store.load("run-shape")) as CampaignCheckpoint;
     const forged = structuredClone(checkpoint);
     forged.envelope.transitions.push({ from: "start", to: "done", seat: { seat: "reader", instance: "reader:operator" }, turnCost: 0 });
-    forged.generation = checkpoint.generation + 1;
-    await store.save(forged, checkpoint.generation);
-    await expect(resume("run-shape", makePorts([{ result: designerComplete() }], store))).rejects.toSatisfy(
+    const hostileStore: CampaignStorePort = {
+      async load() { return structuredClone(forged); },
+      async save() { throw new Error("resume must reject before saving"); },
+    };
+    await expect(resume("run-shape", makePorts([{ result: designerComplete() }], hostileStore))).rejects.toSatisfy(
       (error: unknown) => isPublicContractError(error, "invalid_checkpoint"),
     );
+  });
+
+  it("reconstructs a pending request and rejects a forged prompt before TurnPort", async () => {
+    const store = await parkedRun("run-prompt");
+    const forged = (await store.load("run-prompt")) as CampaignCheckpoint;
+    if (!forged.pendingTurn) throw new Error("expected parked pending turn");
+    forged.pendingTurn.request.prompt = "forged prompt with valid structure";
+    const hostileStore: CampaignStorePort = {
+      async load() { return structuredClone(forged); },
+      async save() { throw new Error("resume must reject before saving"); },
+    };
+    const ports = makePorts([{ result: designerComplete() }], hostileStore);
+    await expect(resume("run-prompt", ports)).rejects.toSatisfy((error: unknown) =>
+      isPublicContractError(error, "invalid_checkpoint"),
+    );
+    expect(ports.scripted.consumed).toBe(0);
+  });
+
+  it("refuses same-revision repository drift before replaying a pending turn", async () => {
+    const store = new InMemoryCampaignStore();
+    await expect(design(request("run-drift", "C0"), {
+      repository: new FakeRepositoryPort({ revision: "rev-1", files: { "README.md": "before" } }),
+      turns: { async runTurn() { throw new Error("park"); } },
+      store,
+    })).rejects.toThrow("park");
+    const ports = makePorts([{ result: designerComplete() }], store, { "README.md": "after" });
+    await expect(resume("run-drift", ports)).rejects.toSatisfy((error: unknown) =>
+      isPublicContractError(error, "version_mismatch"),
+    );
+    expect(ports.scripted.consumed).toBe(0);
+  });
+});
+
+describe("revision context", () => {
+  it("seeds revision mode from the admitted repository corpus and records the repository prompt", async () => {
+    const files = Object.fromEntries(corpusFiles().map((file) => [file.path, file.content]));
+    const ports = makePorts([{
+      result: (turnRequest) => {
+        expect(turnRequest.prompt).toContain("Mode: revision");
+        expect(turnRequest.prompt).toContain("validation-design/model/project.yaml");
+        return ok({ marker: "CAMPAIGN-COMPLETE" }, DESIGNER_ID);
+      },
+    }], new InMemoryCampaignStore(), files);
+    const outcome = await design(request("run-revision", "C0", { mode: "revision" }), ports);
+    expect(outcome.status).toBe("complete");
+    if (outcome.status === "complete") expect(outcome.bundle.files.length).toBe(corpusFiles().length);
+  });
+
+  it("refuses revision mode without a complete current corpus before admission or spend", async () => {
+    let admitted = false;
+    const ports = makePorts([{ result: designerComplete() }], new InMemoryCampaignStore(), { "README.md": "no corpus" });
+    await expect(design(request("run-revision-missing", "C0", {
+      mode: "revision",
+      admit: (envelope) => { admitted = true; return envelope; },
+    }), ports)).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
+    expect(admitted).toBe(false);
+    expect(ports.scripted.consumed).toBe(0);
   });
 });
 
@@ -438,15 +550,40 @@ describe("escalation", () => {
 });
 
 describe("C3/C4 bounded graph", () => {
+  const readerResult = (session: string, findings: unknown[] = []): TurnResult =>
+    ok({ findings }, { provider: "anthropic", model: "fable", session });
+  const ratificationTurn = (content: string): TurnResult => ok({
+    marker: "CAMPAIGN-COMPLETE",
+    files: [{ path: "validation-design/ratification-package.md", content }],
+  }, DESIGNER_ID);
+  const readerProtocol = (prefix: string, firstStakeholderMode: "new" | "resume" = "new"): ScriptedTurn[] => [
+    { expect: { seat: "reader", instance: "reader:operator", sessionMode: "new" }, result: readerResult(`${prefix}-r1-op`) },
+    { expect: { seat: "reader", instance: "reader:new-engineer", sessionMode: "new" }, result: readerResult(`${prefix}-r1-eng`) },
+    { expect: { seat: "reader", instance: "reader:coding-agent", sessionMode: "new" }, result: readerResult(`${prefix}-r1-agent`) },
+    { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
+    { expect: { seat: "stakeholder", sessionMode: firstStakeholderMode }, result: ok({ message: "Round one confirmed.", approved: true }, STAKEHOLDER_ID) },
+    { expect: { seat: "reader", instance: "reader:operator", sessionMode: "new" }, result: readerResult(`${prefix}-r2-op`) },
+    { expect: { seat: "reader", instance: "reader:new-engineer", sessionMode: "new" }, result: readerResult(`${prefix}-r2-eng`) },
+    { expect: { seat: "reader", instance: "reader:coding-agent", sessionMode: "new" }, result: readerResult(`${prefix}-r2-agent`) },
+    { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
+    { expect: { seat: "stakeholder", sessionMode: "resume" }, result: ok({ message: "Round two confirmed.", approved: true }, STAKEHOLDER_ID) },
+    { expect: { seat: "reader", instance: "reader:operator", sessionMode: "new" }, result: readerResult(`${prefix}-r3-op`) },
+    { expect: { seat: "reader", instance: "reader:new-engineer", sessionMode: "new" }, result: readerResult(`${prefix}-r3-eng`) },
+    { expect: { seat: "reader", instance: "reader:coding-agent", sessionMode: "new" }, result: readerResult(`${prefix}-r3-agent`) },
+    { expect: { seat: "designer", sessionMode: "resume" }, result: ratificationTurn("# Reader-round residue\n\nNo unresolved reader findings.\n") },
+    { expect: { seat: "stakeholder", sessionMode: "resume" }, result: ok({ message: "Terminal residue confirmed.", approved: true }, STAKEHOLDER_ID) },
+  ];
+
   it("declares every bound, prices every transition, and covers its terminal", () => {
     const envelope = buildEnvelope(request("run-c3", "C3"), "rev-1");
     expect(envelope.shape).toBe("graph");
     expect(envelope.limits).toMatchObject({
-      maxTurns: 84,
+      maxTurns: 104,
       maxRelayExchanges: 60,
-      maxReaderTurns: 3,
+      maxReaderTurns: 9,
       maxAuditIterations: 2,
       maxStakeholderExchangesPerAuditWindow: 12,
+      maxTokensPerTurn: 32_768,
     });
     // Every non-terminal state has a priced outgoing transition.
     for (const state of envelope.states.filter((item) => !envelope.terminals.includes(item))) {
@@ -457,49 +594,120 @@ describe("C3/C4 bounded graph", () => {
     expect(envelope.transitions.filter((item) => item.from === "audit:2").every((item) => item.seat.seat === "designer")).toBe(true);
   });
 
-  it("runs the full relay: kickoff, exchange, readers with fresh distinct sessions, audit, final review", async () => {
-    const reader = (n: number): TurnResult => ok({ gaps: [] }, { provider: "anthropic", model: "fable", session: `s-reader-${n}` });
+  it("relays repository facts and accepted artifacts through the bounded reader/audit protocol", async () => {
+    const sentinel = { path: "validation-design/relay-note.md", content: "RELAY-SENTINEL" };
     const ports = makePorts([
-      { expect: { seat: "designer", sessionMode: "new" }, result: ok({ marker: "CONTINUE" }, DESIGNER_ID) },
-      { expect: { seat: "stakeholder", sessionMode: "new" }, result: ok({ message: "Push harder on negative controls.", approved: false }, STAKEHOLDER_ID) },
+      { expect: { seat: "designer", sessionMode: "new" }, result: ok({ marker: "CONTINUE", files: [...corpusFiles(), sentinel] }, DESIGNER_ID) },
+      {
+        expect: { seat: "stakeholder", sessionMode: "new" },
+        result: (turnRequest) => {
+          expect(turnRequest.prompt).toContain("REPOSITORY-SENTINEL");
+          expect(turnRequest.prompt).toContain("RELAY-SENTINEL");
+          expect(turnRequest.limits).toEqual({ maxTokens: 32_768, maxWallMs: 3_600_000 });
+          return ok({ message: "Push harder on negative controls.", approved: false }, STAKEHOLDER_ID);
+        },
+      },
       { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
-      { expect: { seat: "reader", instance: "reader:operator", sessionMode: "new" }, result: reader(1) },
-      { expect: { seat: "reader", instance: "reader:new-engineer", sessionMode: "new" }, result: reader(2) },
-      { expect: { seat: "reader", instance: "reader:coding-agent", sessionMode: "new" }, result: reader(3) },
-      { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
+      ...readerProtocol("full", "resume"),
       { expect: { seat: "auditor", instance: "auditor:1", sessionMode: "new" }, result: cleanAudit() },
-      { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
-    ]);
+      { expect: { seat: "designer", sessionMode: "resume" }, result: ratificationTurn("# Audit\n\nVerdict: clean.\n") },
+      { expect: { seat: "stakeholder", sessionMode: "resume" }, result: ok({ message: "Final audit record confirmed.", approved: true }, STAKEHOLDER_ID) },
+    ], new InMemoryCampaignStore(), { "README.md": "REPOSITORY-SENTINEL" });
     const outcome = await design(request("run-c3-full", "C3"), ports);
     expect(outcome.status).toBe("complete");
     if (outcome.status !== "complete") return;
-    expect(ports.scripted.consumed).toBe(9);
+    expect(ports.scripted.consumed).toBe(21);
     expect(outcome.bundle.audit).toEqual({ status: "performed", verdict: "clean", findings: [] });
+    expect(outcome.bundle.files.find((file) => file.path === "validation-design/relay-note.md")?.content).toBe("RELAY-SENTINEL");
   });
 
-  it("routes findings through dispositions, stakeholder confirmation, and a verifying second audit — and maps the internal dispute verdict losslessly", async () => {
+  it("preserves round-one findings, dispositions, verification, and round-two evidence losslessly", async () => {
     const finding = { id: "AUD-100", tier: "blocking", title: "Owner truth is unverifiable" };
     const ports = makePorts([
       { result: designerComplete() },
-      { result: ok({ gaps: [] }, { provider: "anthropic", model: "fable", session: "s-r1" }) },
-      { result: ok({ gaps: [] }, { provider: "anthropic", model: "fable", session: "s-r2" }) },
-      { result: ok({ gaps: [] }, { provider: "anthropic", model: "fable", session: "s-r3" }) },
-      { result: designerComplete() },
+      ...readerProtocol("audit"),
       { expect: { seat: "auditor", instance: "auditor:1" }, result: ok({ verdict: "reservations", findings: [finding] }, AUDITOR_ID) },
       { expect: { seat: "designer" }, result: designerComplete(DESIGNER_ID, { dispositions: [{ findingId: "AUD-100", kind: "disputed", note: "The owner doc covers this." }] }) },
       { expect: { seat: "stakeholder" }, result: ok({ message: "Dispute stands.", approved: true }, STAKEHOLDER_ID) },
-      { expect: { seat: "auditor", instance: "auditor:2", sessionMode: "new" }, result: ok({ verdict: "clean-with-disputes", findings: [finding] }, AUDITOR_2_ID) },
-      { expect: { seat: "designer" }, result: designerComplete() },
+      {
+        expect: { seat: "auditor", instance: "auditor:2", sessionMode: "new" },
+        result: ok({
+          verdict: "clean-with-disputes",
+          findings: [finding],
+          verification: [{ findingId: "AUD-100", status: "disputed" }],
+        }, AUDITOR_2_ID),
+      },
+      { expect: { seat: "designer" }, result: ratificationTurn("# Audit\n\nAUD-100 disputed with owner evidence.\n") },
+      { expect: { seat: "stakeholder" }, result: ok({ message: "Final record is complete.", approved: true }, STAKEHOLDER_ID) },
     ]);
     const outcome = await design(request("run-c3-audit", "C3"), ports);
     expect(outcome.status).toBe("complete");
     if (outcome.status !== "complete") return;
-    expect(ports.scripted.consumed).toBe(10);
+    expect(ports.scripted.consumed).toBe(22);
     expect(outcome.bundle.audit).toEqual({
       status: "performed",
       verdict: "clean-with-reservations", // never the internal clean-with-disputes
-      findings: [{ ...finding, iteration: 2 }],
+      findings: [
+        {
+          ...finding,
+          iteration: 1,
+          disposition: { kind: "disputed", note: "The owner doc covers this." },
+          verification: "disputed",
+        },
+        { ...finding, iteration: 2 },
+      ],
     });
+  });
+
+  it("rejects an iteration-two audit that omits round-one verification or introduces a non-blocking finding", async () => {
+    const finding = { id: "AUD-101", tier: "significant", title: "Missing evidence" };
+    const ports = makePorts([
+      { result: designerComplete() },
+      ...readerProtocol("scope"),
+      { result: ok({ verdict: "reservations", findings: [finding] }, AUDITOR_ID) },
+      { result: designerComplete(DESIGNER_ID, { dispositions: [{ findingId: "AUD-101", kind: "fixed", note: "Added evidence." }] }) },
+      { result: ok({ message: "Fix accepted.", approved: true }, STAKEHOLDER_ID) },
+      { result: ok({ verdict: "reservations", findings: [{ id: "AUD-NEW", tier: "minor", title: "New nit" }], verification: [] }, AUDITOR_2_ID) },
+    ]);
+    const outcome = await design(request("run-c3-scope", "C3"), ports);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "invalid_artifact" });
+  });
+
+  it("ends a refused audit feedback window at its admitted cap and proceeds to the second audit", async () => {
+    const finding = { id: "AUD-CAP", tier: "significant", title: "Evidence needs repair" };
+    const disposition = designerComplete(DESIGNER_ID, {
+      dispositions: [{ findingId: "AUD-CAP", kind: "fixed", note: "Evidence added." }],
+    });
+    const ports = makePorts([
+      { result: designerComplete() },
+      ...readerProtocol("cap"),
+      { result: ok({ verdict: "reservations", findings: [finding] }, AUDITOR_ID) },
+      { result: disposition },
+      { result: ok({ message: "Not yet.", approved: false }, STAKEHOLDER_ID) },
+      { result: disposition },
+      { result: ok({ message: "Window exhausted.", approved: false }, STAKEHOLDER_ID) },
+      {
+        expect: { seat: "auditor", instance: "auditor:2" },
+        result: ok({
+          verdict: "clean",
+          findings: [],
+          verification: [{ findingId: "AUD-CAP", status: "fixed" }],
+        }, AUDITOR_2_ID),
+      },
+      { result: ratificationTurn("# Audit\n\nAUD-CAP fixed in iteration two.\n") },
+      { result: ok({ message: "Recorded.", approved: true }, STAKEHOLDER_ID) },
+    ]);
+    const outcome = await design(request("run-feedback-cap", "C3", {
+      limits: { maxStakeholderExchangesPerAuditWindow: 2 },
+    }), ports);
+    expect(outcome.status).toBe("complete");
+    if (outcome.status !== "complete") return;
+    expect(outcome.bundle.audit).toMatchObject({
+      status: "performed",
+      verdict: "clean",
+      findings: [{ id: "AUD-CAP", verification: "fixed" }],
+    });
+    expect(ports.scripted.consumed).toBe(24);
   });
 
   it("exhausts a tightened relay bound as a typed limit instead of completing", async () => {

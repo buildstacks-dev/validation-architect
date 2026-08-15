@@ -17,20 +17,56 @@
         "transitions": { "type": "array", "items": { "type": "object", "required": ["from", "to", "seat", "turnCost"] } },
         "terminals": { "type": "array", "items": { "type": "string" } },
         "outputSchemas": { "type": "object" },
-        "limits": { "type": "object", "required": ["maxTurns", "maxWallMs"] }
+        "limits": {
+          "type": "object",
+          "required": ["maxTurns", "maxWallMs", "maxTokensPerTurn"],
+          "properties": {
+            "maxTurns": { "type": "integer", "minimum": 1 },
+            "maxWallMs": { "type": "integer", "minimum": 1 },
+            "maxTokensPerTurn": { "type": "integer", "minimum": 1 },
+            "maxRelayExchanges": { "type": "integer", "minimum": 1 },
+            "maxReaderTurns": { "type": "integer", "minimum": 1 },
+            "maxAuditIterations": { "type": "integer", "minimum": 1 },
+            "maxStakeholderExchangesPerAuditWindow": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     },
     {
       "type": "object",
-      "required": ["schema", "kind", "runId", "generation", "packageVersion", "sourceRevision", "envelope", "position", "receipts", "sessions", "artifacts", "usage"],
+      "required": ["schema", "kind", "runId", "generation", "packageVersion", "sourceRevision", "envelope", "position", "receipts", "sessions", "artifacts", "intake", "mode", "repository", "startedAtEpochMs", "usage"],
       "properties": {
         "schema": { "const": "validation-architect/design-run/v1" },
         "kind": { "const": "checkpoint" },
         "generation": { "type": "integer", "minimum": 0 },
         "pendingTurn": { "type": "object", "required": ["idempotencyKey", "request"] },
-        "receipts": { "type": "array", "items": { "type": "object", "required": ["idempotencyKey", "seat", "state", "status"], "properties": { "status": { "enum": ["ok", "refused", "limit_exhausted", "error"] } } } },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["idempotencyKey", "seat", "state", "nextState", "status"],
+            "properties": {
+              "status": { "enum": ["ok", "refused", "limit_exhausted", "error"] },
+              "accepted": { "type": "boolean" }
+            }
+          }
+        },
         "sessions": { "type": "object" },
         "artifacts": { "type": "object" },
+        "intake": { "type": "string" },
+        "mode": { "enum": ["greenfield", "revision"] },
+        "repository": {
+          "type": "object",
+          "required": ["revision", "identity", "inventory", "files"],
+          "properties": {
+            "revision": { "type": "string", "minLength": 1 },
+            "identity": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "inventory": { "type": "array", "items": { "type": "string" } },
+            "files": { "type": "array" }
+          }
+        },
+        "startedAtEpochMs": { "type": "integer", "minimum": 1 },
+        "auditCoreIdentity": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "usage": { "type": "object", "required": ["turns", "inputTokens", "outputTokens"] }
       }
     }
