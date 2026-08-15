@@ -134,9 +134,9 @@ try {
     packedManifest.homepage !== "https://github.com/cormidia/validation-architect#readme" ||
     packedManifest.bugs?.url !== "https://github.com/cormidia/validation-architect/issues" ||
     packedManifest.publishConfig?.access !== "public" ||
-    packedManifest.publishConfig?.provenance !== true
+    Object.hasOwn(packedManifest.publishConfig ?? {}, "provenance")
   ) {
-    throw new Error("packed core manifest is missing registry or provenance metadata");
+    throw new Error("packed core manifest has invalid registry/provenance metadata");
   }
   if (packedManifest.license !== "LicenseRef-FSL-1.1-MIT") {
     throw new Error(`packed core license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`);
@@ -194,9 +194,9 @@ try {
     designManifest.homepage !== packedManifest.homepage ||
     designManifest.bugs?.url !== packedManifest.bugs?.url ||
     designManifest.publishConfig?.access !== "public" ||
-    designManifest.publishConfig?.provenance !== true
+    Object.hasOwn(designManifest.publishConfig ?? {}, "provenance")
   ) {
-    throw new Error("packed design manifest is missing registry or provenance metadata");
+    throw new Error("packed design manifest has invalid registry/provenance metadata");
   }
   const corePin = designManifest.dependencies?.["validation-architect"];
   if (corePin !== packedManifest.version || !/^\d+\.\d+\.\d+$/.test(corePin ?? "")) {

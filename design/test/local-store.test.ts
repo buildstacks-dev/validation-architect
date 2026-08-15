@@ -28,14 +28,18 @@ afterEach(() => {
 });
 
 function checkpoint(runId: string, generation: number): CampaignCheckpoint {
+  const envelope = buildEnvelope(
+    { runId, profile: "C0", intake: "intake", admit: (value) => value },
+    "rev-1",
+  );
   return {
     schema: "validation-architect/design-run/v1",
     kind: "checkpoint",
     runId,
     generation,
-    packageVersion: "0.1.1",
+    packageVersion: envelope.packageVersion,
     sourceRevision: "rev-1",
-    envelope: buildEnvelope({ runId, profile: "C0", intake: "intake", admit: (value) => value }, "rev-1"),
+    envelope,
     position: "start",
     receipts: [],
     sessions: {},

@@ -1,27 +1,22 @@
-# Approval-gated lockstep release of validation-architect + validation-architect-design.
-#
-# The publish job is reachable ONLY through the protected `npm-publish`
-# environment (configure required reviewers in repo settings) and only when the
-# rebuilt tarball digests match the human-approved candidate preview exactly.
-# Publication uses npm trusted publishing (OIDC provenance) — no long-lived
-# registry token is stored. This workflow never runs on push; a human
-# dispatches it with the approval preview's exact values.
+# Approval-gated lockstep release. This workflow never runs on push and never
+# creates a tag. npm authentication is OIDC trusted publishing; because this
+# repository is private, npm provenance is deliberately not requested.
 name: release
 
 on:
   workflow_dispatch:
     inputs:
       commit:
-        description: "Exact commit SHA from the approval preview"
+        description: "Exact 40-character commit SHA from the approval preview"
         required: true
       tag:
-        description: "Exact tag (vX.Y.Z) matching both package versions"
+        description: "Existing exact tag (vX.Y.Z) at that commit"
         required: true
       core_digest:
-        description: "sha256 of validation-architect tarball from the preview"
+        description: "Lowercase sha256 of the core tarball"
         required: true
       design_digest:
-        description: "sha256 of validation-architect-design tarball from the preview"
+        description: "Lowercase sha256 of the design tarball"
         required: true
 
 permissions:
@@ -33,91 +28,140 @@ jobs:
     timeout-minutes: 20
     outputs:
       version: ${{ steps.verify.outputs.version }}
+      commit: ${{ steps.approved.outputs.commit }}
+      tag: ${{ steps.approved.outputs.tag }}
+      core_digest: ${{ steps.approved.outputs.core_digest }}
+      design_digest: ${{ steps.approved.outputs.design_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Validate approval inputs before checkout or shell use
+        id: approved
+        env:
+          APPROVED_COMMIT: ${{ inputs.commit }}
+          APPROVED_TAG: ${{ inputs.tag }}
+          APPROVED_CORE_DIGEST: ${{ inputs.core_digest }}
+          APPROVED_DESIGN_DIGEST: ${{ inputs.design_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$APPROVED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "commit must be exactly 40 lowercase hex characters"; exit 2; }
+          [[ "$APPROVED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag must be exactly vX.Y.Z"; exit 2; }
+          [[ "$APPROVED_CORE_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "core digest must be exactly 64 lowercase hex characters"; exit 2; }
+          [[ "$APPROVED_DESIGN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "design digest must be exactly 64 lowercase hex characters"; exit 2; }
+          echo "commit=$APPROVED_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "tag=$APPROVED_TAG" >> "$GITHUB_OUTPUT"
+          echo "core_digest=$APPROVED_CORE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "design_digest=$APPROVED_DESIGN_DIGEST" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.commit }}
-      - uses: actions/setup-node@v4
+          ref: ${{ steps.approved.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify immutable source and existing tag
+        env:
+          APPROVED_COMMIT: ${{ steps.approved.outputs.commit }}
+          APPROVED_TAG: ${{ steps.approved.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$APPROVED_COMMIT" ] || { echo "checkout did not resolve to approved commit"; exit 1; }
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$APPROVED_COMMIT" refs/remotes/origin/main || { echo "approved commit is not on main"; exit 1; }
+          git fetch --force origin "refs/tags/$APPROVED_TAG:refs/tags/$APPROVED_TAG"
+          [ "$(git rev-parse "$APPROVED_TAG^{commit}")" = "$APPROVED_COMMIT" ] || { echo "tag does not point to approved commit"; exit 1; }
+          [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "source checkout is dirty"; exit 1; }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 24
       - run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --config.minimumReleaseAge=0
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:package
-      - name: Verify tag/version relationship, lockstep, and digests
+      - name: Verify lockstep identity and approved digests
         id: verify
+        env:
+          APPROVED_TAG: ${{ steps.approved.outputs.tag }}
+          APPROVED_CORE_DIGEST: ${{ steps.approved.outputs.core_digest }}
+          APPROVED_DESIGN_DIGEST: ${{ steps.approved.outputs.design_digest }}
+          CANDIDATE_DIR: ${{ runner.temp }}/candidate
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           DESIGN_VERSION=$(node -p "require('./design/package.json').version")
           [ "$VERSION" = "$DESIGN_VERSION" ] || { echo "version skew: $VERSION vs $DESIGN_VERSION"; exit 1; }
-          [ "${{ inputs.tag }}" = "v$VERSION" ] || { echo "tag ${{ inputs.tag }} does not name v$VERSION"; exit 1; }
-          [ -z "$(git status --porcelain)" ] || { echo "dirty tree after build"; exit 1; }
-          pnpm pack --out /tmp/core.tgz
-          pnpm -C design pack --out /tmp/design.tgz
-          CORE_DIGEST=$(sha256sum /tmp/core.tgz | cut -d' ' -f1)
-          DESIGN_DIGEST=$(sha256sum /tmp/design.tgz | cut -d' ' -f1)
-          [ "$CORE_DIGEST" = "${{ inputs.core_digest }}" ] || { echo "core digest mismatch: built $CORE_DIGEST"; exit 1; }
-          [ "$DESIGN_DIGEST" = "${{ inputs.design_digest }}" ] || { echo "design digest mismatch: built $DESIGN_DIGEST"; exit 1; }
+          [ "$APPROVED_TAG" = "v$VERSION" ] || { echo "approved tag does not name v$VERSION"; exit 1; }
+          [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "dirty tree after verification"; exit 1; }
+          mkdir -p "$CANDIDATE_DIR"
+          pnpm pack --out "$CANDIDATE_DIR/core.tgz"
+          pnpm -C design pack --out "$CANDIDATE_DIR/design.tgz"
+          CORE_DIGEST=$(sha256sum "$CANDIDATE_DIR/core.tgz" | cut -d' ' -f1)
+          DESIGN_DIGEST=$(sha256sum "$CANDIDATE_DIR/design.tgz" | cut -d' ' -f1)
+          [ "$CORE_DIGEST" = "$APPROVED_CORE_DIGEST" ] || { echo "core digest mismatch: built $CORE_DIGEST"; exit 1; }
+          [ "$DESIGN_DIGEST" = "$APPROVED_DESIGN_DIGEST" ] || { echo "design digest mismatch: built $DESIGN_DIGEST"; exit 1; }
+          [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "dirty tree after packing"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: candidate-tarballs
-          path: /tmp/*.tgz
+          path: ${{ runner.temp }}/candidate/*.tgz
           if-no-files-found: error
 
   publish:
     needs: verify-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The protected environment IS the human approval binding: configure
-    # required reviewers on `npm-publish` so this job waits for an explicit
-    # person to approve the exact run whose inputs they previewed.
     environment: npm-publish
     permissions:
       contents: read
-      id-token: write # npm trusted publishing / provenance
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.verify-candidate.outputs.version }}
+      APPROVED_COMMIT: ${{ needs.verify-candidate.outputs.commit }}
+      APPROVED_TAG: ${{ needs.verify-candidate.outputs.tag }}
+      APPROVED_CORE_DIGEST: ${{ needs.verify-candidate.outputs.core_digest }}
+      APPROVED_DESIGN_DIGEST: ${{ needs.verify-candidate.outputs.design_digest }}
+      CANDIDATE_DIR: ${{ runner.temp }}/candidate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.commit }}
-      - uses: actions/setup-node@v4
+          ref: ${{ needs.verify-candidate.outputs.commit }}
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$APPROVED_COMMIT" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - uses: actions/download-artifact@v4
+      - name: Pin trusted-publishing npm CLI
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.19.0
+          [ "$(npm --version)" = "11.19.0" ]
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: candidate-tarballs
-          path: /tmp
-      - name: Re-verify digests against the approved inputs
+          path: ${{ runner.temp }}/candidate
+      - name: Re-verify downloaded artifact digests
         run: |
           set -euo pipefail
-          [ "$(sha256sum /tmp/core.tgz | cut -d' ' -f1)" = "${{ inputs.core_digest }}" ]
-          [ "$(sha256sum /tmp/design.tgz | cut -d' ' -f1)" = "${{ inputs.design_digest }}" ]
-      - name: Preflight — neither version may already exist
-        run: |
-          set -euo pipefail
-          V=${{ needs.verify-candidate.outputs.version }}
-          for P in validation-architect validation-architect-design; do
-            if npm view "$P@$V" version >/dev/null 2>&1; then
-              echo "$P@$V is already published. STOP: follow docs/release/RUNBOOK.md reconciliation; do not republish or bump blindly."
-              exit 1
-            fi
-          done
-      - name: Publish core, then design (documented order)
-        run: |
-          set -euo pipefail
-          npm publish /tmp/core.tgz --provenance --access public
-          npm publish /tmp/design.tgz --provenance --access public
-      - name: Verify lockstep publication
-        run: |
-          set -euo pipefail
-          V=${{ needs.verify-candidate.outputs.version }}
-          CORE_OK=$(npm view "validation-architect@$V" version || echo MISSING)
-          DESIGN_OK=$(npm view "validation-architect-design@$V" version || echo MISSING)
-          echo "registry: core=$CORE_OK design=$DESIGN_OK commit=${{ inputs.commit }} tag=${{ inputs.tag }}"
-          if [ "$CORE_OK" != "$V" ] || [ "$DESIGN_OK" != "$V" ]; then
-            echo "PARTIAL OR AMBIGUOUS PUBLICATION. Do not rerun this workflow. Follow docs/release/RUNBOOK.md."
-            exit 1
-          fi
+          [ "$(sha256sum "$CANDIDATE_DIR/core.tgz" | cut -d' ' -f1)" = "$APPROVED_CORE_DIGEST" ]
+          [ "$(sha256sum "$CANDIDATE_DIR/design.tgz" | cut -d' ' -f1)" = "$APPROVED_DESIGN_DIGEST" ]
+      - name: Inspect registry and plan fresh or partial recovery
+        id: registry-plan
+        run: node scripts/release-registry.mjs plan "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"
+      - name: Publish core when absent
+        if: steps.registry-plan.outputs.publish_core == 'true'
+        id: publish-core
+        continue-on-error: true
+        run: npm publish "$CANDIDATE_DIR/core.tgz" --access public
+      - name: Reconcile exact registry state after core attempt
+        if: always() && steps.registry-plan.outcome == 'success'
+        id: after-core
+        run: node scripts/release-registry.mjs plan "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"
+      - name: Publish design only after exact core integrity is present
+        if: steps.after-core.outputs.publish_core == 'false' && steps.after-core.outputs.publish_design == 'true'
+        id: publish-design
+        continue-on-error: true
+        run: npm publish "$CANDIDATE_DIR/design.tgz" --access public
+      - name: Always reconcile final lockstep registry integrity
+        if: always()
+        run: node scripts/release-registry.mjs verify "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"

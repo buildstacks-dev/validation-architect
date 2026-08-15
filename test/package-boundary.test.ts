@@ -86,13 +86,13 @@ describe("lockstep versions and license pair", () => {
     );
   });
 
-  it("both publishable manifests carry complete registry metadata and provenance", () => {
+  it("both publishable manifests carry complete registry metadata", () => {
     for (const pkg of [corePkg, designPkg]) {
       expect(pkg.repository?.type).toBe("git");
       expect(pkg.repository?.url).toBe("git+https://github.com/cormidia/validation-architect.git");
       expect(pkg.homepage).toBe("https://github.com/cormidia/validation-architect#readme");
       expect(pkg.bugs?.url).toBe("https://github.com/cormidia/validation-architect/issues");
-      expect(pkg.publishConfig).toEqual({ access: "public", provenance: true });
+      expect(pkg.publishConfig).toEqual({ access: "public" });
     }
     expect(corePkg.repository?.directory).toBeUndefined();
     expect(designPkg.repository?.directory).toBe("design");

@@ -11,19 +11,77 @@ permissions:
 jobs:
   offline-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       matrix:
-        # Lowest declared engine floor plus the normal supported version —
-        # the floor stays evidence-backed, not assumed.
-        node-version: [20, 22]
+        # pnpm 11 requires Node >=22.13. Node 20 remains the published package
+        # runtime floor and is exercised as an isolated consumer below.
+        node-version: ["22.14.0", "24"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
       - run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --config.minimumReleaseAge=0
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:package
+      - name: Pack the Node 20 consumer fixtures
+        if: matrix.node-version == '22.14.0'
+        env:
+          PACKAGE_DIR: ${{ runner.temp }}/runtime-packages
+        run: |
+          set -euo pipefail
+          mkdir -p "$PACKAGE_DIR"
+          pnpm pack --out "$PACKAGE_DIR/core.tgz"
+          pnpm -C design pack --out "$PACKAGE_DIR/design.tgz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.node-version == '22.14.0'
+        with:
+          name: node20-runtime-packages
+          path: ${{ runner.temp }}/runtime-packages/*.tgz
+          if-no-files-found: error
+
+  runtime-floor:
+    needs: offline-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: node20-runtime-packages
+          path: ${{ runner.temp }}/runtime-packages
+      - name: Install and exercise both tarballs as a Node 20 consumer
+        env:
+          PACKAGE_DIR: ${{ runner.temp }}/runtime-packages
+          npm_config_engine_strict: "true"
+        run: |
+          set -euo pipefail
+          CONSUMER=$(mktemp -d)
+          cd "$CONSUMER"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-package-lock "$PACKAGE_DIR/core.tgz" "$PACKAGE_DIR/design.tgz"
+          node --input-type=module <<'NODE'
+          import {
+            compile, check, explain, plan, ingest, render, migrate, design, resume,
+          } from "validation-architect";
+          import {
+            LocalCampaignStore, LocalRepository, LocalTurnPort,
+          } from "validation-architect-design";
+
+          for (const [name, value] of Object.entries({
+            compile, check, explain, plan, ingest, render, migrate, design, resume,
+            LocalCampaignStore, LocalRepository, LocalTurnPort,
+          })) {
+            if (typeof value !== "function") throw new Error(`${name} is not exported`);
+          }
+          NODE
+          ./node_modules/.bin/validation-architect --help >/dev/null
+          ./node_modules/.bin/validation-trace --help >/dev/null
+          ./node_modules/.bin/validation-architect-design --help >/dev/null
