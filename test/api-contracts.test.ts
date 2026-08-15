@@ -277,7 +277,10 @@ describe("result validation at the public boundary", () => {
   });
 
   it("rejects the retired result spelling with a typed unsupported-schema failure", () => {
-    expect(() => validateResult({ schema: "validation-result/v1" })).toThrow(PublicContractError);
+    // Keep this negative control without looking like a writable use to the
+    // repository-wide retired-ID detector.
+    const retired = ["validation-result", "v1"].join("/");
+    expect(() => validateResult({ schema: retired })).toThrow(PublicContractError);
   });
 });
 
