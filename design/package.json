@@ -15,8 +15,7 @@
     "url": "https://github.com/cormidia/validation-architect/issues"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "type": "module",
   "engines": {

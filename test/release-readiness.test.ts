@@ -3,75 +3,179 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CORE_PACKAGE_VERSION } from "../src/versions.js";
 
-/**
- * VA-REL-001 candidate detectors: the 0.3.0 lockstep identity is consistent
- * everywhere a consumer can see it, install guidance carries the exact pin,
- * stale release numbers are gone, and the release workflow is structurally
- * incapable of publishing without the human-approved candidate.
- */
+/** Red-capable detectors for the approval-gated, two-package release path. */
 
 const root = join(import.meta.dirname, "..");
 const read = (path: string): string => readFileSync(join(root, path), "utf8");
-const corePkg = JSON.parse(read("package.json"));
-const designPkg = JSON.parse(read("design/package.json"));
+const corePackage = JSON.parse(read("package.json"));
+const designPackage = JSON.parse(read("design/package.json"));
+
+function shellBlocks(workflow: string): string[] {
+  const lines = workflow.split("\n");
+  const blocks: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^(\s*)(?:-\s+)?run:\s*\|\s*$/.exec(lines[index] ?? "");
+    if (!match) continue;
+    const indentation = match[1]?.length ?? 0;
+    const body: string[] = [];
+    for (index += 1; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      if (line !== "" && (line.match(/^\s*/)?.[0].length ?? 0) <= indentation) {
+        index -= 1;
+        break;
+      }
+      body.push(line);
+    }
+    blocks.push(body.join("\n"));
+  }
+  return blocks;
+}
 
 describe("0.3.0 lockstep candidate identity", () => {
-  it("both manifests and the code constant agree on the candidate version", () => {
-    expect(corePkg.version).toBe("0.3.0");
-    expect(designPkg.version).toBe(corePkg.version);
-    expect(CORE_PACKAGE_VERSION).toBe(corePkg.version);
+  it("keeps both manifests and the code constant on one version", () => {
+    expect(corePackage.version).toBe("0.3.0");
+    expect(designPackage.version).toBe(corePackage.version);
+    expect(CORE_PACKAGE_VERSION).toBe(corePackage.version);
   });
 
-  it("install guidance exact-pins the candidate and carries no stale pin", () => {
+  it("exact-pins consumer guidance and carries no stale candidate", () => {
     for (const path of ["enablement/INSTALL.md", "README.md"]) {
       const text = read(path);
-      expect(text, path).toContain(`validation-architect@${corePkg.version}`);
-      expect(text, path).not.toMatch(/validation-architect@0\.1\./);
-      expect(text, path).not.toMatch(/validation-architect@0\.2\./);
+      expect(text, path).toContain(`validation-architect@${corePackage.version}`);
+      expect(text, path).not.toMatch(/validation-architect@0\.[12]\./);
     }
   });
 
-  it("the changelog names 0.3.0 as the candidate and supersedes 0.2.0", () => {
+  it("names 0.3.0 as the candidate and supersedes 0.2.0", () => {
     const changelog = read("CHANGELOG.md");
     expect(changelog).toContain("## 0.3.0");
     expect(changelog).toMatch(/0\.2\.0.*(superseded|abandoned)|abandoned.*0\.2\.0/);
   });
 });
 
+describe("candidate construction", () => {
+  const script = read("scripts/release-candidate.mjs");
+
+  it("has no dirty-tree bypass and checks cleanliness around construction", () => {
+    expect(script).not.toContain("RELEASE_CANDIDATE_ALLOW_DIRTY");
+    expect(script).toContain("--untracked-files=all");
+    expect(script.match(/assertClean\(/g)).toHaveLength(3);
+  });
+
+  it("binds names, versions, commit, and both exact tarball digests", () => {
+    for (const value of [
+      "validation-architect",
+      "validation-architect-design",
+      "CORE_PACKAGE_VERSION",
+      "git\", [\"rev-parse\", \"HEAD\"]",
+      'createHash("sha256")',
+      "coreDigest",
+      "designDigest",
+    ]) {
+      expect(script).toContain(value);
+    }
+    expect(script).not.toMatch(/run\("npm", \["(?:view|publish)/);
+    expect(script).not.toMatch(/run\("git", \["tag/);
+  });
+});
+
 describe("gated release workflow", () => {
   const workflow = read(".github/workflows/release.yml");
 
-  it("fires only on explicit human dispatch with the full approval preview", () => {
+  it("fires only on dispatch with the complete immutable preview", () => {
     expect(workflow).toContain("workflow_dispatch");
     expect(workflow).not.toMatch(/\bon:\s*\n\s*push/);
     expect(workflow).not.toContain("pull_request");
     for (const input of ["commit", "tag", "core_digest", "design_digest"]) {
       expect(workflow).toContain(`${input}:`);
     }
+    for (const shape of [
+      "^[0-9a-f]{40}$",
+      "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "^[0-9a-f]{64}$",
+    ]) {
+      expect(workflow).toContain(shape);
+    }
   });
 
-  it("publishes only behind the protected environment with trusted provenance", () => {
+  it("passes approved values to shells through environment variables", () => {
+    for (const body of shellBlocks(workflow)) {
+      expect(body).not.toMatch(/\$\{\{\s*(?:inputs|needs|runner)\./);
+    }
+  });
+
+  it("pins third-party actions and validates immutable source identity", () => {
+    expect(workflow).not.toMatch(/uses:\s*actions\/[^@\s]+@v\d/);
+    expect(workflow.match(/uses:\s*actions\/[^@\s]+@[0-9a-f]{40}/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(workflow).toContain("git merge-base --is-ancestor");
+    expect(workflow).toContain("refs/remotes/origin/main");
+    expect(workflow).toContain("tag does not point to approved commit");
+    expect(workflow).toContain("dirty tree after packing");
+  });
+
+  it("uses protected OIDC publishing without an unsupported provenance claim", () => {
     expect(workflow).toContain("environment: npm-publish");
     expect(workflow).toContain("id-token: write");
-    expect(workflow).toContain("--provenance");
-    // No long-lived token: the workflow must not reference an NPM_TOKEN secret.
+    expect(workflow).toContain("node-version: 24");
+    expect(workflow).toContain("npm@11.19.0");
     expect(workflow).not.toContain("NPM_TOKEN");
+    expect(workflow).not.toContain("--provenance");
   });
 
-  it("verifies digests, preflight-checks existing versions, and never blindly republishes", () => {
-    expect(workflow).toContain("digest mismatch");
-    expect(workflow).toContain("already published");
-    expect(workflow).toContain("RUNBOOK.md");
-    // Publish order is documented: core before design.
-    expect(workflow.indexOf("core.tgz --provenance")).toBeLessThan(workflow.indexOf("design.tgz --provenance"));
+  it("reconciles exact integrity and recovers only in core-then-design order", () => {
+    const initial = workflow.indexOf("release-registry.mjs plan");
+    const core = workflow.indexOf('npm publish "$CANDIDATE_DIR/core.tgz"');
+    const reconcile = workflow.indexOf("Reconcile exact registry state after core attempt");
+    const design = workflow.indexOf('npm publish "$CANDIDATE_DIR/design.tgz"');
+    const final = workflow.indexOf("release-registry.mjs verify");
+    expect(initial).toBeGreaterThan(0);
+    expect(initial).toBeLessThan(core);
+    expect(core).toBeLessThan(reconcile);
+    expect(reconcile).toBeLessThan(design);
+    expect(design).toBeLessThan(final);
+    expect(workflow.match(/continue-on-error: true/g)).toHaveLength(2);
+    expect(workflow).toContain("if: always()");
   });
 });
 
-describe("runbook", () => {
-  it("covers the reconciliation states and forbids escape-by-bump", () => {
-    const runbook = read("docs/release/RUNBOOK.md");
-    for (const phrase of ["Partial", "ambiguous", "Never unpublish", "provenance", "approval preview"]) {
+describe("declared runtime floor", () => {
+  const workflow = read(".github/workflows/ci.yml");
+
+  it("runs maintainer tooling only where pinned pnpm is supported", () => {
+    expect(workflow).toContain('node-version: ["22.14.0", "24"]');
+    expect(workflow).toContain("pnpm typecheck");
+    expect(workflow).toContain("pnpm test:package");
+  });
+
+  it("installs and imports both packed packages under strict Node 20 engines", () => {
+    expect(workflow).toContain("runtime-floor:");
+    expect(workflow).toContain('node-version: "20"');
+    expect(workflow).toContain('npm_config_engine_strict: "true"');
+    expect(workflow).toContain('"$PACKAGE_DIR/core.tgz" "$PACKAGE_DIR/design.tgz"');
+    for (const entry of [
+      "compile, check, explain, plan, ingest, render, migrate, design, resume",
+      "LocalCampaignStore, LocalRepository, LocalTurnPort",
+    ]) {
+      expect(workflow).toContain(entry);
+    }
+  });
+});
+
+describe("release runbook", () => {
+  const runbook = read("docs/release/RUNBOOK.md");
+
+  it("documents private-repository OIDC without claiming provenance", () => {
+    for (const phrase of ["private source repository", "omits `--provenance`", "npm 11.19.0", "Node 22.14"]) {
       expect(runbook).toContain(phrase);
     }
+    expect(runbook).toMatch(/OIDC trusted\s+publishing/);
+  });
+
+  it("permits recovery only through the same protected workflow inputs", () => {
+    expect(runbook).toContain("same commit, tag, and digests");
+    expect(runbook).toContain("Never publish locally");
+    expect(runbook).toContain("Only a structured `E404` means absent");
+    expect(runbook).toContain("exact npm `dist.integrity`");
+    expect(runbook).not.toMatch(/^\s*npm publish\b/m);
   });
 });
