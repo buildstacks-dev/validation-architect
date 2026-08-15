@@ -85,6 +85,44 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   error` are all typed outcomes, and a host-supplied `parsed` value is
   re-validated against the requested schema, never trusted by presence.
 
+## `design` and `resume`
+
+```ts
+import { design, resume } from "validation-architect";
+
+const outcome = await design(
+  {
+    runId: "run-1",
+    profile: "C2",                       // C0–C4; decides the exact turn shape
+    intake: "Product summary and sources…",
+    admit: async (envelope) => envelope,  // inspect/tighten before ANY spend; null refuses
+  },
+  { repository, turns, store },           // the three ports
+);
+```
+
+Profiles are exact: C0 spends 1 turn (audit recorded as
+`not_required_by_profile`, never clean), C1 spends 2, C2 spends 4, C3/C4 run
+the bounded relay graph (60 relay exchanges, 3 fresh readers, ≤2 audit
+iterations, ≤12 stakeholder exchanges per audit window, 84 turns total; a host
+may tighten any bound, the library never enlarges one). Designer and
+Stakeholder are cross-provider persistent sessions; readers and auditors are
+fresh sessions (an auditor may share the designer's model — session
+independence is what the method requires). Identity is verified on every
+requested dimension; a mismatch is the typed `identity_mismatch` failure.
+
+Outcomes: `{ status: "complete", bundle }` with the unwritten corpus,
+provenance, profile assessment (`escalationRequired` when findings support a
+deeper tier — the run never upgrades itself), public audit verdict, and usage;
+or `{ status: "incomplete", checkpoint, reason, nextAction }` with exactly one
+of `turn_refused | limit_exhausted | turn_error | invalid_artifact`. A failed
+run stays failed: `resume(runId, ports)` continues an *interrupted* campaign
+(same package version, same source revision, untouched envelope), reconciles a
+parked pending turn by its idempotency key without a second spend, and returns
+the same typed failure for a settled one. Deterministic corpus checks run
+after every artifact-producing turn; the engine writes nothing anywhere — the
+caller publishes the bundle.
+
 ## Typed failures
 
 `PublicContractError.code` is the machine discriminator (text is not):

@@ -96,6 +96,9 @@ export interface TurnReceipt {
   usage?: TurnUsageReport;
   /** Digest of the accepted turn text; the text itself lives in transcripts. */
   textDigest?: string;
+  /** Library-validated structured output (never the host's `parsed` as-is);
+   * persisted so a resumed process replays identical control decisions. */
+  output?: unknown;
 }
 
 export interface CampaignCheckpoint {
@@ -117,6 +120,8 @@ export interface CampaignCheckpoint {
   sessions: Record<string, string>;
   /** Corpus files accepted so far, path → content (unwritten data). */
   artifacts: Record<string, string>;
+  /** The admitted intake text, persisted so resumed prompts are identical. */
+  intake?: string;
   usage: { turns: number; inputTokens: number; outputTokens: number };
 }
 
