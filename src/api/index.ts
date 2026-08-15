@@ -2,8 +2,7 @@
  * The supported public surface of the core package (VA-API-002 + VA-API-003).
  * Importing this module performs no effect: no file, socket, subprocess,
  * credential, or provider SDK is touched. The nine entry points are the seven
- * deterministic functions below plus provider-neutral `design`/`resume`
- * (implemented by the campaign workstream and re-exported here when they land).
+ * deterministic functions below plus provider-neutral `design`/`resume`.
  */
 
 // The three injected ports and turn contracts (D2).
@@ -114,6 +113,20 @@ export {
   type MigrateOutput,
 } from "./entry-points.js";
 export { DESIGN_ROOT, SPEC_SUFFIXES, type RepositoryFactsOptions } from "./repository-facts.js";
+
+// Provider-neutral campaign orchestration (D2/D7): the eighth and ninth
+// entry points. Turns are spent only through the host's injected TurnPort.
+export {
+  design,
+  resume,
+  buildEnvelope,
+  DESIGNER_OUTPUT_SCHEMA,
+  STAKEHOLDER_OUTPUT_SCHEMA,
+  AUDITOR_OUTPUT_SCHEMA,
+  READER_OUTPUT_SCHEMA,
+  type DesignRequest,
+  type DesignPorts,
+} from "./campaign-engine.js";
 
 // Re-exported public data contracts whose meaning is owned by Core issues.
 export type { ValidationResultV1, ResultEvidenceReference, ResultIdentity, ResultPlan } from "../validation-result.js";
