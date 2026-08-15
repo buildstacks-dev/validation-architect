@@ -96,8 +96,11 @@ describe("decision 4: FSL-1.1-MIT license adoption", () => {
 
 describe("no stale release guidance", () => {
   it("presents no 0.2.0 as the planned public release", () => {
-    // Skill changelogs legitimately contain historical 0.2.0 entries.
-    const hits = grepTree("0\\.2\\.0").filter((path) => !path.endsWith("CHANGELOG.md"));
+    // Tests and changelogs legitimately name the retired candidate as a
+    // negative control or historical entry; neither is release guidance.
+    const hits = grepTree("0\\.2\\.0").filter(
+      (path) => !path.startsWith("test/") && !path.endsWith("CHANGELOG.md"),
+    );
     expect(hits).toEqual([]);
   });
 
