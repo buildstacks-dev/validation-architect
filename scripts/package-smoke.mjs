@@ -57,6 +57,8 @@ try {
     }
   }
   for (const required of [
+    "package/LICENSE.md",
+    "package/THIRD-PARTY-NOTICES.md",
     "package/bin/validation-trace.js",
     "package/dist/trace-cli.js",
     "package/skill/implement-harness-ticket/SKILL.md",
@@ -71,8 +73,17 @@ try {
   execFileSync("tar", ["-xzf", tarball, "-C", extracted]);
   const packageRoot = join(extracted, "package");
   const packedManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-  if (packedManifest.license !== "UNLICENSED") {
-    throw new Error(`packed package license must be UNLICENSED, got ${packedManifest.license}`);
+  if (packedManifest.license !== "LicenseRef-FSL-1.1-MIT") {
+    throw new Error(
+      `packed package license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`,
+    );
+  }
+  const packedLicense = readFileSync(join(packageRoot, "LICENSE.md"), "utf8");
+  if (!packedLicense.includes("FSL-1.1-MIT") || !packedLicense.includes("Copyright 2026 Bikram Gupta")) {
+    throw new Error("packed LICENSE.md is missing the FSL-1.1-MIT terms or the confirmed holder");
+  }
+  if (/\$\{(year|licensor name)\}/.test(packedLicense)) {
+    throw new Error("packed LICENSE.md still contains template placeholders");
   }
   const install = readFileSync(join(packageRoot, "enablement", "INSTALL.md"), "utf8");
   if (

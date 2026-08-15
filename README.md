@@ -406,5 +406,12 @@ runs/<runId>/
 
 ## License
 
-This repository and its published package are **UNLICENSED**. No open-source
-license or permission grant is implied by package publication.
+This repository and its published package are licensed under the
+**Functional Source License 1.1 with MIT future grant**
+([FSL-1.1-MIT](LICENSE.md)) — fair source, not open source. In plain English:
+you are free to read, use, modify, and self-host the software, including
+commercial internal use; you may not offer it as a competing product or
+service; and each released version automatically becomes MIT-licensed two
+years after its release. Copyright 2026 Bikram Gupta. Third-party runtime
+dependency notices are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

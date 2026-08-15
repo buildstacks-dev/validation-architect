@@ -10,14 +10,18 @@ describe("package distribution contract", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
       private?: boolean;
       license?: string;
+      licenseFile?: string;
       version?: string;
       files?: string[];
       scripts?: Record<string, string>;
       dependencies?: Record<string, string>;
     };
     expect(pkg.private).toBe(false);
-    expect(pkg.license).toBe("UNLICENSED");
+    expect(pkg.license).toBe("LicenseRef-FSL-1.1-MIT");
+    expect(pkg.licenseFile).toBe("LICENSE.md");
     expect(pkg.files).toEqual([
+      "LICENSE.md",
+      "THIRD-PARTY-NOTICES.md",
       "bin/validation-trace.js",
       "dist/catalog.js",
       "dist/model-compiler.js",

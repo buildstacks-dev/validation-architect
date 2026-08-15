@@ -3,7 +3,8 @@
   "version": "0.1.1",
   "private": false,
   "description": "Two-agent autonomous validation-harness design: a Claude designer drives the validation-harness-design skill while a Codex stakeholder plays the domain-expert human, grounded in product docs and the human's rambling.txt.",
-  "license": "UNLICENSED",
+  "license": "LicenseRef-FSL-1.1-MIT",
+  "licenseFile": "LICENSE.md",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -13,6 +14,8 @@
     "validation-trace": "./bin/validation-trace.js"
   },
   "files": [
+    "LICENSE.md",
+    "THIRD-PARTY-NOTICES.md",
     "bin/validation-trace.js",
     "dist/catalog.js",
     "dist/model-compiler.js",
