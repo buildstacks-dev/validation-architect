@@ -28,7 +28,16 @@ import {
   type Provenance,
 } from "./campaign-contracts.js";
 import { invalidInput, unsupportedSchemaMajor } from "./errors.js";
-import { assertValid, isRecord, requireRecord, requireString } from "./validate.js";
+import {
+  assertValid,
+  isRecord,
+  requireArray,
+  requireEnum,
+  requireRecord,
+  requireSafePath,
+  requireString,
+  requireStringArray,
+} from "./validate.js";
 
 export const CORPUS_SCHEMA = MODEL_SCHEMA;
 export const CASE_CATALOG_SCHEMA = MANIFEST_SCHEMA;
@@ -47,7 +56,9 @@ export const PUBLISHED_SCHEMA_IDS = Object.freeze({
 /** Reject a self-described schema ID outside the supported major. */
 export function assertSupportedSchema(actual: unknown, expected: string): void {
   if (actual === expected) return;
-  if (typeof actual === "string" && actual.startsWith(expected.slice(0, expected.lastIndexOf("/v")))) {
+  const versionIndex = expected.lastIndexOf("/v");
+  const family = versionIndex >= 0 ? expected.slice(0, versionIndex) : expected;
+  if (typeof actual === "string" && actual.startsWith(`${family}/v`) && /^\d+$/.test(actual.slice(family.length + 2))) {
     throw unsupportedSchemaMajor(actual, [expected]);
   }
   throw invalidInput(`Expected schema ${expected}, found ${String(actual)}`, { expected, actual });
@@ -149,9 +160,31 @@ export function validatePlan(value: unknown): ExplainedImpactPlan {
   for (const key of ["model_identity", "graph_identity", "inventory_identity", "mapping_identity", "product_revision", "lane"]) {
     requireString(identity[key], `plan.identity.${key}`, problems);
   }
+  if (requireRecord(identity.versions, "plan.identity.versions", problems)) {
+    for (const key of ["package", "method", "model", "compiler", "policy", "result", "golden_set"]) {
+      requireString(identity.versions[key], `plan.identity.versions.${key}`, problems);
+    }
+  }
+  if (requireArray(plan.changed_inputs, "plan.changed_inputs", problems)) {
+    plan.changed_inputs.forEach((item, index) => {
+      const path = `plan.changed_inputs[${index}]`;
+      if (!requireRecord(item, path, problems)) return;
+      requireString(item.id, `${path}.id`, problems);
+      requireEnum(item.kind, `${path}.kind`, ["content", "structural"] as const, problems);
+      if (item.path !== undefined) requireSafePath(item.path, `${path}.path`, problems);
+      if (item.symbol !== undefined) requireString(item.symbol, `${path}.symbol`, problems);
+      if (item.path === undefined && item.symbol === undefined) problems.push(`${path} must declare path or symbol`);
+    });
+  }
+  if (requireArray(plan.affected_meaning, "plan.affected_meaning", problems)) {
+    plan.affected_meaning.forEach((item, index) => {
+      const path = `plan.affected_meaning[${index}]`;
+      if (!requireRecord(item, path, problems)) return;
+      requireString(item.structure_id, `${path}.structure_id`, problems);
+      requireString(item.meaning, `${path}.meaning`, problems);
+    });
+  }
   for (const key of [
-    "changed_inputs",
-    "affected_meaning",
     "structure_ids",
     "family_ids",
     "test_ids",
@@ -159,14 +192,27 @@ export function validatePlan(value: unknown): ExplainedImpactPlan {
     "always_run_test_ids",
     "expansions",
     "unknowns",
-    "commands",
   ]) {
-    if (!Array.isArray(plan[key])) problems.push(`plan.${key} must be an array`);
+    requireStringArray(plan[key], `plan.${key}`, problems);
+  }
+  if (requireArray(plan.commands, "plan.commands", problems)) {
+    plan.commands.forEach((item, index) => {
+      const path = `plan.commands[${index}]`;
+      if (!requireRecord(item, path, problems)) return;
+      requireString(item.id, `${path}.id`, problems);
+      requireString(item.command, `${path}.command`, problems);
+      requireEnum(item.purpose, `${path}.purpose`, ["selected-test", "always-run", "full-required-ci"] as const, problems);
+    });
   }
   if (!requireRecord(plan.full_required_ci, "plan.full_required_ci", problems)) assertValid(PLAN_SCHEMA, problems);
   const fullCi = plan.full_required_ci as Record<string, unknown>;
   requireString(fullCi.command, "plan.full_required_ci.command", problems);
   if (fullCi.run_count !== 1) problems.push("plan.full_required_ci.run_count must be 1");
+  if (requireRecord(plan.result_plan, "plan.result_plan", problems)) {
+    for (const key of ["selected_scope", "expansions", "unresolved_mappings"]) {
+      requireStringArray(plan.result_plan[key], `plan.result_plan.${key}`, problems);
+    }
+  }
   assertValid(PLAN_SCHEMA, problems);
   return value as unknown as ExplainedImpactPlan;
 }

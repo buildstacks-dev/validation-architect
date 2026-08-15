@@ -10,7 +10,9 @@ import type { AuditTier } from "../types.js";
 import {
   INDEPENDENCE_DIMENSIONS,
   SEATS,
+  validateExecutionIdentity,
   validateSeatRef,
+  validateTurnRequest,
   type IndependenceRequirement,
   type JsonSchema,
   type SeatRef,
@@ -60,9 +62,8 @@ export interface CampaignEnvelope {
   schema: typeof DESIGN_RUN_SCHEMA;
   kind: "envelope";
   profile: ProfileTier;
-  /** Package-derived method identity. */
+  /** The sole released identity of code, prompts, and skills. */
   packageVersion: string;
-  methodVersion: string;
   /** Exact source revision of the target repository. */
   sourceRevision: string;
   /** Identity digest of the admitted request inputs. */
@@ -131,7 +132,6 @@ export interface CampaignStorePort {
 export interface Provenance {
   schema: typeof PROVENANCE_SCHEMA;
   packageVersion: string;
-  methodVersion: string;
   schemas: Record<string, string>;
   profile: ProfileTier;
   sourceRevision: string;
@@ -176,6 +176,7 @@ export type DesignOutcome =
   | { status: "incomplete"; checkpoint: CampaignCheckpoint; reason: IncompleteReason; nextAction: string };
 
 const TURN_STATUSES = ["ok", "refused", "limit_exhausted", "error"] as const;
+const seatKey = (seat: SeatRef): string => `${seat.seat}:${seat.instance}`;
 
 export function validateEnvelope(value: unknown, problems: string[], path = "envelope"): void {
   if (!requireRecord(value, path, problems)) return;
@@ -183,40 +184,61 @@ export function validateEnvelope(value: unknown, problems: string[], path = "env
   if (value.kind !== "envelope") problems.push(`${path}.kind must be "envelope"`);
   requireEnum(value.profile, `${path}.profile`, PROFILE_TIERS, problems);
   requireString(value.packageVersion, `${path}.packageVersion`, problems);
-  requireString(value.methodVersion, `${path}.methodVersion`, problems);
+  if (value.methodVersion !== undefined) problems.push(`${path}.methodVersion is not a released identity; use packageVersion`);
   requireString(value.sourceRevision, `${path}.sourceRevision`, problems);
   requireString(value.inputIdentity, `${path}.inputIdentity`, problems);
   requireEnum(value.shape, `${path}.shape`, ["sequence", "graph"] as const, problems);
+  const declaredSeats = new Set<string>();
+  const independenceReferences: Array<{ key: string; path: string }> = [];
   if (requireArray(value.seats, `${path}.seats`, problems)) {
+    if (value.seats.length === 0) problems.push(`${path}.seats must not be empty`);
     value.seats.forEach((seat, index) => {
       const seatPath = `${path}.seats[${index}]`;
       if (!requireRecord(seat, seatPath, problems)) return;
       validateSeatRef(seat.seat, `${seatPath}.seat`, problems);
+      if (isRecord(seat.seat) && typeof seat.seat.seat === "string" && typeof seat.seat.instance === "string") {
+        const key = `${seat.seat.seat}:${seat.seat.instance}`;
+        if (declaredSeats.has(key)) problems.push(`${seatPath}.seat duplicates ${key}`);
+        declaredSeats.add(key);
+      }
       requireEnum(seat.session, `${seatPath}.session`, ["persistent", "fresh"] as const, problems);
       if (requireArray(seat.independence, `${seatPath}.independence`, problems)) {
         seat.independence.forEach((requirement, rIndex) => {
           const rPath = `${seatPath}.independence[${rIndex}]`;
           if (!requireRecord(requirement, rPath, problems)) return;
           validateSeatRef(requirement.from, `${rPath}.from`, problems);
+          if (isRecord(requirement.from) && typeof requirement.from.seat === "string" && typeof requirement.from.instance === "string") {
+            independenceReferences.push({ key: `${requirement.from.seat}:${requirement.from.instance}`, path: `${rPath}.from` });
+          }
           if (
             !Array.isArray(requirement.dimensions) ||
             requirement.dimensions.length === 0 ||
-            !requirement.dimensions.every((d) => (INDEPENDENCE_DIMENSIONS as readonly string[]).includes(d as string))
+            !requirement.dimensions.every((d) => (INDEPENDENCE_DIMENSIONS as readonly string[]).includes(d as string)) ||
+            new Set(requirement.dimensions).size !== requirement.dimensions.length
           ) {
-            problems.push(`${rPath}.dimensions must be a non-empty subset of [${INDEPENDENCE_DIMENSIONS.join(", ")}]`);
+            problems.push(`${rPath}.dimensions must be a unique non-empty subset of [${INDEPENDENCE_DIMENSIONS.join(", ")}]`);
           }
         });
       }
     });
   }
+  for (const reference of independenceReferences) {
+    if (!declaredSeats.has(reference.key)) problems.push(`${reference.path} names undeclared seat ${reference.key}`);
+  }
   const states = requireStringArray(value.states, `${path}.states`, problems) ? (value.states as string[]) : [];
   const terminals = requireStringArray(value.terminals, `${path}.terminals`, problems)
     ? (value.terminals as string[])
     : [];
+  if (states.length === 0) problems.push(`${path}.states must not be empty`);
+  if (new Set(states).size !== states.length) problems.push(`${path}.states must be unique`);
+  if (terminals.length === 0) problems.push(`${path}.terminals must not be empty`);
+  if (new Set(terminals).size !== terminals.length) problems.push(`${path}.terminals must be unique`);
   if (states.length > 0 && terminals.some((terminal) => !states.includes(terminal))) {
     problems.push(`${path}.terminals must all appear in states`);
   }
+  const transitions: Array<{ from: string; to: string; seat: string; turnCost: number }> = [];
   if (requireArray(value.transitions, `${path}.transitions`, problems)) {
+    if (value.transitions.length === 0) problems.push(`${path}.transitions must not be empty`);
     value.transitions.forEach((transition, index) => {
       const tPath = `${path}.transitions[${index}]`;
       if (!requireRecord(transition, tPath, problems)) return;
@@ -224,6 +246,18 @@ export function validateEnvelope(value: unknown, problems: string[], path = "env
       requireString(transition.to, `${tPath}.to`, problems);
       validateSeatRef(transition.seat, `${tPath}.seat`, problems);
       requireInteger(transition.turnCost, `${tPath}.turnCost`, problems);
+      if (
+        typeof transition.from === "string" &&
+        typeof transition.to === "string" &&
+        isRecord(transition.seat) &&
+        typeof transition.seat.seat === "string" &&
+        typeof transition.seat.instance === "string" &&
+        typeof transition.turnCost === "number"
+      ) {
+        const key = `${transition.seat.seat}:${transition.seat.instance}`;
+        transitions.push({ from: transition.from, to: transition.to, seat: key, turnCost: transition.turnCost });
+        if (!declaredSeats.has(key)) problems.push(`${tPath}.seat names undeclared seat ${key}`);
+      }
       if (states.length > 0) {
         if (typeof transition.from === "string" && !states.includes(transition.from)) {
           problems.push(`${tPath}.from names undeclared state ${String(transition.from)}`);
@@ -234,10 +268,59 @@ export function validateEnvelope(value: unknown, problems: string[], path = "env
       }
     });
   }
-  if (!requireRecord(value.outputSchemas, `${path}.outputSchemas`, problems)) return;
+  const transitionKeys = transitions.map((transition) => `${transition.from}\0${transition.to}\0${transition.seat}`);
+  if (new Set(transitionKeys).size !== transitionKeys.length) problems.push(`${path}.transitions must be unique`);
+  if (states.length > 0) {
+    const reachable = new Set<string>([states[0] as string]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const transition of transitions) {
+        if (reachable.has(transition.from) && !reachable.has(transition.to)) {
+          reachable.add(transition.to);
+          changed = true;
+        }
+      }
+    }
+    for (const state of states) if (!reachable.has(state)) problems.push(`${path}.state ${state} is unreachable`);
+    for (const terminal of terminals) {
+      if (transitions.some((transition) => transition.from === terminal)) problems.push(`${path}.terminal ${terminal} must not have outgoing transitions`);
+    }
+    for (const state of states.filter((state) => !terminals.includes(state))) {
+      const outgoing = transitions.filter((transition) => transition.from === state);
+      if (outgoing.length === 0) problems.push(`${path}.nonterminal ${state} has no outgoing transition`);
+      if (value.shape === "sequence" && outgoing.length !== 1) problems.push(`${path}.sequence state ${state} must have exactly one outgoing transition`);
+    }
+  }
+  if (requireRecord(value.outputSchemas, `${path}.outputSchemas`, problems)) {
+    for (const [phase, schema] of Object.entries(value.outputSchemas)) {
+      if (phase.length === 0 || !isRecord(schema)) problems.push(`${path}.outputSchemas.${phase || "(empty)"} must be an object schema`);
+    }
+  }
   if (!requireRecord(value.limits, `${path}.limits`, problems)) return;
-  requireInteger(value.limits.maxTurns, `${path}.limits.maxTurns`, problems, 1);
+  const maxTurnsValid = requireInteger(value.limits.maxTurns, `${path}.limits.maxTurns`, problems, 1);
   requireInteger(value.limits.maxWallMs, `${path}.limits.maxWallMs`, problems, 1);
+  for (const key of ["maxRelayExchanges", "maxReaderTurns", "maxAuditIterations", "maxStakeholderExchangesPerAuditWindow"]) {
+    if (value.limits[key] !== undefined) requireInteger(value.limits[key], `${path}.limits.${key}`, problems, 1);
+  }
+  const finiteTurns: Partial<Record<ProfileTier, number>> = { C0: 1, C1: 2, C2: 4 };
+  if (typeof value.profile === "string" && value.profile in finiteTurns) {
+    const expected = finiteTurns[value.profile as ProfileTier];
+    if (value.shape !== "sequence") problems.push(`${path}.shape must be sequence for ${value.profile}`);
+    if (maxTurnsValid && value.limits.maxTurns !== expected) problems.push(`${path}.limits.maxTurns must be ${expected} for ${value.profile}`);
+    if (transitions.reduce((sum, transition) => sum + transition.turnCost, 0) !== expected) {
+      problems.push(`${path}.transitions must admit exactly ${expected} provider turns for ${value.profile}`);
+    }
+  } else if (value.profile === "C3" || value.profile === "C4") {
+    if (value.shape !== "graph") problems.push(`${path}.shape must be graph for ${value.profile}`);
+    for (const key of ["maxRelayExchanges", "maxReaderTurns", "maxAuditIterations", "maxStakeholderExchangesPerAuditWindow"]) {
+      if (value.limits[key] === undefined) problems.push(`${path}.limits.${key} is required for ${value.profile}`);
+    }
+  }
+  const maxTurns = typeof value.limits.maxTurns === "number" ? value.limits.maxTurns : 0;
+  if (maxTurnsValid && transitions.some((transition) => transition.turnCost > maxTurns)) {
+    problems.push(`${path}.transition turn cost cannot exceed maxTurns`);
+  }
 }
 
 /** A checkpoint missing any required identity is rejected — resuming from an
@@ -246,38 +329,164 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
   if (!requireRecord(value, path, problems)) return;
   if (value.schema !== DESIGN_RUN_SCHEMA) problems.push(`${path}.schema must be ${DESIGN_RUN_SCHEMA}`);
   if (value.kind !== "checkpoint") problems.push(`${path}.kind must be "checkpoint"`);
-  requireString(value.runId, `${path}.runId`, problems);
+  const runIdValid = requireString(value.runId, `${path}.runId`, problems);
   requireInteger(value.generation, `${path}.generation`, problems);
-  requireString(value.packageVersion, `${path}.packageVersion`, problems);
-  requireString(value.sourceRevision, `${path}.sourceRevision`, problems);
+  const packageVersionValid = requireString(value.packageVersion, `${path}.packageVersion`, problems);
+  const sourceRevisionValid = requireString(value.sourceRevision, `${path}.sourceRevision`, problems);
   validateEnvelope(value.envelope, problems, `${path}.envelope`);
-  requireString(value.position, `${path}.position`, problems);
-  if (value.pendingTurn !== undefined) {
-    if (requireRecord(value.pendingTurn, `${path}.pendingTurn`, problems)) {
-      requireString(value.pendingTurn.idempotencyKey, `${path}.pendingTurn.idempotencyKey`, problems);
-      if (!isRecord(value.pendingTurn.request)) {
-        problems.push(`${path}.pendingTurn.request must be the exact pending TurnRequest`);
+  const envelope = isRecord(value.envelope) ? value.envelope : undefined;
+  if (envelope && packageVersionValid && envelope.packageVersion !== value.packageVersion) {
+    problems.push(`${path}.packageVersion must match ${path}.envelope.packageVersion`);
+  }
+  if (envelope && sourceRevisionValid && envelope.sourceRevision !== value.sourceRevision) {
+    problems.push(`${path}.sourceRevision must match ${path}.envelope.sourceRevision`);
+  }
+  const states = envelope && Array.isArray(envelope.states) ? envelope.states.filter((state): state is string => typeof state === "string") : [];
+  const positionValid = requireString(value.position, `${path}.position`, problems);
+  const position = typeof value.position === "string" ? value.position : "";
+  if (positionValid && !states.includes(position)) problems.push(`${path}.position names undeclared state ${position}`);
+  const declaredSeats = new Map<string, Record<string, unknown>>();
+  if (envelope && Array.isArray(envelope.seats)) {
+    for (const candidate of envelope.seats) {
+      if (isRecord(candidate) && isRecord(candidate.seat) && typeof candidate.seat.seat === "string" && typeof candidate.seat.instance === "string") {
+        declaredSeats.set(`${candidate.seat.seat}:${candidate.seat.instance}`, candidate);
       }
     }
   }
+  const transitions = envelope && Array.isArray(envelope.transitions)
+    ? envelope.transitions.filter((transition): transition is Record<string, unknown> => isRecord(transition))
+    : [];
+  const matchingTransitions = (state: string, seat: Record<string, unknown>): Record<string, unknown>[] => {
+    const key = typeof seat.seat === "string" && typeof seat.instance === "string" ? `${seat.seat}:${seat.instance}` : "";
+    return transitions.filter((transition) => {
+      if (transition.from !== state || !isRecord(transition.seat)) return false;
+      return `${String(transition.seat.seat)}:${String(transition.seat.instance)}` === key;
+    });
+  };
+
+  const receiptKeys = new Set<string>();
+  const lastPersistentIdentity = new Map<string, string>();
+  let receiptInputTokens = 0;
+  let receiptOutputTokens = 0;
+  let replayPosition = states[0];
   if (requireArray(value.receipts, `${path}.receipts`, problems)) {
-    const seen = new Set<string>();
     value.receipts.forEach((receipt, index) => {
       const rPath = `${path}.receipts[${index}]`;
       if (!requireRecord(receipt, rPath, problems)) return;
       if (requireString(receipt.idempotencyKey, `${rPath}.idempotencyKey`, problems)) {
-        if (seen.has(receipt.idempotencyKey)) problems.push(`${rPath} duplicates idempotency key ${receipt.idempotencyKey}`);
-        seen.add(receipt.idempotencyKey);
+        if (receiptKeys.has(receipt.idempotencyKey)) problems.push(`${rPath} duplicates idempotency key ${receipt.idempotencyKey}`);
+        receiptKeys.add(receipt.idempotencyKey);
       }
       validateSeatRef(receipt.seat, `${rPath}.seat`, problems);
-      requireString(receipt.state, `${rPath}.state`, problems);
-      requireEnum(receipt.status, `${rPath}.status`, TURN_STATUSES, problems);
+      const stateValid = requireString(receipt.state, `${rPath}.state`, problems);
+      const receiptState = typeof receipt.state === "string" ? receipt.state : "";
+      const statusValid = requireEnum(receipt.status, `${rPath}.status`, TURN_STATUSES, problems);
+      const receiptSeat = isRecord(receipt.seat) ? receipt.seat : undefined;
+      const receiptSeatKey = receiptSeat && typeof receiptSeat.seat === "string" && typeof receiptSeat.instance === "string"
+        ? `${receiptSeat.seat}:${receiptSeat.instance}`
+        : undefined;
+      if (receiptSeatKey && !declaredSeats.has(receiptSeatKey)) problems.push(`${rPath}.seat names undeclared seat ${receiptSeatKey}`);
+      if (stateValid && !states.includes(receiptState)) problems.push(`${rPath}.state names undeclared state ${receiptState}`);
+      if (stateValid && replayPosition !== undefined && receiptState !== replayPosition) {
+        problems.push(`${rPath}.state must continue from ${replayPosition}`);
+      }
+      const candidates = stateValid && receiptSeat ? matchingTransitions(receiptState, receiptSeat) : [];
+      if (stateValid && receiptSeat && candidates.length !== 1) {
+        problems.push(`${rPath} must identify exactly one admitted transition`);
+      }
+      if (receipt.identity !== undefined) validateExecutionIdentity(receipt.identity, `${rPath}.identity`, problems);
+      if (statusValid && receipt.status === "ok") {
+        if (!isRecord(receipt.identity)) problems.push(`${rPath}.identity is required for an accepted turn`);
+        if (typeof receipt.textDigest !== "string" || !/^[a-f0-9]{64}$/.test(receipt.textDigest)) {
+          problems.push(`${rPath}.textDigest must be a lowercase sha256 digest for an accepted turn`);
+        }
+        if (candidates[0] && typeof candidates[0].to === "string") replayPosition = candidates[0].to;
+        if (receiptSeatKey && isRecord(receipt.identity) && typeof receipt.identity.session === "string") {
+          lastPersistentIdentity.set(receiptSeatKey, receipt.identity.session);
+        }
+      } else if (receipt.textDigest !== undefined) {
+        problems.push(`${rPath}.textDigest is only valid for an accepted turn`);
+      }
+      if (receipt.usage !== undefined) {
+        if (requireRecord(receipt.usage, `${rPath}.usage`, problems)) {
+          if (requireInteger(receipt.usage.inputTokens, `${rPath}.usage.inputTokens`, problems)) receiptInputTokens += receipt.usage.inputTokens;
+          if (requireInteger(receipt.usage.outputTokens, `${rPath}.usage.outputTokens`, problems)) receiptOutputTokens += receipt.usage.outputTokens;
+        }
+      }
     });
+  }
+  if (positionValid && replayPosition !== undefined && value.position !== replayPosition) {
+    problems.push(`${path}.position ${value.position} does not match replayed position ${replayPosition}`);
   }
   if (requireRecord(value.sessions, `${path}.sessions`, problems)) {
     for (const [key, session] of Object.entries(value.sessions)) {
       if (typeof session !== "string" || session.length === 0) {
         problems.push(`${path}.sessions[${key}] must be a non-empty native session identity`);
+      }
+      const declared = declaredSeats.get(key);
+      if (!declared) problems.push(`${path}.sessions[${key}] names an undeclared seat`);
+      else if (declared.session !== "persistent") problems.push(`${path}.sessions[${key}] is invalid for a fresh seat`);
+      const acceptedIdentity = lastPersistentIdentity.get(key);
+      if (acceptedIdentity !== undefined && session !== acceptedIdentity) {
+        problems.push(`${path}.sessions[${key}] must equal the last accepted native session identity`);
+      }
+    }
+    for (const [key, session] of lastPersistentIdentity) {
+      if (declaredSeats.get(key)?.session === "persistent" && value.sessions[key] !== session) {
+        problems.push(`${path}.sessions[${key}] is required after an accepted persistent-seat turn`);
+      }
+    }
+  }
+  if (value.pendingTurn !== undefined) {
+    if (requireRecord(value.pendingTurn, `${path}.pendingTurn`, problems)) {
+      const pendingKeyValid = requireString(value.pendingTurn.idempotencyKey, `${path}.pendingTurn.idempotencyKey`, problems);
+      const pendingKey = typeof value.pendingTurn.idempotencyKey === "string" ? value.pendingTurn.idempotencyKey : "";
+      if (isRecord(value.pendingTurn.request)) {
+        validateTurnRequest(value.pendingTurn.request, problems);
+        const request = value.pendingTurn.request;
+        if (pendingKeyValid && request.idempotencyKey !== value.pendingTurn.idempotencyKey) {
+          problems.push(`${path}.pendingTurn idempotency keys must match`);
+        }
+        if (pendingKeyValid && receiptKeys.has(pendingKey)) {
+          problems.push(`${path}.pendingTurn idempotency key is already settled`);
+        }
+        if (isRecord(request.metadata)) {
+          if (runIdValid && request.metadata.runId !== value.runId) problems.push(`${path}.pendingTurn.request.metadata.runId must match checkpoint runId`);
+          if (positionValid && request.metadata.phase !== value.position) problems.push(`${path}.pendingTurn.request.metadata.phase must match checkpoint position`);
+          if (Array.isArray(value.receipts) && request.metadata.turnIndex !== value.receipts.length + 1) {
+            problems.push(`${path}.pendingTurn.request.metadata.turnIndex must follow accepted receipts`);
+          }
+        }
+        if (isRecord(request.seat) && positionValid) {
+          const key = typeof request.seat.seat === "string" && typeof request.seat.instance === "string"
+            ? `${request.seat.seat}:${request.seat.instance}`
+            : "";
+          const declared = declaredSeats.get(key);
+          if (!declared) problems.push(`${path}.pendingTurn.request.seat names undeclared seat ${key}`);
+          if (matchingTransitions(position, request.seat).length !== 1) {
+            problems.push(`${path}.pendingTurn.request must identify exactly one transition from ${position}`);
+          }
+          if (declared && JSON.stringify(request.independence) !== JSON.stringify(declared.independence)) {
+            problems.push(`${path}.pendingTurn.request.independence must match the admitted seat requirement`);
+          }
+          if (declared?.session === "fresh" && (!isRecord(request.session) || request.session.mode !== "new")) {
+            problems.push(`${path}.pendingTurn.request.session must be new for a fresh seat`);
+          }
+          if (declared?.session === "persistent") {
+            const stored = isRecord(value.sessions) && typeof value.sessions[key] === "string" ? value.sessions[key] : undefined;
+            if (stored === undefined && (!isRecord(request.session) || request.session.mode !== "new")) {
+              problems.push(`${path}.pendingTurn.request.session must start new before a persistent session exists`);
+            }
+            if (stored !== undefined && (!isRecord(request.session) || request.session.mode !== "resume" || request.session.sessionId !== stored)) {
+              problems.push(`${path}.pendingTurn.request.session must resume the exact stored native session`);
+            }
+          }
+        }
+        if (isRecord(request.limits) && envelope && isRecord(envelope.limits) && typeof request.limits.maxWallMs === "number" && typeof envelope.limits.maxWallMs === "number" && request.limits.maxWallMs > envelope.limits.maxWallMs) {
+          problems.push(`${path}.pendingTurn.request.limits.maxWallMs exceeds the admitted envelope`);
+        }
+      } else {
+        problems.push(`${path}.pendingTurn.request must be the exact pending TurnRequest`);
       }
     }
   }
@@ -290,19 +499,40 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
     }
   }
   if (!requireRecord(value.usage, `${path}.usage`, problems)) return;
-  requireInteger(value.usage.turns, `${path}.usage.turns`, problems);
-  requireInteger(value.usage.inputTokens, `${path}.usage.inputTokens`, problems);
-  requireInteger(value.usage.outputTokens, `${path}.usage.outputTokens`, problems);
+  if (requireInteger(value.usage.turns, `${path}.usage.turns`, problems) && Array.isArray(value.receipts) && value.usage.turns !== value.receipts.length) {
+    problems.push(`${path}.usage.turns must equal the number of settled receipts`);
+  }
+  if (requireInteger(value.usage.inputTokens, `${path}.usage.inputTokens`, problems) && value.usage.inputTokens !== receiptInputTokens) {
+    problems.push(`${path}.usage.inputTokens must equal receipt usage`);
+  }
+  if (requireInteger(value.usage.outputTokens, `${path}.usage.outputTokens`, problems) && value.usage.outputTokens !== receiptOutputTokens) {
+    problems.push(`${path}.usage.outputTokens must equal receipt usage`);
+  }
+  if (envelope && isRecord(envelope.limits) && typeof envelope.limits.maxTurns === "number" && Array.isArray(value.receipts) && value.receipts.length > envelope.limits.maxTurns) {
+    problems.push(`${path}.receipts exceed the admitted maxTurns`);
+  }
 }
 
 export function validateProvenance(value: unknown, problems: string[], path = "provenance"): void {
   if (!requireRecord(value, path, problems)) return;
   if (value.schema !== PROVENANCE_SCHEMA) problems.push(`${path}.schema must be ${PROVENANCE_SCHEMA}`);
   requireString(value.packageVersion, `${path}.packageVersion`, problems);
-  requireString(value.methodVersion, `${path}.methodVersion`, problems);
+  if (value.methodVersion !== undefined) problems.push(`${path}.methodVersion is not a released identity; use packageVersion`);
   if (requireRecord(value.schemas, `${path}.schemas`, problems)) {
-    for (const [key, id] of Object.entries(value.schemas)) {
-      if (typeof id !== "string" || id.length === 0) problems.push(`${path}.schemas[${key}] must be a schema ID`);
+    const expected = {
+      corpus: "validation-architect/corpus/v1",
+      caseCatalog: "validation-architect/case-catalog/v1",
+      result: "validation-architect/result/v1",
+      plan: "validation-architect/plan/v1",
+      designRun: DESIGN_RUN_SCHEMA,
+      provenance: PROVENANCE_SCHEMA,
+    };
+    const actualKeys = Object.keys(value.schemas).sort();
+    if (JSON.stringify(actualKeys) !== JSON.stringify(Object.keys(expected).sort())) {
+      problems.push(`${path}.schemas must contain exactly [${Object.keys(expected).join(", ")}]`);
+    }
+    for (const [key, id] of Object.entries(expected)) {
+      if (value.schemas[key] !== id) problems.push(`${path}.schemas.${key} must be ${id}`);
     }
   }
   requireEnum(value.profile, `${path}.profile`, PROFILE_TIERS, problems);
@@ -313,10 +543,16 @@ export function validateProvenance(value: unknown, problems: string[], path = "p
 export function validateDesignBundle(value: unknown, problems: string[], path = "bundle"): void {
   if (!requireRecord(value, path, problems)) return;
   if (requireArray(value.files, `${path}.files`, problems)) {
+    const paths = new Set<string>();
+    if (value.files.length === 0) problems.push(`${path}.files must not be empty`);
     value.files.forEach((file, index) => {
       const fPath = `${path}.files[${index}]`;
       if (!requireRecord(file, fPath, problems)) return;
-      requireSafePath(file.path, `${fPath}.path`, problems);
+      if (requireSafePath(file.path, `${fPath}.path`, problems)) {
+        if (!file.path.startsWith("validation-design/")) problems.push(`${fPath}.path must be beneath validation-design/`);
+        if (paths.has(file.path)) problems.push(`${fPath}.path duplicates ${file.path}`);
+        paths.add(file.path);
+      }
       if (typeof file.content !== "string") problems.push(`${fPath}.content must be a string`);
     });
   }
@@ -332,6 +568,9 @@ export function validateDesignBundle(value: unknown, problems: string[], path = 
     if (typeof value.profileAssessment.escalationRequired !== "boolean") {
       problems.push(`${path}.profileAssessment.escalationRequired must be a boolean`);
     }
+    if (isRecord(value.provenance) && value.provenance.profile !== value.profileAssessment.selected) {
+      problems.push(`${path}.profileAssessment.selected must match provenance.profile`);
+    }
   }
   if (requireRecord(value.audit, `${path}.audit`, problems)) {
     if (value.audit.status === "not_required_by_profile") {
@@ -344,10 +583,14 @@ export function validateDesignBundle(value: unknown, problems: string[], path = 
         problems,
       );
       if (requireArray(value.audit.findings, `${path}.audit.findings`, problems)) {
+        const findingIds = new Set<string>();
         value.audit.findings.forEach((finding, index) => {
           const fPath = `${path}.audit.findings[${index}]`;
           if (!requireRecord(finding, fPath, problems)) return;
-          requireString(finding.id, `${fPath}.id`, problems);
+          if (requireString(finding.id, `${fPath}.id`, problems)) {
+            if (findingIds.has(finding.id)) problems.push(`${fPath}.id duplicates ${finding.id}`);
+            findingIds.add(finding.id);
+          }
           requireEnum(finding.tier, `${fPath}.tier`, ["blocking", "significant", "minor"] as const, problems);
           requireString(finding.title, `${fPath}.title`, problems);
           requireInteger(finding.iteration, `${fPath}.iteration`, problems, 1);
@@ -355,6 +598,14 @@ export function validateDesignBundle(value: unknown, problems: string[], path = 
       }
     } else {
       problems.push(`${path}.audit.status must be "not_required_by_profile" or "performed"`);
+    }
+    if (isRecord(value.provenance)) {
+      if (value.provenance.profile === "C0" && value.audit.status !== "not_required_by_profile") {
+        problems.push(`${path}.audit must record not_required_by_profile for C0`);
+      }
+      if (value.provenance.profile !== "C0" && value.audit.status !== "performed") {
+        problems.push(`${path}.audit must be performed for C1-C4`);
+      }
     }
   }
   if (!requireRecord(value.usage, `${path}.usage`, problems)) return;

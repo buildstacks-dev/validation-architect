@@ -82,6 +82,11 @@ export interface RelationshipGraphInput {
   model_identity: string;
   inventory: TestInventory;
   evidence: ValidationEvidenceSet;
+  /** Exact revision observed by RepositoryPort. When supplied, graph identity
+   * is bound to this revision even if the checked corpus is stale. */
+  repository_revision?: string;
+  /** Repository-convention findings derived from the same immutable read. */
+  repository_findings?: readonly TraceFinding[];
   /** Repository-adapter observation used only for existence checks. */
   observed_paths?: readonly string[];
   /** Identity read from generated projection metadata. */
@@ -146,12 +151,16 @@ export function buildRelationshipGraph(input: RelationshipGraphInput): Relations
   const families = new Map(model.families.map((item) => [item.id, item]));
   const controls = new Map(model.controls.map((item) => [item.id, item]));
   const observed = input.observed_paths ? new Set(input.observed_paths) : undefined;
+  const checkedRevision = input.repository_revision ?? model.product.revision;
+
+  for (const repositoryFinding of input.repository_findings ?? []) finding(findings, repositoryFinding);
 
   if (SECRET_PATTERN.test(JSON.stringify(model))) finding(findings, { code: "MODEL_SECRET_UNSAFE", level: "red", subject_id: model.product.id, message: "The checked model contains text shaped like a credential or secret.", correction: "Remove secret values; cite only safe repository references." });
 
-  if (inventory.revision !== model.product.revision) finding(findings, { code: "INVENTORY_IDENTITY_MISMATCH", level: "red", subject_id: inventory.revision, message: `Inventory revision ${inventory.revision} does not match ${model.product.revision}.`, correction: "Regenerate inventory at the exact model revision." });
+  if (model.product.revision !== checkedRevision) finding(findings, { code: "MODEL_REVISION_STALE", level: "red", subject_id: model.product.id, message: `Design revision ${model.product.revision} does not match checked repository revision ${checkedRevision}.`, correction: "Regenerate and review the design corpus at the exact repository revision." });
+  if (inventory.revision !== checkedRevision) finding(findings, { code: "INVENTORY_IDENTITY_MISMATCH", level: "red", subject_id: inventory.revision, message: `Inventory revision ${inventory.revision} does not match checked repository revision ${checkedRevision}.`, correction: "Regenerate inventory at the exact checked revision." });
   if (inventory.tests_root_present === false || (inventory.tests_root !== undefined && !safePath(inventory.tests_root))) finding(findings, { code: "TESTS_ROOT_ABSENT", level: "red", subject_id: inventory.tests_root ?? "tests-root", message: "The repository adapter did not observe a safe tests root.", correction: "Restore the declared tests root and regenerate inventory; absence is never green." });
-  if (evidence.revision !== model.product.revision || evidence.environment !== inventory.environment) finding(findings, { code: "EVIDENCE_IDENTITY_MISMATCH", level: "red", subject_id: evidence.revision, message: "Evidence revision/environment does not match the graph inventory identity.", correction: "Collect evidence at the exact inventory revision and environment." });
+  if (evidence.revision !== checkedRevision || evidence.environment !== inventory.environment) finding(findings, { code: "EVIDENCE_IDENTITY_MISMATCH", level: "red", subject_id: evidence.revision, message: "Evidence revision/environment does not match the graph inventory identity.", correction: "Collect evidence at the exact inventory revision and environment." });
   if (input.projection_identity !== undefined && input.projection_identity !== input.model_identity) finding(findings, { code: "GENERATED_VIEW_STALE", level: "red", subject_id: input.projection_identity, message: "Generated projections are not bound to this model identity.", correction: "Regenerate every projection from the current checked model." });
 
   for (const owner of model.owners) node(nodes, { id: owner.id, kind: "owner", meaning: owner.responsibility, details: { name: owner.name } });
@@ -230,7 +239,7 @@ export function buildRelationshipGraph(input: RelationshipGraphInput): Relations
   nodes.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.type.localeCompare(b.type));
   findings.sort((a, b) => a.level.localeCompare(b.level) || a.code.localeCompare(b.code) || a.subject_id.localeCompare(b.subject_id));
-  const baseIdentity = { model_identity: input.model_identity, product_revision: model.product.revision, environment: inventory.environment, inventory_identity: relationshipPayloadIdentity(inventory), evidence_identity: relationshipPayloadIdentity(evidence), versions: structuredClone(model.versions) };
+  const baseIdentity = { model_identity: input.model_identity, product_revision: checkedRevision, environment: inventory.environment, inventory_identity: relationshipPayloadIdentity(inventory), evidence_identity: relationshipPayloadIdentity(evidence), versions: structuredClone(model.versions) };
   const graph_identity = hash({ ...baseIdentity, nodes, edges, findings });
   return {
     schema: "validation-architect/relationship-graph/v1",

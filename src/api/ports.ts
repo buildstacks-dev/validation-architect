@@ -136,23 +136,30 @@ export function validateTurnRequest(value: unknown, problems: string[]): void {
   if (!requireRecord(value, path, problems)) return;
   validateSeatRef(value.seat, `${path}.seat`, problems);
   if (Array.isArray(value.independence)) {
+    const seenRequirements = new Set<string>();
     value.independence.forEach((item, index) => {
       const itemPath = `${path}.independence[${index}]`;
       if (!requireRecord(item, itemPath, problems)) return;
       validateSeatRef(item.from, `${itemPath}.from`, problems);
+      if (isRecord(item.from) && typeof item.from.seat === "string" && typeof item.from.instance === "string") {
+        const key = `${item.from.seat}:${item.from.instance}`;
+        if (seenRequirements.has(key)) problems.push(`${itemPath}.from duplicates independence requirement ${key}`);
+        seenRequirements.add(key);
+      }
       if (
         !Array.isArray(item.dimensions) ||
         item.dimensions.length === 0 ||
-        !item.dimensions.every((dimension) => (INDEPENDENCE_DIMENSIONS as readonly string[]).includes(dimension as string))
+        !item.dimensions.every((dimension) => (INDEPENDENCE_DIMENSIONS as readonly string[]).includes(dimension as string)) ||
+        new Set(item.dimensions).size !== item.dimensions.length
       ) {
-        problems.push(`${itemPath}.dimensions must be a non-empty subset of [${INDEPENDENCE_DIMENSIONS.join(", ")}]`);
+        problems.push(`${itemPath}.dimensions must be a unique non-empty subset of [${INDEPENDENCE_DIMENSIONS.join(", ")}]`);
       }
     });
   } else {
     problems.push(`${path}.independence must be an array`);
   }
   if (isRecord(value.session) && value.session.mode === "new") {
-    // valid
+    if (value.session.sessionId !== undefined) problems.push(`${path}.session.sessionId is invalid for a new session`);
   } else if (isRecord(value.session) && value.session.mode === "resume") {
     requireString(value.session.sessionId, `${path}.session.sessionId`, problems);
   } else {
@@ -169,7 +176,7 @@ export function validateTurnRequest(value: unknown, problems: string[]): void {
   if (!requireRecord(value.metadata, `${path}.metadata`, problems)) return;
   requireString(value.metadata.runId, `${path}.metadata.runId`, problems);
   requireString(value.metadata.phase, `${path}.metadata.phase`, problems);
-  requireInteger(value.metadata.turnIndex, `${path}.metadata.turnIndex`, problems);
+  requireInteger(value.metadata.turnIndex, `${path}.metadata.turnIndex`, problems, 1);
 }
 
 /** Validates the full TurnResult union. Success never happens by omission:
@@ -181,9 +188,11 @@ export function validateTurnResult(value: unknown, problems: string[]): void {
   if (value.status === "ok") {
     if (typeof value.text !== "string") problems.push(`${path}.text must be a string`);
     validateExecutionIdentity(value.identity, `${path}.identity`, problems);
+    if (value.reason !== undefined) problems.push(`${path}.reason is invalid for an ok result`);
   } else {
     requireString(value.reason, `${path}.reason`, problems);
     if (value.identity !== undefined) validateExecutionIdentity(value.identity, `${path}.identity`, problems);
+    if (value.text !== undefined || value.parsed !== undefined) problems.push(`${path}.text/parsed are invalid for a non-ok result`);
   }
   validateUsage(value.usage, `${path}.usage`, problems);
 }

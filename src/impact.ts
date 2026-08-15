@@ -95,14 +95,15 @@ export function planChangedImpact(input: ImpactPlannerInput): ExplainedImpactPla
   const unknowns: string[] = [];
   let widen = false;
   const changedIds = new Set<string>();
+  const checkedRevision = input.graph.identity.product_revision;
 
-  if (input.mappings.schema !== IMPACT_MAPPING_SCHEMA || input.mappings.product_revision !== input.model.product.revision) {
+  if (input.mappings.schema !== IMPACT_MAPPING_SCHEMA || input.mappings.product_revision !== checkedRevision) {
     widen = true;
     unknowns.push("Mapping schema or product revision is stale/unknown.");
   }
-  if (input.inventory.revision !== input.model.product.revision || input.graph.identity.product_revision !== input.model.product.revision) {
+  if (input.inventory.revision !== checkedRevision || input.model.product.revision !== checkedRevision) {
     widen = true;
-    unknowns.push("Inventory or graph identity is stale.");
+    unknowns.push("Model or inventory identity is stale relative to the checked repository revision.");
   }
   if (relationshipPayloadIdentity(input.inventory) !== input.graph.identity.inventory_identity) {
     widen = true;
@@ -230,7 +231,7 @@ export function planChangedImpact(input: ImpactPlannerInput): ExplainedImpactPla
   };
   return {
     schema: IMPACT_PLAN_SCHEMA,
-    identity: { model_identity: input.graph.identity.model_identity, graph_identity: input.graph.identity.graph_identity, inventory_identity: input.graph.identity.inventory_identity, mapping_identity: input.mappings.identity, product_revision: input.model.product.revision, lane: input.lane, versions: structuredClone(input.model.versions) },
+    identity: { model_identity: input.graph.identity.model_identity, graph_identity: input.graph.identity.graph_identity, inventory_identity: input.graph.identity.inventory_identity, mapping_identity: input.mappings.identity, product_revision: checkedRevision, lane: input.lane, versions: structuredClone(input.model.versions) },
     advisory: true,
     full_required_ci_authoritative: true,
     changed_inputs: input.changed_inputs.map((item) => ({ ...item, ...(item.path && !safe(item.path) ? { path: "[REDACTED]" } : {}), ...(item.symbol && !safeSymbol(item.symbol) ? { symbol: "[REDACTED]" } : {}), ...(SECRET_PATTERN.test(item.id) ? { id: "[REDACTED]" } : {}) })).sort((a, b) => a.id.localeCompare(b.id)),

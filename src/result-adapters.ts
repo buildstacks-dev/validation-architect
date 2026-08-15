@@ -89,6 +89,22 @@ export function relationshipTraceToValidationResult(graph: RelationshipGraph, co
       evidence_ids: context.evidence.map((item) => item.id),
     };
   });
+  const blockingFindings = graph.findings.filter((item) => item.level === "red" || item.level === "unresolved");
+  if (blockingFindings.length > 0 && !cases.some((item) => item.status === "fail")) {
+    cases.unshift({
+      id: context.root_id,
+      status: "fail",
+      summary: blockingFindings.map((item) => item.message).join("; "),
+      evidence_ids: context.evidence.map((item) => item.id),
+    });
+  } else if (partial && !cases.some((item) => item.status === "inconclusive" || item.status === "blocked")) {
+    cases.unshift({
+      id: context.root_id,
+      status: "inconclusive",
+      summary: graph.findings.filter((item) => item.level === "partial").map((item) => item.message).join("; "),
+      evidence_ids: context.evidence.map((item) => item.id),
+    });
+  }
   return mappedResult(context, {
     completeness: !graph.structurally_closed || green ? "complete" : "incomplete",
     verdict: green ? "pass" : graph.structurally_closed ? "inconclusive" : "fail",
