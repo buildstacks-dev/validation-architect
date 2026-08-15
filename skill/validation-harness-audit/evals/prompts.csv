@@ -7,7 +7,7 @@ trigger-05,true,full,"Reach the best possible validation for this local code-rew
 trigger-06,true,assess,"We have 94 percent test coverage. Determine whether that actually validates the billing and authorization logic."
 trigger-07,true,full,"Build a criticality-calibrated validation suite for this coding agent. It can run shell commands and access cloud tools."
 trigger-08,true,design,"Design a criticality-calibrated test and assurance strategy for this medical scheduling service without changing code yet."
-trigger-09,true,assess,"Audit our built harness against validation-policy.yaml and report which declared validation lanes actually hold."
+trigger-09,true,assess,"Compile validation-design/model, join the built test inventory, and report which declared validation lanes actually hold."
 trigger-10,true,assess,"We built a replacement harness under an isolated root beside the old suite. Audit both against the declared coexistence constraints without touching the protected incumbent paths."
 negative-01,false,,"Rename this variable and update the comment."
 negative-02,false,,"Write one unit test for parse_date()."

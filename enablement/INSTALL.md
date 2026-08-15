@@ -15,8 +15,14 @@ This directory is the executable handoff that accompanies the ratified design co
 
    ```bash
    pnpm exec validation-trace . \
-     --manifest validation-design/case-catalog.yaml \
+     --model validation-design/model \
      --tests <tests-root>
    ```
 
-`validation-trace` proves deterministic closure only. Fidelity remains a separate architect audit. A live outcome-acceptance (`L-ACC`) campaign is never implied by installation or CI: it still requires fresh human authorization for its target, scenario set, spend/time ceiling, and permitted effects.
+This invokes the checked-model graph. `--manifest` is retained only for an
+explicit legacy token/header inventory adapter. `validation-trace` proves
+deterministic closure only; the complete Core Checks suite still runs, and
+fidelity remains a separate architect audit. A live outcome-acceptance (`L-ACC`)
+campaign is never implied by installation or CI: it still requires fresh human
+authorization for its target, scenario set, spend/time ceiling, and permitted
+effects.

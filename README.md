@@ -1,8 +1,7 @@
 # Validation Architect
 
-*(Renamed from `validation-design-agent` 2026-07-31 — the re-scope is recorded in
-[docs/validation-architect.md](docs/validation-architect.md). The `vda` CLI name is
-kept for now.)*
+*(Renamed from `validation-design-agent` 2026-07-31. The `vda` CLI name is kept
+for now.)*
 
 Two AI agents run a complete [validation-harness-design](skill/validation-harness-design/SKILL.md)
 campaign end to end — no human at the keyboard, but with a dedicated channel
@@ -37,6 +36,7 @@ orchestrator
   ├─ designer kickoff (skill + docs + provenance + marker protocol)
   ├─ relay loop:
   │    designer ──(strip markers)──▶ stakeholder ──▶ designer …
+  │    meaningful model edits compile + regenerate before the next gated stage
   │    markers: <<AWAITING-HUMAN>> · <<REQUEST-READER-TEST>> · <<CAMPAIGN-COMPLETE>>
   │    Phase 8: three EPHEMERAL fresh-context readers (operator /
   │    new-engineer / coding-agent) see ONLY the artifacts and report gaps
@@ -51,6 +51,47 @@ Multi-exchange within a phase is expected — the stakeholder asks questions,
 objects, and refuses gates; the designer revises. Every turn is checkpointed
 (`state.json`), so a crashed or interrupted run resumes exactly where it
 stopped: `pnpm vda resume <runId>`.
+
+## Checked design model
+
+All machine facts live under `validation-design/model/` in eight logical YAML
+files: `project.yaml`, `owners.yaml`, `sources.yaml`, `structures.yaml`,
+`policy.yaml`, `controls.yaml`, `families.yaml`, and `backlog.yaml`. The
+compiler validates source-located schemas and links, ownership, provenance,
+statuses, fail-closed lanes, negative controls, planned tests/evidence, safe
+paths, and bidirectional family↔ticket/control relationships.
+The checked policy also retains intended use and C0–C4 criticality, declares
+all six validation layers and five execution lanes, requires real commands for
+active test lanes, and models expiring exceptions and optional
+parallel-greenfield protections.
+
+From one canonical identity it generates `case-catalog.md`,
+`harness-backlog.md`, `owner-briefing.md`, `owner-backlog.md`, and
+`planned-trace.md`, plus `compiler-report.json`. These projections are never
+editable authority. A stale or missing view is regenerated before review; an
+invalid model blocks readers, audit, completion, and delivery. Narrative
+rationale remains authored prose, while the actual test inventory and run
+evidence stay separate from design authority.
+
+Fresh readers are additionally confined to an ephemeral bundle containing only
+those five generated views, the accepted compiler report, and a bundle identity
+manifest. They cannot read YAML source, authored design prose, product docs,
+rambling, or campaign history; all visible files are bound to one model identity.
+
+This is an explicit pre-1.0 clean break. A legacy Markdown catalog/backlog is
+accepted only by `importLegacyCatalog`, whose caller must supply reviewed
+ownership, provenance, product structures, negative controls, and planned
+tests. It preserves `LANDED` status and
+`EVIDENCE:complete|incomplete|inconclusive|unobserved:<path>` declarations,
+but reading an old corpus never rewrites it or assigns a current schema by
+guess. The prior EVIDENCE behavior from local commit `42e1918` is therefore
+migrated, not stranded or weakened.
+
+The provider-neutral result, startup/causality, relationship trace/explain, role
+views, and conservative impact-planning contracts are summarized in
+[docs/core-protocol.md](docs/core-protocol.md). They normalize compiler, trace,
+campaign, audit, fidelity, prerequisite, and higher-lane outcomes without
+treating those domain statuses as interchangeable.
 
 ## rambling.txt — the human channel
 
@@ -172,6 +213,8 @@ pnpm vda run lumen-webapp --smoke
 
 pnpm vda list
 pnpm vda resume <runId>       # continue an aborted/crashed/interrupted run
+# old unversioned pre-1.0 state only; named recovery preserves pending
+pnpm vda resume <runId> --recover-core-state adopt-current-pre1-after-compiler-validation
 # legacy target state only: offline, explicit re-anchor on current clean HEAD
 pnpm vda resume <runId> --recover-target-base current
 pnpm vda resume <runId>       # inspect first, then start the live reconciliation
@@ -196,21 +239,25 @@ pnpm vda repos                          # every registered target
 pnpm vda repos ~/code/myproduct         # explicit query (UNKNOWN if absent)
 pnpm vda repos --stale-days 7
 
-# deterministic design→implementation closure over a target repo
+# deterministic checked-model→implementation closure over a target repo
 # from this source checkout
-pnpm trace <target-repo> [--manifest path] [--tests path] [--out report.md]
+pnpm trace <target-repo> --model validation-design/model \
+  [--tests path] [--out report.md]
+# explicit legacy catalog/header inventory adapter
+pnpm trace <target-repo> --manifest validation-design/case-catalog.yaml \
+  [--tests path] [--out report.md]
 pnpm trace generate <case-catalog.md> <harness-backlog.md> \
   [--product name] [--tests-root path] [-o case-catalog.yaml]
 
 # in a product repo: the packed/released package runs compiled JavaScript and
 # has no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.1.0
+pnpm add --save-dev --save-exact validation-architect@0.1.1
 pnpm exec validation-trace . \
-  --manifest validation-design/case-catalog.yaml \
+  --model validation-design/model \
   --tests <tests-root>
 ```
 
-Before a registry release, replace `validation-architect@0.1.0` with the exact
+Before a registry release, replace `validation-architect@0.1.1` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
@@ -248,9 +295,10 @@ once, then:
    the ratification package is a natural PR description. Merging is the
    human ratification moment.
 3. **Iterate (revision).** Re-running `vda run --target` against a repo that
-   already carries `validation-design/validation-policy.yaml` auto-detects
+   already carries `validation-design/model/project.yaml` auto-detects
    the corpus, mounts it as the baseline, and kicks the designer off in the
-   skill's `harness-revision` mode. Every delivery embeds
+   skill's `harness-revision` mode. A legacy `validation-policy.yaml` also
+   selects revision mode but must take the explicit import path. Every delivery embeds
    `source-provenance.json`; the next revision receives the prior/current
    SHAs, a source/config path summary, and a unified diff, then reopens only
    affected concepts with surgical edits and retired IDs preserved — never a
@@ -310,6 +358,9 @@ never checked in as fixtures: a real product is a path passed to
 
 ## Run layout
 
+Runs live beside this checkout. `VDA_RUNS_ROOT` relocates that ledger — the
+acceptance tests use it to drive the real CLI without touching your runs.
+
 ```
 runs/<runId>/
   state.json           # resumable checkpoint (session ids, pending message,
@@ -322,6 +373,11 @@ runs/<runId>/
     .claude/skills/validation-harness-audit/    # audit skill, copied in for the run
     docs/  rambling.txt                          # stakeholder's ground truth
     validation-design/                           # the designer's artifacts
+      model/                                     # sole YAML machine authority
+      compiler-report.json                       # source spans + exact model identity
+      case-catalog.md  harness-backlog.md         # generated views
+      owner-briefing.md  owner-backlog.md         # generated owner views
+      planned-trace.md                            # generated planned-link closure
       audit/                                     # audit reports + disposition record
 ```
 
@@ -332,6 +388,8 @@ runs/<runId>/
 | `src/orchestrator.ts` | the relay loop, markers, readers, audit stage, checkpointing |
 | `src/designer.ts` · `src/stakeholder.ts` · `src/readers.ts` · `src/auditor.ts` | provider adapters |
 | `src/audit.ts` | AUD-xxx / DISPOSITION / verification parsers + verdict rules |
+| `src/model.ts` · `src/model-compiler.ts` · `src/model-views.ts` | versioned design graph, deterministic compiler, generated views |
+| `src/model-inventory.ts` · `src/workspace-compiler.ts` · `src/legacy-model-import.ts` | separate inventory join, atomic workspace compilation, explicit legacy import |
 | `src/catalog.ts` · `src/trace.ts` · `src/trace-cli.ts` | case-catalog manifest + `validation-trace` CLI (closure checks) |
 | `src/fidelity.ts` | fidelity audit: scope resolution, closure preflight, findings-only guard |
 | `src/registry.ts` | per-repo fleet ledger + staleness flags behind `vda repos` |

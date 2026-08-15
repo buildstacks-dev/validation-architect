@@ -1,0 +1,6 @@
+[
+  { "id": "generated-known-path", "category": "generated", "change": "tenant", "expected": ["CF-TENANT"] },
+  { "id": "historical-retry-defect", "category": "historical", "change": "retry", "expected": ["CF-RETRY"] },
+  { "id": "deleted-mapping-negative", "category": "corruption-negative", "change": "unknown", "expected": ["CF-RETRY", "CF-TENANT"] },
+  { "id": "shadow-structural-change", "category": "shadow", "change": "structural", "expected": ["CF-RETRY", "CF-TENANT"], "independently_reviewed": true }
+]

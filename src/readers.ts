@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { join } from "node:path";
+import { relative } from "node:path";
 import { buildClaudeReadOnlyQueryOptions } from "./designer.js";
 import { readerPrompt } from "./prompts.js";
+import { createReaderBundle, removeReaderBundle } from "./reader-bundle.js";
 import type { ReaderPersonaId, ReaderRunner } from "./types.js";
 
 export interface ClaudeReaderOptions {
@@ -28,24 +29,28 @@ export class ClaudeReaderRunner implements ReaderRunner {
   }
 
   async run(persona: ReaderPersonaId, workspace: string): Promise<string> {
-    const q = query({
-      prompt: readerPrompt(persona),
-      options: buildClaudeReadOnlyQueryOptions({
-        workspace,
-        readRoot: join(workspace, "validation-design"),
-        model: this.opts.model,
-        maxTurns: 60,
-        env: this.env,
-      }),
-    });
-    for await (const msg of q as AsyncIterable<Record<string, unknown>>) {
-      if (msg["type"] === "result") {
-        if (msg["subtype"] === "success" && typeof msg["result"] === "string") {
-          return msg["result"];
+    const bundle = createReaderBundle(workspace);
+    const visibleRoot = `./${relative(workspace, bundle.root)}/`;
+    try {
+      const q = query({
+        prompt: readerPrompt(persona, visibleRoot),
+        options: buildClaudeReadOnlyQueryOptions({
+          workspace,
+          readRoot: bundle.root,
+          model: this.opts.model,
+          maxTurns: 60,
+          env: this.env,
+        }),
+      });
+      for await (const msg of q as AsyncIterable<Record<string, unknown>>) {
+        if (msg["type"] === "result") {
+          if (msg["subtype"] === "success" && typeof msg["result"] === "string") return msg["result"];
+          throw new Error(`reader ${persona} ended without success: ${String(msg["subtype"])}`);
         }
-        throw new Error(`reader ${persona} ended without success: ${String(msg["subtype"])}`);
       }
+      throw new Error(`reader ${persona} produced no result`);
+    } finally {
+      removeReaderBundle(bundle);
     }
-    throw new Error(`reader ${persona} produced no result`);
   }
 }

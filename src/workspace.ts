@@ -257,7 +257,15 @@ export function reanchorLegacyTargetWorkspace(
     // be generated before the recovered corpus can be delivered.
     rmSync(join(workspace, "validation-design", "audit"), { recursive: true, force: true });
     rmSync(join(workspace, "validation-design", "source-provenance.json"), { force: true });
-    for (const staleSurface of ["ratification-package.md", "owner-briefing.md", "owner-backlog.md"]) {
+    for (const staleSurface of [
+      "ratification-package.md",
+      "case-catalog.md",
+      "harness-backlog.md",
+      "owner-briefing.md",
+      "owner-backlog.md",
+      "planned-trace.md",
+      "compiler-report.json",
+    ]) {
       rmSync(join(workspace, "validation-design", staleSurface), { force: true });
     }
     const legacyRamble = join(legacyWorkspace, "rambling.txt");
@@ -307,6 +315,8 @@ export function applyLegacyTargetRecovery(
   // Fresh sessions must receive their normal kickoffs. The recovery directive
   // (including the old pending turn) is appended to that kickoff by the CLI.
   state.pending = undefined;
+  state.checkpointedDesignerMarker = undefined;
+  state.compilation = undefined;
   state.sourceRecoveryDirective = recovery.recoveryDirective;
   state.designerSessionId = undefined;
   state.codexThreadId = undefined;

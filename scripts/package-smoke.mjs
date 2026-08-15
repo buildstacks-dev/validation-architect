@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(join(tmpdir(), "validation-architect-package-smoke-"));
+const packageManager = process.env.PNPM_BINARY || "pnpm";
 
 function run(command, args, cwd, env = {}) {
   const result = spawnSync(command, args, {
@@ -32,7 +33,10 @@ function run(command, args, cwd, env = {}) {
 try {
   const packDir = join(scratch, "pack");
   mkdirSync(packDir);
-  run("pnpm", ["pack", "--pack-destination", packDir], repoRoot);
+  // Build explicitly so the smoke can select an already-cached pnpm binary;
+  // avoid a nested lifecycle shell resolving a different package manager.
+  run(packageManager, ["run", "build"], repoRoot);
+  run(packageManager, ["pack", "--config.ignore-scripts=true", "--pack-destination", packDir], repoRoot);
   const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
   if (tarballs.length !== 1) throw new Error(`expected one tarball, found ${tarballs.length}`);
   const tarball = join(packDir, tarballs[0]);
@@ -123,7 +127,7 @@ try {
     join(target, "pnpm-workspace.yaml"),
     `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n`,
   );
-  run("pnpm", ["install", "--offline", "--ignore-scripts"], target, { CI: "true" });
+  run(packageManager, ["install", "--offline", "--ignore-scripts"], target, { CI: "true" });
   const installedBin = join(
     target,
     "node_modules",

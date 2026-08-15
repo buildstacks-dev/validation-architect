@@ -1,0 +1,14 @@
+{
+  "schema": "validation-architect/fixture-design/v1",
+  "status": "landed",
+  "owner": { "id": "OWN-1", "name": "Runtime team" },
+  "source": { "id": "SRC-1", "path": "docs/contract.md" },
+  "control": { "id": "NC-1", "family_id": "CF-1", "expected_failure": "seeded defect turns red" },
+  "family": {
+    "id": "CF-1",
+    "structure_ids": ["CON-1"],
+    "control_ids": ["NC-1"],
+    "evidence": { "state": "incomplete", "path": "artifacts/cert.json" }
+  },
+  "trace": ["CON-1", "CF-1", "TEST-1", "EV-1"]
+}

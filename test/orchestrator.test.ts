@@ -10,18 +10,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stringify } from "yaml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { serializeManifest, type CaseCatalogManifest } from "../src/catalog.js";
+import { MODEL_FILE_SCHEMAS } from "../src/model.js";
+import { writeValidModel } from "./model-corpus-fixture.js";
 import {
   auditedCoreFingerprint,
   corpusFingerprint,
   runCampaign,
   type OrchestratorDeps,
 } from "../src/orchestrator.js";
-import { ownerDocsMessage } from "../src/prompts.js";
 import { RambleWatcher } from "../src/ramble.js";
 import { Transcript, readTranscript } from "../src/transcript.js";
 import type { AuditState, RunConfig, RunState } from "../src/types.js";
+import { CURRENT_CORE_VERSIONS } from "../src/versions.js";
+import { compileWorkspaceModel } from "../src/workspace-compiler.js";
 import { FakeAuditor, FakeDesigner, FakeReaders, FakeStakeholder, type ScriptStep } from "./fakes.js";
 
 let dir: string;
@@ -66,116 +69,8 @@ function doneAudit(): AuditState {
   };
 }
 
-/** Seed structurally valid owner-facing docs. */
-function writeOwnerDocs(root: string = dir): void {
-  mkdirSync(join(root, "validation-design"), { recursive: true });
-  writeFileSync(
-    join(root, "validation-design", "owner-briefing.md"),
-    [
-      "# Owner briefing",
-      "",
-      "This non-normative briefing is not a second source of truth; ratified artifacts win.",
-      "",
-      "## What this product can break",
-      "Stakes.",
-      "## The promises",
-      "Promises.",
-      "## The seams",
-      "Seams.",
-      "## What we deliberately will NOT test, and why",
-      "Pruned work.",
-      "## The decisions on your desk",
-      "Decisions.",
-      "## What is still unknown",
-      "Unknowns.",
-      "## What gets built, in what order",
-      "Waves.",
-      "",
-    ].join("\n"),
-  );
-  writeFileSync(
-    join(root, "validation-design", "owner-backlog.md"),
-    [
-      "# Owner backlog",
-      "",
-      "This is a non-normative living companion, not a second source of truth.",
-      "Backlog revision: 1, generated from harness-backlog.md.",
-      "",
-      "## Wave 0",
-      "",
-      "### HB-001 — Minimal harness",
-      "Implements CF-X01-S.",
-      "",
-    ].join("\n"),
-  );
-}
-
 function ensureValidCorpus(root: string = dir): void {
-  const design = join(root, "validation-design");
-  mkdirSync(design, { recursive: true });
-  const catalogPath = join(design, "case-catalog.md");
-  if (!existsSync(catalogPath)) {
-    writeFileSync(
-      catalogPath,
-      [
-        "# Case catalog",
-        "",
-        "## 1. Journey matrix",
-        "",
-        "| Cell | Case family | Layer | Oracle | Risk |",
-        "|---|---|---|---|---|",
-        "| CF-X01-S | happy path | 2 | state | STD |",
-        "",
-      ].join("\n"),
-    );
-  }
-  const manifestPath = join(design, "case-catalog.yaml");
-  if (!existsSync(manifestPath)) {
-    const manifest: CaseCatalogManifest = {
-      schema: "validation-architect/case-catalog/v1",
-      families: [
-        {
-          id: "CF-X01-S",
-          section: "Journey matrix",
-          status: "implementable",
-          layers: "2",
-          oracle: "state",
-          risk: "STD",
-          ticket: "HB-001",
-          wave: "0",
-        },
-      ],
-      tickets: [
-        {
-          id: "HB-001",
-          name: "Minimal harness",
-          wave: "0",
-          status: "pending",
-          families: ["CF-X01-S"],
-        },
-      ],
-    };
-    writeFileSync(manifestPath, serializeManifest(manifest));
-  }
-  const backlogPath = join(design, "harness-backlog.md");
-  if (!existsSync(backlogPath)) {
-    writeFileSync(
-      backlogPath,
-      [
-        "# Harness backlog",
-        "",
-        "Revision: 1",
-        "",
-        "## Wave 0",
-        "",
-        "**HB-001 — Minimal harness.** Implements CF-X01-S.",
-        "",
-      ].join("\n"),
-    );
-  }
-  if (!existsSync(join(design, "owner-briefing.md")) || !existsSync(join(design, "owner-backlog.md"))) {
-    writeOwnerDocs(root);
-  }
+  writeValidModel(root);
 }
 
 /**
@@ -185,11 +80,10 @@ function ensureValidCorpus(root: string = dir): void {
  */
 function ownerDocsStep(): ScriptStep {
   return (incoming) => {
-    if (!incoming.includes("owner-briefing.md") || !incoming.includes("owner-backlog.md")) {
-      return "unexpected — expected the owner-docs instruction\n<<AWAITING-HUMAN>>";
+    if (!incoming.includes("mandatory post-audit review")) {
+      return "unexpected — expected the final generated-corpus review\n<<AWAITING-HUMAN>>";
     }
-    writeOwnerDocs();
-    return "Owner briefing and backlog companion written.\n<<CAMPAIGN-COMPLETE>>";
+    return "Generated owner views reviewed without edits.\n<<CAMPAIGN-COMPLETE>>";
   };
 }
 
@@ -205,6 +99,7 @@ function makeState(
     fixture: config.fixture,
     workspace: dir,
     status: "running",
+    coreVersions: structuredClone(CURRENT_CORE_VERSIONS),
     exchanges: 0,
     seq: 0,
     startedAt: new Date().toISOString(),
@@ -261,6 +156,92 @@ function makeDeps(
 const kickoffs = { designer: "DESIGNER-KICKOFF", stakeholder: "STAKEHOLDER-KICKOFF" };
 
 describe("runCampaign", () => {
+  async function finishCheckpointedReaderTransition(snapshot: RunState): Promise<{
+    final: RunState;
+    designer: FakeDesigner;
+    readers: FakeReaders;
+  }> {
+    const resumed = makeDeps(["Reviewed generated bundle.\n<<CAMPAIGN-COMPLETE>>"], []);
+    const final = await runCampaign(resumed.deps, snapshot, kickoffs);
+    return { final, designer: resumed.designer, readers: resumed.readers };
+  }
+
+  it("resumes a crash before compile without repeating the designer marker turn", async () => {
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    state.pending = { to: "designer", text: "request current reader test" };
+    const first = makeDeps([
+      () => {
+        // The turn invalidated the deterministic checkpoint; crash before the
+        // new compile can run.
+        state.compilation = undefined;
+        return "Compile and run readers.\n<<REQUEST-READER-TEST>>";
+      },
+    ], []);
+    let snapshot: RunState | undefined;
+    first.deps.saveState = (current) => {
+      snapshot = structuredClone(current);
+      if (current.checkpointedDesignerMarker) throw new Error("simulated crash before compile");
+    };
+
+    await expect(runCampaign(first.deps, state, kickoffs)).rejects.toThrow("simulated crash before compile");
+    expect(snapshot?.checkpointedDesignerMarker).toBe("REQUEST-READER-TEST");
+    expect(snapshot?.compilation).toBeUndefined();
+    const resumed = await finishCheckpointedReaderTransition(snapshot as RunState);
+    expect(resumed.final.status).toBe("completed");
+    expect(first.designer.received).toEqual(["request current reader test"]);
+    expect(resumed.designer.received).toHaveLength(1);
+    expect(resumed.designer.received[0]).toContain("reader test complete");
+    expect(resumed.readers.ran).toHaveLength(3);
+  });
+
+  it("resumes a crash after compile but before its checkpoint without repeating the designer turn", async () => {
+    const first = makeDeps(["Compile and run readers.\n<<REQUEST-READER-TEST>>"], []);
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    state.pending = { to: "designer", text: "request current reader test" };
+    let snapshot: RunState | undefined;
+    first.deps.saveState = (current) => {
+      snapshot = structuredClone(current);
+      if (current.checkpointedDesignerMarker && current.compilation?.status === "accepted") {
+        throw new Error("simulated crash after compile before checkpoint");
+      }
+    };
+
+    await expect(runCampaign(first.deps, state, kickoffs)).rejects.toThrow(
+      "simulated crash after compile before checkpoint",
+    );
+    expect(snapshot?.checkpointedDesignerMarker).toBe("REQUEST-READER-TEST");
+    expect(snapshot?.compilation?.modelIdentity).toMatch(/^[a-f0-9]{64}$/);
+    const resumed = await finishCheckpointedReaderTransition(snapshot as RunState);
+    expect(resumed.final.status).toBe("completed");
+    expect(first.designer.received).toEqual(["request current reader test"]);
+    expect(resumed.designer.received).toHaveLength(1);
+  });
+
+  it("resumes after the compile checkpoint and before readers without repeating the designer turn", async () => {
+    const first = makeDeps(["Compile and run readers.\n<<REQUEST-READER-TEST>>"], []);
+    const state = makeState(makeConfig(), { readersRan: true, auditDone: true });
+    state.pending = { to: "designer", text: "request current reader test" };
+    let latest: RunState | undefined;
+    first.deps.saveState = (current) => {
+      latest = structuredClone(current);
+    };
+    first.deps.readers = {
+      run: async () => {
+        throw new Error("simulated crash before reader provider turn");
+      },
+    };
+
+    await expect(runCampaign(first.deps, state, kickoffs)).rejects.toThrow(
+      "simulated crash before reader provider turn",
+    );
+    expect(latest?.checkpointedDesignerMarker).toBe("REQUEST-READER-TEST");
+    expect(latest?.compilation?.status).toBe("accepted");
+    const resumed = await finishCheckpointedReaderTransition(latest as RunState);
+    expect(resumed.final.status).toBe("completed");
+    expect(first.designer.received).toEqual(["request current reader test"]);
+    expect(resumed.designer.received).toHaveLength(1);
+  });
+
   it("primes the stakeholder, loops, and completes on the marker", async () => {
     const { deps, designer, stakeholder } = makeDeps(
       [
@@ -281,7 +262,13 @@ describe("runCampaign", () => {
     // Stakeholder's reply was relayed to the designer verbatim.
     expect(designer.received[1]).toBe("CONFIRMED: phase 0 — checked: module map");
     const entries = readTranscript(dir);
-    expect(entries.map((e) => e.role)).toEqual(["stakeholder", "designer", "stakeholder", "designer"]);
+    expect(entries.map((e) => e.role)).toEqual([
+      "stakeholder",
+      "orchestrator",
+      "designer",
+      "stakeholder",
+      "designer",
+    ]);
   });
 
   it("runs the three readers on REQUEST-READER-TEST without counting an exchange", async () => {
@@ -482,7 +469,7 @@ describe("runCampaign", () => {
     const last = saved[saved.length - 1] as RunState;
     expect(last.designerSessionId).toBe("fake-designer-session");
     expect(last.codexThreadId).toBe("fake-codex-thread");
-    expect(last.seq).toBe(4);
+    expect(last.seq).toBe(5);
   });
 });
 
@@ -712,7 +699,7 @@ describe("runCampaign audit stage", () => {
     const first = makeDeps([], []);
     const state = makeState(makeConfig(), { readersRan: true });
     state.pending = { to: "auditor", iteration: 1 };
-    unlinkSync(join(dir, "validation-design", "case-catalog.yaml"));
+    unlinkSync(join(dir, "validation-design", "model", "controls.yaml"));
 
     let crashSnapshot: RunState | undefined;
     first.deps.saveState = (current) => {
@@ -721,14 +708,14 @@ describe("runCampaign audit stage", () => {
     };
 
     await expect(runCampaign(first.deps, state, kickoffs)).rejects.toThrow("simulated crash");
-    expect(crashSnapshot?.pending?.to).toBe("designer");
-    expect(crashSnapshot?.audit?.resumeIteration).toBe(1);
+    expect(crashSnapshot?.pending).toEqual({ to: "auditor", iteration: 1 });
+    expect(crashSnapshot?.audit?.resumeIteration).toBeUndefined();
 
     const resumed = crashSnapshot as RunState;
     const second = makeDeps(
       [
         (incoming) => {
-          expect(incoming).toContain("case-catalog.yaml is missing");
+          expect(incoming).toContain("controls.yaml is missing");
           ensureValidCorpus();
           return "Catalog restored; re-run fresh readers.\n<<REQUEST-READER-TEST>>";
         },
@@ -853,83 +840,48 @@ describe("runCampaign audit stage", () => {
     expect(final.statusReason).toContain("Audit section");
   });
 
-  it("rejects CAMPAIGN-COMPLETE when case-catalog.md exists but the manifest disagrees", async () => {
-    mkdirSync(join(dir, "validation-design"), { recursive: true });
-    writeFileSync(
-      join(dir, "validation-design", "case-catalog.md"),
-      [
-        "# Case catalog",
-        "",
-        "## 1. Journey matrix",
-        "",
-        "| Cell | Case family | Layer | Oracle | Risk |",
-        "|---|---|---|---|---|",
-        "| CF-X01-S | happy path | 2 | state | STD |",
-        "",
-      ].join("\n"),
-    );
-    // Manifest invents a different family — agreement must fire.
-    const bad: CaseCatalogManifest = {
-      schema: "validation-architect/case-catalog/v1",
-      families: [{ id: "CF-WRONG", section: "Journey matrix", status: "implementable" }],
-      tickets: [],
-    };
-    writeFileSync(join(dir, "validation-design", "case-catalog.yaml"), serializeManifest(bad));
-
+  it("rejects an invalid authoritative model before readers and accepts an exact repair", async () => {
     let fixed = false;
-    const { deps } = makeDeps(
+    const { deps, readers } = makeDeps(
       [
-        "Package done.\n<<CAMPAIGN-COMPLETE>>",
+        "Run readers.\n<<REQUEST-READER-TEST>>",
         (incoming) => {
-          if (!incoming.includes("case-catalog") && !incoming.includes("does not agree")) {
+          if (!incoming.includes("missing owner OWN-MISSING")) {
             return "unexpected\n<<AWAITING-HUMAN>>";
           }
-          // Repair: rewrite the manifest to match the markdown.
-          const good: CaseCatalogManifest = {
-            schema: "validation-architect/case-catalog/v1",
-            families: [{ id: "CF-X01-S", section: "Journey matrix", status: "implementable", layers: "2", oracle: "state", risk: "STD" }],
-            tickets: [],
-          };
-          writeFileSync(join(dir, "validation-design", "case-catalog.yaml"), serializeManifest(good));
+          ensureValidCorpus();
           fixed = true;
-          return "Manifest repaired.\n<<CAMPAIGN-COMPLETE>>";
+          return "Model repaired.\n<<REQUEST-READER-TEST>>";
         },
+        "Reviewed corpus unchanged.\n<<CAMPAIGN-COMPLETE>>",
+        "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
         ownerDocsStep(),
       ],
-      [],
-      [],
+      ["ack"],
+      ["No findings.\n\n## What I checked\nThe compiled model, report, and generated views."],
     );
-    const state = makeState(makeConfig(), { readersRan: true });
-    state.audit = {
-      iteration: 2,
-      phase: "package",
-      windowExchanges: 0,
-      findings: [],
-      dispositions: {},
-      verdict: "clean",
-      auditedCoreFingerprint: auditedCoreFingerprint(dir),
-    };
-    state.pending = { to: "designer", text: "[Environment: write the Audit section]" };
+    const state = makeState(makeConfig());
+    const familyPath = join(dir, "validation-design", "model", "families.yaml");
+    writeFileSync(familyPath, readFileSync(familyPath, "utf8").replace("owner: OWN-1", "owner: OWN-MISSING"));
 
     const final = await runCampaign(deps, state, kickoffs);
-    expect(final.status).toBe("aborted");
+    expect(final.status).toBe("completed");
     expect(fixed).toBe(true);
+    expect(readers.ran).toHaveLength(6);
     const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
-    expect(notes.some((n) => n.note?.includes("deterministic corpus gate rejected"))).toBe(true);
-    expect(notes.some((n) => n.note?.includes("post-audit core mutation rejected"))).toBe(true);
+    expect(notes.some((n) => n.note?.includes("deterministic compiler gate rejected"))).toBe(true);
   });
 
-  it("gates completion on owner-briefing.md and owner-backlog.md after the Audit section", async () => {
-    const { deps } = makeDeps(
+  it("generates owner views before final review and repairs stale generated deletions", async () => {
+    const { deps, readers } = makeDeps(
       [
         "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
-        // First attempt: claim done without writing the files → rejected.
         () => {
           unlinkSync(join(dir, "validation-design", "owner-briefing.md"));
           unlinkSync(join(dir, "validation-design", "owner-backlog.md"));
-          return "I removed the owner docs but I'm done anyway.\n<<CAMPAIGN-COMPLETE>>";
+          return "Generated views were deleted after review.\n<<CAMPAIGN-COMPLETE>>";
         },
-        ownerDocsStep(),
+        "Compiler restored the frozen generated views.\n<<CAMPAIGN-COMPLETE>>",
       ],
       [],
       [],
@@ -949,13 +901,16 @@ describe("runCampaign audit stage", () => {
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("completed");
     expect(final.audit?.phase).toBe("done");
-    const notes = readTranscript(dir).filter((e) => e.role === "orchestrator");
-    expect(notes.some((n) => n.note?.includes("requesting owner-briefing.md"))).toBe(true);
-    expect(notes.some((n) => n.note?.includes("owner-briefing.md is missing"))).toBe(true);
+    expect(readers.ran).toHaveLength(3);
+    expect(existsSync(join(dir, "validation-design", "owner-briefing.md"))).toBe(true);
+    expect(existsSync(join(dir, "validation-design", "owner-backlog.md"))).toBe(true);
   });
 
   it("resumes mid-owner-docs phase from a pending designer message", async () => {
-    const { deps, stakeholder, readers } = makeDeps([ownerDocsStep()], []);
+    const { deps, stakeholder, readers } = makeDeps(
+      ["Legacy owner phase complete.\n<<CAMPAIGN-COMPLETE>>", ownerDocsStep()],
+      [],
+    );
     const state = makeState(makeConfig(), { readersRan: true });
     state.audit = {
       iteration: 2,
@@ -966,7 +921,7 @@ describe("runCampaign audit stage", () => {
       verdict: "clean",
       auditedCoreFingerprint: auditedCoreFingerprint(dir),
     };
-    state.pending = { to: "designer", text: ownerDocsMessage() };
+    state.pending = { to: "designer", text: "[Legacy checkpoint: generated owner views are ready]" };
     state.exchanges = 25;
 
     const final = await runCampaign(deps, state, kickoffs);
@@ -1151,14 +1106,14 @@ describe("runCampaign audit stage", () => {
     expect(notes.some((entry) => entry.note?.includes("ignored designer disposition fixed"))).toBe(true);
   });
 
-  it("fails the deterministic corpus gate before readers when either catalog is absent", async () => {
+  it("fails the deterministic compiler gate before readers when logical model files are absent", async () => {
     const { deps, readers } = makeDeps(
       [
         "Run readers.\n<<REQUEST-READER-TEST>>",
         (incoming) => {
-          expect(incoming).toContain("case-catalog.md is missing");
+          expect(incoming).toContain("families.yaml is missing");
           ensureValidCorpus();
-          return "Both catalogs restored.\n<<REQUEST-READER-TEST>>";
+          return "Logical model restored.\n<<REQUEST-READER-TEST>>";
         },
         "Reviewed corpus unchanged.\n<<CAMPAIGN-COMPLETE>>",
         "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
@@ -1168,8 +1123,8 @@ describe("runCampaign audit stage", () => {
       ["No findings.\n\n## What I checked\nEvery artifact and rubric axis."],
     );
     const state = makeState(makeConfig());
-    unlinkSync(join(dir, "validation-design", "case-catalog.md"));
-    unlinkSync(join(dir, "validation-design", "case-catalog.yaml"));
+    unlinkSync(join(dir, "validation-design", "model", "families.yaml"));
+    unlinkSync(join(dir, "validation-design", "model", "controls.yaml"));
 
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("completed");
@@ -1198,10 +1153,10 @@ describe("runCampaign audit stage", () => {
     expect(readers.ran).toHaveLength(9); // two pre-audit passes + mandatory final pass
   });
 
-  it("re-runs final readers if any owner-corpus file changes after their report", async () => {
+  it("restores a frozen generated owner view before accepting the reviewed identity", async () => {
     const { deps, readers } = makeDeps(
       [
-        ownerDocsStep(),
+        "Legacy owner phase complete.\n<<CAMPAIGN-COMPLETE>>",
         () => {
           writeFileSync(
             join(dir, "validation-design", "owner-briefing.md"),
@@ -1209,7 +1164,7 @@ describe("runCampaign audit stage", () => {
           );
           return "Applied final-reader clarification.\n<<CAMPAIGN-COMPLETE>>";
         },
-        "Second final review accepted without edits.\n<<CAMPAIGN-COMPLETE>>",
+        "Compiler restored the reviewed generated bytes.\n<<CAMPAIGN-COMPLETE>>",
       ],
       [],
     );
@@ -1223,11 +1178,14 @@ describe("runCampaign audit stage", () => {
       verdict: "clean",
       auditedCoreFingerprint: auditedCoreFingerprint(dir),
     };
-    state.pending = { to: "designer", text: ownerDocsMessage() };
+    state.pending = { to: "designer", text: "[Legacy checkpoint: generated owner views are ready]" };
 
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("completed");
-    expect(readers.ran).toHaveLength(6);
+    expect(readers.ran).toHaveLength(3);
+    expect(readFileSync(join(dir, "validation-design", "owner-briefing.md"), "utf8")).not.toContain(
+      "Clarified consequence",
+    );
   });
 
   it("uses independent gate counters and ignores the legacy shared counter", async () => {
@@ -1235,9 +1193,9 @@ describe("runCampaign audit stage", () => {
       [
         "Complete.\n<<CAMPAIGN-COMPLETE>>",
         (incoming) => {
-          expect(incoming).toContain("case-catalog.yaml is missing");
+          expect(incoming).toContain("controls.yaml is missing");
           ensureValidCorpus();
-          return "Catalog restored.\n<<REQUEST-READER-TEST>>";
+          return "Model restored.\n<<REQUEST-READER-TEST>>";
         },
         "Reviewed and unchanged.\n<<CAMPAIGN-COMPLETE>>",
         "Audit section written.\n<<CAMPAIGN-COMPLETE>>",
@@ -1250,42 +1208,25 @@ describe("runCampaign audit stage", () => {
     state.pending = { to: "designer", text: "complete now" };
     state.completionRejections = 999;
     state.gateRejections = { "reader-test": 2, "audit-section": 2, "owner-docs": 2 };
-    unlinkSync(join(dir, "validation-design", "case-catalog.yaml"));
+    unlinkSync(join(dir, "validation-design", "model", "controls.yaml"));
 
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("completed");
     expect(final.statusReason).toBeUndefined();
   });
 
-  it("rejects matching Markdown+YAML catalog edits made after the terminal audit", async () => {
-    const mutateBothCatalogs = () => {
-      writeFileSync(
-        join(dir, "validation-design", "case-catalog.md"),
-        "# Case catalog\n\n## 1. Journey matrix\n\n| Cell | Case family | Layer | Oracle | Risk |\n|---|---|---|---|---|\n| CF-X02-S | changed after audit | 2 | state | STD |\n",
-      );
-      const manifest: CaseCatalogManifest = {
-        schema: "validation-architect/case-catalog/v1",
-        families: [
-          {
-            id: "CF-X02-S",
-            section: "Journey matrix",
-            status: "implementable",
-            layers: "2",
-            oracle: "state",
-            risk: "STD",
-          },
-        ],
-        tickets: [],
-      };
-      writeFileSync(join(dir, "validation-design", "case-catalog.yaml"), serializeManifest(manifest));
+  it("rejects authoritative model edits made after the terminal audit", async () => {
+    const mutateModel = () => {
+      const path = join(dir, "validation-design", "model", "families.yaml");
+      writeFileSync(path, readFileSync(path, "utf8").replace("The stable response is preserved", "Changed after audit"));
     };
     const { deps, readers } = makeDeps(
       [
         () => {
-          mutateBothCatalogs();
-          return "Catalog revision complete.\n<<CAMPAIGN-COMPLETE>>";
+          mutateModel();
+          return "Model revision complete.\n<<CAMPAIGN-COMPLETE>>";
         },
-        "The catalogs agree, so complete.\n<<CAMPAIGN-COMPLETE>>",
+        "The model compiles, so complete.\n<<CAMPAIGN-COMPLETE>>",
         "Still complete.\n<<CAMPAIGN-COMPLETE>>",
       ],
       [],
@@ -1300,7 +1241,7 @@ describe("runCampaign audit stage", () => {
       verdict: "clean",
       auditedCoreFingerprint: auditedCoreFingerprint(dir),
     };
-    state.pending = { to: "designer", text: ownerDocsMessage() };
+    state.pending = { to: "designer", text: "[Legacy checkpoint: generated owner views are ready]" };
 
     const final = await runCampaign(deps, state, kickoffs);
     expect(final.status).toBe("aborted");

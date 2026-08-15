@@ -80,7 +80,7 @@ For each invariant an LLM could violate at runtime: the enforcement is code (val
 3. Acceptance: per-site pass-rate delta within policy threshold; no contract-layer regressions; judge sites re-pass their meta-evals.
 4. Record the deltas in the policy file's change log. A swap without this procedure is a config change with no acceptance criteria — vibes.
 
-## CI cost tiering (record in validation-policy.yaml)
+## CI cost tiering (record as lanes and families in model/policy.yaml)
 
 | Trigger | What runs |
 |---|---|

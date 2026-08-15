@@ -179,6 +179,23 @@ export function generateReport(runDir: string): string {
 - **Models:** designer ${state.config.designerModel} · stakeholder ${state.config.stakeholderModel} · readers ${state.config.readerModel}
 - **Phase mentions observed:** ${phases.join(" → ") || "(none parsed)"}
 
+## Compiled design identity
+
+- **Run interpreter versions:** ${state.coreVersions ? Object.entries(state.coreVersions).map(([key, value]) => `${key}=\`${value}\``).join(" · ") : "(missing; explicit recovery required before provider work)"}
+- **Named version recovery:** ${state.versionRecovery ? `\`${state.versionRecovery.name}\` from ${state.versionRecovery.source}; pending identity \`${state.versionRecovery.pendingIdentity}\`` : "none"}
+- **Compiler status:** ${state.compilation?.status ?? "unknown (legacy or not yet compiled)"}
+- **Model identity:** ${state.compilation?.modelIdentity ? `\`${state.compilation.modelIdentity}\`` : "(none)"}
+- **Accepted bundle identity:** ${state.compilation?.acceptedBundleIdentity ? `\`${state.compilation.acceptedBundleIdentity}\`` : "(none)"}
+- **Compiler:** ${state.compilation?.compilerVersion ?? "(unknown)"}
+- **Version bundle:** ${
+    state.compilation?.versions
+      ? Object.entries(state.compilation.versions)
+          .map(([key, value]) => `${key}=\`${value}\``)
+          .join(" · ")
+      : "(none)"
+  }
+- **Compiler diagnostics:** ${state.compilation?.diagnosticCodes.length ?? 0}
+
 ## Gate discipline
 ${rubberStampWarning}
 | Verdict | Count |
@@ -220,7 +237,7 @@ This design is a **draft until a human ratifies it**.
 \`workspace/validation-design/owner-briefing.md\`${
     artifacts.some((a) => a.path === "owner-briefing.md")
       ? ""
-      : " (⚠ missing — the designer did not write it)"
+      : " (⚠ missing — the compiler did not generate it)"
   }
 — plain-language stakes, promises, decisions, and wave order. The formal package
 is \`workspace/validation-design/ratification-package.md\`${
@@ -233,7 +250,7 @@ is \`workspace/validation-design/ratification-package.md\`${
 \`workspace/validation-design/owner-backlog.md\`${
     artifacts.some((a) => a.path === "owner-backlog.md")
       ? ""
-      : " (⚠ missing — the designer did not write it)"
+      : " (⚠ missing — the compiler did not generate it)"
   }
 — consequence-language paragraphs per wave and per HB ticket. Non-normative;
 regenerate when the backlog changes.

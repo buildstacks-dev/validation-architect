@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+Consumes the checked-model design contract introduced by design 0.7.0.
+
+- Compiles all eight logical YAML files before auditing generated views.
+- Treats the model, observed test inventory, and exact-revision evidence as separate identities and joins them explicitly for conformance.
+- Consumes checked criticality, six-layer declarations, executable lanes, expiring exceptions, and coexistence protections without reconstructing them from prose.
+- Keeps reader comprehension distinct from audit judgment: readers see the generated-only identity bundle, while auditors retain the checked model and source evidence required for conformance.
+- Replaces Markdown/YAML agreement checks with compiler identity, generated-view drift, ownership, provenance, status, negative-control, and model-to-inventory closure checks.
+- Audits the single bidirectional relationship graph and all four identity-bound role views, while preserving the closure-versus-fidelity boundary and visible partial evidence.
+- Audits conservative impact expansion, zero-miss benchmark classes, paired controls/safety checks, and full-required-CI exactly-once authority.
+- Audits exact interpretation bundles, accepted-bundle hashes, no-mutation reads, named review evidence, deterministic migration output, and pending-message-safe resume refusal/recovery.
+- Keeps non-test evidence partiality and all six-layer/audit-convergence disciplines intact.
+- Versioned with validation-harness-design 0.7.0.
+
 ## 0.6.2
 
 Consumes the design 0.6.2 evidence-declaration contract.

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseFindings } from "./audit.js";
@@ -7,6 +7,8 @@ import type { CaseCatalogManifest, CatalogFamily, CatalogTicket } from "./catalo
 import { creditedFamilyIds } from "./catalog.js";
 import { fidelityAuditorPrompt } from "./prompts.js";
 import { runTrace, type TraceOptions } from "./trace.js";
+import { runModelTrace } from "./model-trace.js";
+import type { CompiledDesignModel, TestInventory } from "./model.js";
 import { captureTargetRevision, verifyTargetRevision } from "./target.js";
 import type { AuditFinding, AuditorRunner, TargetRevision } from "./types.js";
 
@@ -42,6 +44,36 @@ export interface FidelityScope {
   label: string;
   tickets: CatalogTicket[];
   families: FidelityScopeFamily[];
+}
+
+/** Current-model facts projected into the existing fidelity scoping shape. */
+export function modelToFidelityManifest(model: CompiledDesignModel): CaseCatalogManifest {
+  const tickets = new Map(model.tickets.map((ticket) => [ticket.id, ticket]));
+  return {
+    schema: "validation-architect/fidelity-scope-adapter/v1",
+    product: model.product.name,
+    families: model.families.map((family) => {
+      const ticket = family.ticket ? tickets.get(family.ticket) : undefined;
+      return {
+        id: family.id,
+        section: family.title,
+        ...(family.layer ? { layers: family.layer.replace(/^L/, "") } : {}),
+        ...(family.oracle ? { oracle: family.oracle } : {}),
+        ...(family.risk ? { risk: family.risk } : {}),
+        status: family.status,
+        ...(family.status === "pruned" ? { prune: family.reason ?? "reviewed prune" } : {}),
+        ...(family.blocked_by ? { blocked_by: family.blocked_by } : {}),
+        ...(family.reason ? { reason: family.reason } : {}),
+        ...(ticket ? { ticket: ticket.id, wave: ticket.wave } : {}),
+        ...(family.evidence ? { evidence_path: family.evidence.path, evidence_state: family.evidence.state } : {}),
+      };
+    }),
+    tickets: model.tickets.map((ticket) => ({ id: ticket.id, name: ticket.title, wave: ticket.wave, status: ticket.status === "landed" ? "landed" : "pending", families: ticket.family_ids })),
+  };
+}
+
+function inventorySpecs(inventory: TestInventory): Array<{ path: string; citations: string[] }> {
+  return inventory.tests.map((test) => ({ path: test.path, citations: test.family_ids }));
 }
 
 /**
@@ -215,31 +247,37 @@ export async function runFidelityAudit(
     ...(opts.manifestPath !== undefined ? { manifestPath: opts.manifestPath } : {}),
     ...(opts.testsRoot !== undefined ? { testsRoot: opts.testsRoot } : {}),
   };
-  const trace = runTrace(targetRoot, traceOpts);
-  if (!trace.ok || !trace.manifest) {
+  const currentModel = opts.manifestPath === undefined && existsSync(join(targetRoot, "validation-design", "model", "project.yaml"));
+  const modelTrace = currentModel ? runModelTrace(targetRoot, { ...(opts.testsRoot ? { testsRoot: opts.testsRoot } : {}) }) : undefined;
+  const legacyTrace = currentModel ? undefined : runTrace(targetRoot, traceOpts);
+  const traceOk = modelTrace?.ok ?? legacyTrace?.ok ?? false;
+  const manifest = modelTrace?.model ? modelToFidelityManifest(modelTrace.model) : legacyTrace?.manifest;
+  const specs = modelTrace?.inventory ? inventorySpecs(modelTrace.inventory) : legacyTrace?.specs ?? [];
+  const traceReds = modelTrace?.reds ?? legacyTrace?.reds ?? ["trace adapter produced no result"];
+  if (!traceOk || !manifest) {
     return {
       status: "refused-closure",
-      reds: trace.reds,
+      reds: traceReds,
       findings: [],
       violations: [],
-      report: `# Fidelity audit — REFUSED\n${revisionReportLines(opts.targetRevision)}\nClosure is red; fix closure before asking for judgment (guardrails-enforce before evals-measure, applied recursively). Trace findings:\n\n${trace.reds.map((r) => `- ${r}`).join("\n")}\n`,
+      report: `# Fidelity audit — REFUSED\n${revisionReportLines(opts.targetRevision)}\nClosure is red; fix closure before asking for judgment (guardrails-enforce before evals-measure, applied recursively). Trace findings:\n\n${traceReds.map((r) => `- ${r}`).join("\n")}\n`,
     };
   }
 
-  const scope = resolveFidelityScope(trace.manifest, specsByFamily(trace.manifest, trace.specs), {
+  const scope = resolveFidelityScope(manifest, specsByFamily(manifest, specs), {
     ...(opts.wave !== undefined ? { wave: opts.wave } : {}),
     ...(opts.tickets !== undefined ? { tickets: opts.tickets } : {}),
   });
-  const prompt = fidelityAuditorPrompt(scope, trace.manifest.product);
+  const prompt = fidelityAuditorPrompt(scope, manifest.product);
   const text = await auditor.run(prompt, targetRoot);
   const violations = [...checkFidelityReportFormat(text), ...checkFidelityReportCompleteness(text, scope)];
   const findings = parseFindings(text, FIDELITY_ITERATION);
 
-  const header = `# Fidelity audit${trace.manifest.product ? ` — ${trace.manifest.product}` : ""}
+  const header = `# Fidelity audit${manifest.product ? ` — ${manifest.product}` : ""}
 mode: fidelity
 scope: ${scope.label}
 date: ${new Date().toISOString().slice(0, 10)}
-${revisionReportLines(opts.targetRevision)}closure: green (${trace.specs.length} spec files scanned)
+${revisionReportLines(opts.targetRevision)}closure: green (${specs.length} spec files scanned)
 findings: ${findings.length}${violations.length > 0 ? `\nPROTOCOL-VIOLATION: ${violations.join("; ")}` : ""}
 
 Findings only — remediation belongs to the product repo's coding agents (route

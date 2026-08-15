@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateManifest, serializeManifest } from "./catalog.js";
 import { runTrace } from "./trace.js";
+import { runModelTrace } from "./model-trace.js";
 
 /**
  * validation-trace — deterministic design→implementation closure checks
@@ -11,9 +12,9 @@ import { runTrace } from "./trace.js";
  */
 
 const USAGE = `usage:
-  validation-trace <target-repo> [--manifest <path>] [--tests <path>] [--out <report.md>] [--quiet]
-      Run catalog/backlog agreement, spec-structure, forward, backward, and
-      status-honesty checks, and render the trace report.
+  validation-trace <target-repo> [--model <path> | --manifest <path>] [--tests <path>] [--out <report.md>] [--quiet]
+      --model runs the current checked-model relationship graph. --manifest
+      preserves the explicit legacy catalog/header inventory adapter.
       Exit code: 0 all green, 1 any red, 2 usage/setup error.
 
   validation-trace generate <case-catalog.md> <harness-backlog.md> [--product <name>]
@@ -87,7 +88,10 @@ function cmdCheck(args: string[]): number {
   const tests = flags.get("tests");
   if (tests) opts.testsRoot = tests;
 
-  const result = runTrace(resolve(target), opts);
+  const model = flags.get("model");
+  const result = model
+    ? runModelTrace(resolve(target), { modelPath: model, ...(tests ? { testsRoot: tests } : {}) })
+    : runTrace(resolve(target), opts);
   const out = flags.get("out");
   if (out) writeFileSync(resolve(out), result.report);
   if (flags.get("quiet") !== "true") process.stdout.write(result.report);
@@ -96,7 +100,9 @@ function cmdCheck(args: string[]): number {
     for (const r of result.reds) console.error(`  - ${r}`);
     return 1;
   }
-  console.error("\n[validation-trace] green — agreement, spec structure, forward, backward, and status-honesty closure hold.");
+  console.error(model
+    ? "\n[validation-trace] green — checked-model relationship closure holds; fidelity remains separate."
+    : "\n[validation-trace] green — legacy agreement, spec structure, forward, backward, and status-honesty closure hold.");
   return 0;
 }
 

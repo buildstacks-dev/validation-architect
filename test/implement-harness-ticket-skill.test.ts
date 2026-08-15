@@ -6,13 +6,21 @@ const skillPath = resolve(__dirname, "..", "skill", "implement-harness-ticket", 
 
 /** Basenames from the standard validation-design corpus layout (Enable leg). */
 const KNOWN_CORPUS_ARTIFACTS = new Set([
+  "project.yaml",
+  "owners.yaml",
+  "sources.yaml",
+  "structures.yaml",
+  "policy.yaml",
+  "controls.yaml",
+  "families.yaml",
+  "backlog.yaml",
   "case-catalog.md",
-  "case-catalog.yaml",
   "harness-backlog.md",
   "invariants.md",
   "boundary-map.md",
   "llm-eval-plan.md",
-  "validation-policy.yaml",
+  "compiler-report.json",
+  "planned-trace.md",
   "agents-md-contribution.md",
   "risk-allocation.md",
   "system-map.md",
@@ -57,7 +65,7 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     // Four-level resolution chain
     expect(text).toMatch(/four-level|four level/);
     expect(text).toContain("harness-backlog.md");
-    expect(text).toContain("case-catalog.yaml");
+    expect(text).toContain("model/families.yaml");
     expect(text).toMatch(/enumeration/);
     expect(text).toMatch(/invariants\.md|boundary-map|contracts/);
     expect(text).toContain("acceptance/");
@@ -72,10 +80,10 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toMatch(/green by absence|no green by absence/);
     expect(text).toMatch(/detector-deposit|detector deposit/);
 
-    // File/header conventions (issue #4)
-    expect(text).toMatch(/cf-inv-001|family id/);
-    expect(text).toMatch(/spec file headers|headers cite/);
-    expect(text).toMatch(/pending wave/);
+    // Model-native trace conventions and explicit legacy boundary
+    expect(text).toMatch(/repository adapter.*explicit family\/control links|explicit family\/control links/);
+    expect(text).toMatch(/legacy.*--manifest/);
+    expect(text).toMatch(/observed.*before.*landed/);
     expect(text).toMatch(/same change/);
 
     // Structural escalation + architect boundary

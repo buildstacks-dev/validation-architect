@@ -13,9 +13,9 @@ Every ticket implements **closure over ratified design**, not ad-hoc test ideas.
 
 | Level | Source | What you resolve |
 | --- | --- | --- |
-| **1. Ticket** | `harness-backlog.md` | The `HB-*` entry: acceptance criteria, defended invariants/contracts, assigned validation layer(s), wave, executor. This is scope and done-ness — not the case list. |
-| **2. Family** | `case-catalog.md` + `case-catalog.yaml` | Every `CF-*` ID the ticket owns. Read the markdown row for human intent; treat the manifest row as authoritative for tools (layer, oracle, risk, status, prune/blocked, owning ticket, wave). |
-| **3. Enumeration** | Upstream artifact for that family type | The **ratified seeds** that define case count. Invariant families → seeds/clauses in `invariants.md`. Boundary families → failure modes / honest-fake obligations in `boundary-map.md` and `contracts/`. Journey families → matrix cells in `case-catalog.md` cross-linked to journeys in `system-map.md`. Eval families → scenarios/rubrics in `llm-eval-plan.md`. Outcome-acceptance (`L-ACC`) families → realistic scenario briefs, rubric axes, campaign invariants, intermediate-gate behavior, and incomplete/inconclusive terminals in `acceptance/`. **Never invent cases** — expand the enumeration; if the catalog says "4 ratified seeds", you land four (or fewer only when a seed is explicitly `BLOCKED:` / deferred with a catalog note). |
+| **1. Ticket** | `model/backlog.yaml` + generated `harness-backlog.md` | The `HB-*` entry: owned families, wave, status, owner, and dependencies. The YAML is authority; Markdown is the readable projection. |
+| **2. Family** | `model/families.yaml` + generated `case-catalog.md` | Every `CF-*` ID the ticket owns, with protected meaning, structures, layer, oracle, risk, status, controls, planned tests/evidence, and exclusions. |
+| **3. Enumeration** | `model/structures.yaml` plus authored rationale/golden material | The ratified seeds that define case count. Follow each family's structure and provenance IDs to the exact journey, invariant, boundary, contract, interface, model site, operation, or acceptance material. **Never invent cases** — a missing meaning or seed is a design-revision finding. |
 | **4. Tests** | Product repo test tree | Spec files at the ticket's assigned layer, each binding one or more enumeration items, each with a real negative control. Directory + header conventions below so `validation-trace` stays green. |
 
 **Case-count rule:** the number of implementable checks is the closure of level 3. A ticket that "feels done" with two tests when the enumeration has seven seeds is not done — it is a fidelity gap waiting for audit.
@@ -28,19 +28,23 @@ These apply regardless of product or repo. They are the same discipline the desi
 2. **Red-then-green negative controls.** Every new detector family proves it can fire before it proves the system passes: seed a violation (mutated fixture, planted defect, double scripted to misbehave), expect red, then fix forward to green. A spec that has only ever been green is an assumption.
 3. **Non-empty walks.** Scanners, sweeps, and property-test generators must assert they found subjects. An empty walk fails — never passes silently.
 4. **Tighten-only.** No ticket weakens a gate, golden set, or oracle to make CI green. Narrowing scope requires a design revision, not a local edit.
-5. **No green by absence.** Passing because nothing was exercised, because a stub returned success, or because a lane is undeclared-empty is forbidden. Declared-empty lanes belong in `validation-policy.yaml` with a reason.
+5. **No green by absence.** Passing because nothing was exercised, because a stub returned success, or because a lane is undeclared-empty is forbidden. Declared-empty lanes belong in `model/policy.yaml` with a reason.
 6. **Detector-deposit for defect fixes.** When implementation fixes a defect surfaced during this ticket, deposit the deterministic detector in the **same change** — the fix without a guard is incomplete.
 
-Authoritative policy text may also live in `validation-policy.yaml` (`case_sourcing:` and gate blocks). On conflict, the ratified corpus wins; do not improvise softer rules.
+The compiler-clean model is authoritative. On conflict with a generated view, fix the YAML source and recompile; do not improvise softer rules or patch the projection.
 
-## Traceability conventions (issue #4)
+## Traceability conventions
 
 Follow these so the trace CLI closes by construction. They mirror the AGENTS.md contribution block the design campaign emitted.
 
-1. **Test directories named by family ID.** Specs for `CF-INV-001` live under a directory whose name contains `cf-inv-001` (case-insensitive); likewise for every family. Shared helpers/fixtures that are not family-scoped may sit beside them.
-2. **Spec file headers cite family + ticket + upstream section.** The first comment block of every `*.test.*` / `*.spec.*` file names the `CF-…` family it exercises, the `HB-…` ticket that owns it, and the invariant/contract/boundary clause it binds to. Unknown citations are orphans — backward closure turns red.
-3. **Every implementable family owns ≥1 spec or a declared pending wave.** Non-pruned, non-blocked families without citing specs must remain on a backlog ticket whose status is **not** `LANDED`. Never mark a ticket `LANDED` while its families lack specs.
-4. **Traceability updates in the same change as the tests.** Adding, moving, or deleting citing specs updates `case-catalog.yaml` (and `case-catalog.md`, which must agree), plus backlog status annotations, in the **same PR** — never a follow-up commit.
+1. **Keep the model authoritative.** Tests implement family meaning; they do not define it. The repository adapter emits explicit family/control links at the exact revision.
+2. **Match planned paths and controls.** Land every planned test/evidence artifact and the declared negative control. Always-run safety checks stay paired in impact advice.
+3. **Keep status honest.** Every implementable family must be observed by the modern trace graph before a ticket becomes `landed`; absence is red, and false landed status is a second red.
+4. **Update traceability in the same change.** If planned paths, meaning, control links, or status change, update `model/families.yaml`, `controls.yaml`, or `backlog.yaml` and recompile. Never hand-edit generated projections.
+
+If a host still invokes the explicit legacy `--manifest` adapter, retain its
+family-named directories and first-comment `CF-*` / `HB-*` citations. Those
+tokens are inventory adapter syntax, not design authority.
 
 Example header shape (adapt suffix/path to the repo's test runner):
 
@@ -57,7 +61,7 @@ describe("CF-W01-R", () => {
 Stop implementation and escalate when the ticket **requires a shape the ratified corpus does not have**:
 
 - A **new journey**, boundary, invariant, contract clause, or eval scenario that is not already enumerated (or explicitly marked `PROPOSED` / open finding) in the design artifacts.
-- Renaming or splitting case families without a manifest + catalog revision.
+- Renaming or splitting case families without a reviewed model revision and regenerated views.
 - Moving a check to a different validation layer for convenience rather than falsifiability.
 
 That is a **structural change**, not a backlog ticket. Do **not** pile ad-hoc cases onto the wrong shape or silently extend the catalog. Instead:
@@ -69,34 +73,36 @@ Mechanical closure (`validation-trace` green) is not permission to invent design
 
 ## Corpus layout (where to read)
 
-Standard campaign deliverables live under `validation-design/` (path may differ if `validation-policy.yaml` declares another root — follow the policy):
+Standard campaign deliverables live under `validation-design/`:
 
 | Artifact | Role in this workflow |
 | --- | --- |
-| `harness-backlog.md` | Ticket queue, waves, acceptance, `LANDED` / pending status |
-| `case-catalog.md` | Human case-family register; enumeration summaries |
-| `case-catalog.yaml` | Machine-readable manifest — layers, tickets, prune/blocked |
-| `invariants.md` | Invariant IDs and falsifiable seeds |
-| `boundary-map.md` | Boundaries, honest fakes, failure-mode matrix |
-| `contracts/` | Per-boundary clauses and oracles |
-| `system-map.md` | Journeys, components, state ownership |
-| `llm-eval-plan.md` | Eval scenarios, rubrics, thresholds |
+| `model/project.yaml` | Product revision and exact schema/method versions |
+| `model/owners.yaml` + `sources.yaml` | Responsibility and provenance |
+| `model/structures.yaml` | Journeys, invariants, boundaries, contracts, interfaces, sites, operations |
+| `model/policy.yaml` | Fail-closed lanes and tighten-only inheritance |
+| `model/controls.yaml` | Negative-control obligations |
+| `model/families.yaml` | Authoritative family meaning, links, layer/oracle/risk, status, plans/evidence |
+| `model/backlog.yaml` | Authoritative ticket ownership, wave, status, dependencies |
+| `case-catalog.md` + `harness-backlog.md` | Generated readable projections |
+| `planned-trace.md` + `compiler-report.json` | Generated planned closure and exact model identity |
 | `acceptance/` | `L-ACC` rubric, realistic scenario briefs, sealed-plant policy, campaign-invariant registry |
-| `validation-policy.yaml` | Gates, layer declarations, tighten-only policy |
-| `risk-allocation.md` | Risk tiers backing catalog rows |
 | `agents-md-contribution.md` | Routing + traceability conventions for coding agents |
 
-Owner-facing companions (`owner-briefing.md`, `owner-backlog.md`) are non-normative follow-alongs — on disagreement, the artifacts above win.
+Owner-facing companions are compiler-generated, non-normative follow-alongs — on disagreement, the YAML model wins.
 
 ## Workflow (one ticket)
 
 1. **Select the ticket.** Start from the `HB-*` entry routed to you. Read acceptance criteria, defended IDs, and layer assignment. If status is already `LANDED`, confirm the human intends rework; otherwise prefer pending tickets.
-2. **Resolve families.** List every `CF-*` on the ticket. For each, read the catalog row and manifest entry. Respect `pruned`, `blocked`, and `BLOCKED:*` remainder legs — implement only implementable rows; do not "helpfully" cover pruned dupes.
+2. **Resolve families.** List every `CF-*` on the ticket. Read each authoritative family row and its generated catalog projection. Respect `pruned` and `blocked` status; implement only implementable rows.
 3. **Expand enumerations.** For each family, open the upstream artifact and write down every seed/failure mode/clause you must bind. That list is your case checklist; its length is not negotiable.
-4. **Place at layer.** Use the family's assigned layer(s) from the manifest. Build hermetic doubles per `boundary-map.md` / contracts when layer 2; reserve live/eval for seams the design marks non-fakeable. For `L-ACC`, implement the ratified realistic scenarios and scored axes without translating them into binary assertions; put sealed-answer, producer↔grader independence, preflight, spend cutoff, intermediate-gate persistence, and incomplete/inconclusive behavior in layers 1–2 with negative controls. Never run the live campaign without the ticket's explicit per-campaign human authorization.
+4. **Place at layer.** Use the family's assigned layer and oracle from the model. Build hermetic doubles for fakeable layer-2 seams; reserve live/eval for declared evidence lanes. For `L-ACC`, keep scored axes human-rubric based and mechanical guardrails in layers 1–2. Never run a live campaign without explicit per-campaign human authorization.
 5. **Land red-then-green.** For each detector family: failing seed → green fix. Include negative-control tests in the same spec file where the design expects them.
-6. **Update traceability.** Same change: spec files, directory names, headers, manifest rows if counts/status changed, markdown catalog if human table changed, backlog ticket status (`LANDED` only when every owned implementable family has citing specs).
+6. **Update traceability.** Same change: spec files, directory names, headers, and any affected model planned paths or ticket status. Mark `landed` only when every owned implementable family has citing specs, then recompile all generated views.
 7. **Run closure.** Execute `validation-trace` against the repo root (see below). Fix every red before declaring the ticket done. Green closure does not replace fidelity audit — it proves the graph is wired, not that oracles match intent.
+
+For evidence lanes, missing, stopped, stale, or unauthorized work remains
+`incomplete` / `inconclusive`; it never becomes pass by omission.
 
 ## Verify with `validation-trace`
 
@@ -105,16 +111,17 @@ The architect ships a deterministic, product-agnostic CLI in the `validation-arc
 ```bash
 pnpm add --save-dev --save-exact validation-architect@<pinned-version>
 pnpm exec validation-trace . \
-  --manifest validation-design/case-catalog.yaml \
+  --model validation-design/model \
   --tests <tests_root>
 ```
 
 It fail-closes on:
 
-- **Forward** — implementable family with no citing spec and no declared pending wave
-- **Backward** — spec cites an unknown family (orphan)
+- **Forward** — implementable family with no observed test/evidence
+- **Backward** — inventory cites an unknown family (orphan)
 - **Status honesty** — ticket marked `LANDED` but families lack specs
-- **Agreement** — `case-catalog.yaml` disagrees with `case-catalog.md`
+- **Relationship closure** — broken owner/source/control/planned/evidence links or identity mismatch
+- **Generated drift** — a projection disagrees with the compiled model identity
 
 Optional: `--out trace-report.md` for the human-facing trace report. Exit code `0` only when all checks pass.
 
