@@ -1,12 +1,23 @@
 # Public API
 
 The supported import surface lives in `src/api/` and is re-exported from one
-module (`src/api/index.ts`; the packaging workstream maps it to the package
-`exports`). Importing it performs no effect: no file read, socket, subprocess,
+module (`src/api/index.ts`; the package `exports` map serves it as the root
+import). Importing it performs no effect: no file read, socket, subprocess,
 credential, or provider SDK. Result/plan/corpus meaning is owned by the core
 protocol ([core-protocol.md](core-protocol.md)); this layer only exposes and
 runtime-validates it. Naming and schema IDs are ratified in the
 [decision record](decisions/2026-08-15-public-naming-and-license.md).
+
+**Install.** `npm install --save-dev --save-exact validation-architect` and
+`import { check, plan, design, … } from "validation-architect"`; the six
+schema assets are importable as
+`validation-architect/schemas/<name>.schema.json`, and deep imports into
+`dist/` are refused by the `exports` map. Standalone provider-bound campaigns
+install the lockstep companion package `validation-architect-design` (its CLI
+composes `design`/`resume` with local fs/git/store/SDK adapters). The
+`validation-architect` CLI (`check`/`compile`/`plan`/`explain`/`report`) ships
+with the core package; `validation-trace` stays a deprecated alias for
+`validation-architect check` until 1.0.
 
 ## The effect boundary: three ports
 

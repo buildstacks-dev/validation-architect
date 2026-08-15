@@ -1,4 +1,9 @@
-name: validation-trace
+# Historically named validation-trace.yml: the gate now runs
+# `validation-architect check` (the `validation-trace` bin remains a
+# deprecated alias for the same closure check through 0.x and is removed at
+# 1.0). The filename is kept so existing product-repo references survive one
+# more enablement refresh; rename it freely when adopting.
+name: validation-architect-check
 
 on:
   pull_request:
@@ -16,4 +21,4 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: Check design-to-implementation closure
-        run: pnpm exec validation-trace . --model validation-design/model
+        run: pnpm exec validation-architect check .

@@ -22,20 +22,14 @@ describe("package distribution contract", () => {
     expect(pkg.files).toEqual([
       "LICENSE.md",
       "THIRD-PARTY-NOTICES.md",
+      "bin/validation-architect.js",
       "bin/validation-trace.js",
-      "dist/catalog.js",
-      "dist/model-compiler.js",
-      "dist/model-inventory.js",
-      "dist/model-trace.js",
-      "dist/model-validation.js",
-      "dist/model-views.js",
-      "dist/model.js",
-      "dist/relationship-graph.js",
-      "dist/trace-cli.js",
-      "dist/trace.js",
-      "dist/versions.js",
+      "dist/**",
+      "schemas/**",
       "enablement/**",
-      "skill/implement-harness-ticket/SKILL.md",
+      "skill/validation-harness-design/**",
+      "skill/validation-harness-audit/**",
+      "skill/implement-harness-ticket/**",
     ]);
     expect(pkg.files).not.toEqual(expect.arrayContaining(["src/**", "test/**", "fixtures/**"]));
     expect(pkg.scripts?.prepack).toContain("build");
@@ -63,8 +57,11 @@ describe("package distribution contract", () => {
   });
 
   it("runs compiled JavaScript without tsx", () => {
-    const bin = readFileSync(resolve(root, "bin", "validation-trace.js"), "utf8");
-    expect(bin).toContain("dist/trace-cli.js");
-    expect(bin).not.toMatch(/tsx|src\/trace-cli\.ts/);
+    const alias = readFileSync(resolve(root, "bin", "validation-trace.js"), "utf8");
+    expect(alias).toContain("dist/trace-cli.js");
+    expect(alias).not.toMatch(/tsx|src\/trace-cli\.ts/);
+    const core = readFileSync(resolve(root, "bin", "validation-architect.js"), "utf8");
+    expect(core).toContain("dist/core-cli.js");
+    expect(core).not.toMatch(/tsx|src\/core-cli\.ts/);
   });
 });

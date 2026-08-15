@@ -92,8 +92,10 @@ and the anti-yes-loop design.
   this repo's own artifacts, not copies of anything upstream. Change them here.
   They are a contract pair: the design skill defines the artifact set and the
   audit skill measures conformance against it, so a change to one that the
-  other must know about lands in the same commit, with both `VERSION` and
-  `CHANGELOG.md` updated.
+  other must know about lands in the same commit, with both `CHANGELOG.md`
+  files updated. The skills carry no standalone `VERSION` file or contract
+  manifest — they version through the package (`METHOD_VERSION` in
+  `src/versions.ts`), and `test/six-layer-contract.test.ts` enforces it.
 - **Resumability is a contract.** Every orchestrator change must keep the
   `state.json` pending-message invariant: any crash point resumes via
   `vda resume` without repeating or dropping a turn. This covers the audit

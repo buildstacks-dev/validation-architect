@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { METHOD_VERSION } from "../src/versions.js";
 
 const root = resolve(__dirname, "..");
 const read = (path: string): string => readFileSync(resolve(root, path), "utf8");
@@ -37,12 +38,15 @@ describe("six-layer design/audit contract", () => {
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
   });
 
-  it("versions the design and audit contract pair together", () => {
-    const designVersion = read("skill/validation-harness-design/VERSION").trim();
-    const auditVersion = read("skill/validation-harness-audit/VERSION").trim();
-    expect(designVersion).toBe("0.7.0");
-    expect(auditVersion).toBe(designVersion);
-    expect(read("skill/validation-harness-design/CHANGELOG.md")).toContain(`## ${designVersion}`);
-    expect(read("skill/validation-harness-audit/CHANGELOG.md")).toContain(`## ${auditVersion}`);
+  it("versions the skills through the package, not standalone VERSION files", () => {
+    // Package-version conformance (VA-PKG-001): the skills ship inside the
+    // core package and follow its declared METHOD_VERSION. They keep their
+    // CHANGELOG.md files; separate VERSION files and contract manifests are
+    // gone — the package version is the only version a consumer installs.
+    expect(existsSync(resolve(root, "skill/validation-harness-design/VERSION"))).toBe(false);
+    expect(existsSync(resolve(root, "skill/validation-harness-audit/VERSION"))).toBe(false);
+    expect(existsSync(resolve(root, "skill/implement-harness-ticket/VERSION"))).toBe(false);
+    expect(read("skill/validation-harness-design/CHANGELOG.md")).toContain(`## ${METHOD_VERSION}`);
+    expect(read("skill/validation-harness-audit/CHANGELOG.md")).toContain(`## ${METHOD_VERSION}`);
   });
 });

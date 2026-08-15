@@ -1,3 +1,21 @@
+/**
+ * Two-tarball offline packaging smoke (VA-PKG-001).
+ *
+ * Builds and packs BOTH publishable packages, then proves in an ISOLATED
+ * consumer (no workspace linkage):
+ *   1. the CORE tarball serves the full public API with yaml as its only
+ *      runtime dependency (no provider SDK), an exports map that refuses
+ *      deep imports, working bins (validation-architect + the deprecated
+ *      validation-trace alias with its deterministic warning), the license
+ *      pair, all three complete skill trees, all six schema assets, and no
+ *      skill VERSION file;
+ *   2. the DESIGN tarball's packed manifest depends on validation-architect
+ *      at the EXACT version (workspace:* rewritten, no range), installs
+ *      alongside the core tarball, and answers --help offline.
+ * Plus the target-repo behavior: `validation-architect check` against a
+ * committed model corpus, and the alias's preserved legacy trace path.
+ */
+
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -10,7 +28,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(join(tmpdir(), "validation-architect-package-smoke-"));
@@ -30,53 +48,88 @@ function run(command, args, cwd, env = {}) {
   return result;
 }
 
+/** Like run() but returns the result whatever the exit code. */
+function tryRun(command, args, cwd) {
+  return spawnSync(command, args, { cwd, encoding: "utf8", env: { ...process.env } });
+}
+
+const git = (cwd, args) =>
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+
+const TRACE_WARNING =
+  'validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.';
+
 try {
+  // ── build + pack both packages ─────────────────────────────────────────────
   const packDir = join(scratch, "pack");
   mkdirSync(packDir);
-  // Build explicitly so the smoke can select an already-cached pnpm binary;
-  // avoid a nested lifecycle shell resolving a different package manager.
   run(packageManager, ["run", "build"], repoRoot);
+  run(packageManager, ["-C", "design", "run", "build"], repoRoot);
   run(packageManager, ["pack", "--config.ignore-scripts=true", "--pack-destination", packDir], repoRoot);
+  run(
+    packageManager,
+    ["-C", "design", "pack", "--config.ignore-scripts=true", "--pack-destination", packDir],
+    repoRoot,
+  );
   const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-  if (tarballs.length !== 1) throw new Error(`expected one tarball, found ${tarballs.length}`);
-  const tarball = join(packDir, tarballs[0]);
+  const coreTarballName = tarballs.find((name) => name.startsWith("validation-architect-0"));
+  const designTarballName = tarballs.find((name) => name.startsWith("validation-architect-design-"));
+  if (!coreTarballName || !designTarballName || tarballs.length !== 2) {
+    throw new Error(`expected exactly the two package tarballs, found: ${tarballs.join(", ")}`);
+  }
+  const coreTarball = join(packDir, coreTarballName);
+  const designTarball = join(packDir, designTarballName);
 
-  const listed = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" })
-    .trim()
-    .split("\n");
-  for (const forbidden of [
-    /^package\/test\//,
-    /^package\/fixtures\//,
-    /^package\/src\//,
-    /fixture\.yaml$/,
-    /rambling\.txt$/,
-    /STANDALONE_REVIEWER_PROMPT/,
-  ]) {
+  // ── core tarball listing ───────────────────────────────────────────────────
+  const listed = execFileSync("tar", ["-tzf", coreTarball], { encoding: "utf8" }).trim().split("\n");
+  for (const forbidden of [/^package\/test\//, /^package\/fixtures\//, /^package\/src\//, /rambling\.txt$/, /\/VERSION$/]) {
     if (listed.some((path) => forbidden.test(path))) {
-      throw new Error(`package contains forbidden content matching ${forbidden}`);
+      throw new Error(`core package contains forbidden content matching ${forbidden}`);
     }
   }
-  for (const required of [
+  const requiredCoreFiles = [
     "package/LICENSE.md",
     "package/THIRD-PARTY-NOTICES.md",
+    "package/bin/validation-architect.js",
     "package/bin/validation-trace.js",
+    "package/dist/api/index.js",
+    "package/dist/api/index.d.ts",
+    "package/dist/core-cli.js",
     "package/dist/trace-cli.js",
-    "package/skill/implement-harness-ticket/SKILL.md",
+    "package/schemas/corpus.v1.schema.json",
+    "package/schemas/case-catalog.v1.schema.json",
+    "package/schemas/result.v1.schema.json",
+    "package/schemas/plan.v1.schema.json",
+    "package/schemas/design-run.v1.schema.json",
+    "package/schemas/provenance.v1.schema.json",
     "package/enablement/INSTALL.md",
     "package/enablement/ci/validation-trace.yml",
-  ]) {
-    if (!listed.includes(required)) throw new Error(`package is missing ${required}`);
+  ];
+  for (const required of requiredCoreFiles) {
+    if (!listed.includes(required)) throw new Error(`core package is missing ${required}`);
+  }
+  // ALL THREE complete skill trees: every git-tracked file under each skill
+  // directory must be in the packed listing (reference closure by superset).
+  for (const skill of ["validation-harness-design", "validation-harness-audit", "implement-harness-ticket"]) {
+    const trackedSkillFiles = git(repoRoot, ["ls-files", `skill/${skill}`]).trim().split("\n").filter(Boolean);
+    if (trackedSkillFiles.length === 0) throw new Error(`skill tree ${skill} has no tracked files`);
+    for (const file of trackedSkillFiles) {
+      // npm packing always drops ignore files themselves.
+      if (file.endsWith(".gitignore") || file.endsWith(".npmignore")) continue;
+      if (!listed.includes(`package/${file}`)) {
+        throw new Error(`core package is missing skill file ${file} (skill trees must ship whole)`);
+      }
+    }
   }
 
+  // ── core packed manifest, license, install pin, bins ───────────────────────
   const extracted = join(scratch, "extracted");
   mkdirSync(extracted);
-  execFileSync("tar", ["-xzf", tarball, "-C", extracted]);
+  execFileSync("tar", ["-xzf", coreTarball, "-C", extracted]);
   const packageRoot = join(extracted, "package");
   const packedManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
   if (packedManifest.license !== "LicenseRef-FSL-1.1-MIT") {
-    throw new Error(
-      `packed package license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`,
-    );
+    throw new Error(`packed core license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`);
   }
   const packedLicense = readFileSync(join(packageRoot, "LICENSE.md"), "utf8");
   if (!packedLicense.includes("FSL-1.1-MIT") || !packedLicense.includes("Copyright 2026 Bikram Gupta")) {
@@ -85,29 +138,70 @@ try {
   if (/\$\{(year|licensor name)\}/.test(packedLicense)) {
     throw new Error("packed LICENSE.md still contains template placeholders");
   }
+  const dependencyNames = Object.keys(packedManifest.dependencies ?? {});
+  if (dependencyNames.length !== 1 || dependencyNames[0] !== "yaml") {
+    throw new Error(`core runtime dependencies must be exactly [yaml], got [${dependencyNames.join(", ")}]`);
+  }
   const install = readFileSync(join(packageRoot, "enablement", "INSTALL.md"), "utf8");
-  if (
-    install.includes("{{PACKAGE_VERSION}}") ||
-    !install.includes(`validation-architect@${packedManifest.version}`)
-  ) {
+  if (install.includes("{{PACKAGE_VERSION}}") || !install.includes(`validation-architect@${packedManifest.version}`)) {
     throw new Error("packed enablement INSTALL does not pin the concrete package version");
   }
-  const bin = join(packageRoot, "bin", "validation-trace.js");
-  if (/tsx|src\/trace-cli\.ts/.test(readFileSync(bin, "utf8"))) {
-    throw new Error("production bin still depends on TypeScript dev tooling");
+  if (!install.includes("validation-architect check")) {
+    throw new Error("packed enablement INSTALL does not migrate to `validation-architect check`");
+  }
+  const ciTemplate = readFileSync(join(packageRoot, "enablement", "ci", "validation-trace.yml"), "utf8");
+  if (!ciTemplate.includes("validation-architect check")) {
+    throw new Error("packed CI template does not invoke `validation-architect check`");
+  }
+  for (const bin of ["validation-architect.js", "validation-trace.js"]) {
+    if (/tsx|src\/(trace|core)-cli\.ts/.test(readFileSync(join(packageRoot, "bin", bin), "utf8"))) {
+      throw new Error(`production bin ${bin} still depends on TypeScript dev tooling`);
+    }
   }
 
-  const target = join(scratch, "target");
-  mkdirSync(join(target, "validation-design"), { recursive: true });
-  mkdirSync(join(target, "tests", "cf-smoke-001"), { recursive: true });
-  writeFileSync(
-    join(target, "validation-design", "case-catalog.yaml"),
-    `schema: validation-architect/case-catalog/v1\nproduct: smoke\nconventions:\n  tests_root: tests\nfamilies:\n  - id: CF-SMOKE-001\n    section: Smoke\n    layers: "1"\n    oracle: contract\n    risk: low\n    status: implementable\n    ticket: HB-001\n    wave: "1"\ntickets:\n  - id: HB-001\n    title: Smoke\n    status: landed\n    wave: "1"\n    families: [CF-SMOKE-001]\n`,
-  );
-  writeFileSync(
-    join(target, "tests", "cf-smoke-001", "smoke.test.js"),
-    `// CF-SMOKE-001 (HB-001; smoke contract)\nit("smoke", () => {});\n`,
-  );
+  // ── design tarball listing + exact-version manifest ────────────────────────
+  const designListed = execFileSync("tar", ["-tzf", designTarball], { encoding: "utf8" }).trim().split("\n");
+  for (const required of [
+    "package/LICENSE.md",
+    "package/bin/validation-architect-design.js",
+    "package/dist/cli.js",
+    "package/dist/index.js",
+    "package/dist/index.d.ts",
+    "package/dist/provider-port.js",
+  ]) {
+    if (!designListed.includes(required)) throw new Error(`design package is missing ${required}`);
+  }
+  if (designListed.some((path) => /^package\/(src|test)\//.test(path))) {
+    throw new Error("design package must not ship sources or tests");
+  }
+  const designExtracted = join(scratch, "design-extracted");
+  mkdirSync(designExtracted);
+  execFileSync("tar", ["-xzf", designTarball, "-C", designExtracted]);
+  const designManifest = JSON.parse(readFileSync(join(designExtracted, "package", "package.json"), "utf8"));
+  const corePin = designManifest.dependencies?.["validation-architect"];
+  if (corePin !== packedManifest.version || !/^\d+\.\d+\.\d+$/.test(corePin ?? "")) {
+    throw new Error(
+      `packed design manifest must depend on validation-architect at the exact version ${packedManifest.version} (no range or workspace residue), got ${corePin}`,
+    );
+  }
+  if (designManifest.version !== packedManifest.version) {
+    throw new Error(`lockstep violation: design ${designManifest.version} vs core ${packedManifest.version}`);
+  }
+  if (designManifest.license !== "LicenseRef-FSL-1.1-MIT") {
+    throw new Error(`packed design license must be LicenseRef-FSL-1.1-MIT, got ${designManifest.license}`);
+  }
+  const designLicense = readFileSync(join(designExtracted, "package", "LICENSE.md"), "utf8");
+  if (!designLicense.includes("FSL-1.1-MIT") || !designLicense.includes("Copyright 2026 Bikram Gupta")) {
+    throw new Error("packed design LICENSE.md is missing the FSL-1.1-MIT terms or the confirmed holder");
+  }
+  for (const sdk of ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"]) {
+    const pin = designManifest.dependencies?.[sdk];
+    if (!/^\d+\.\d+\.\d+$/.test(pin ?? "")) {
+      throw new Error(`design must pin ${sdk} exactly, got ${pin}`);
+    }
+  }
+
+  // ── vendor the yaml dependency for a fully offline consumer install ───────
   const dependencyPackDir = join(scratch, "dependency-pack");
   mkdirSync(dependencyPackDir);
   run(
@@ -127,34 +221,317 @@ try {
   if (yamlTarballs.length !== 1) throw new Error("could not create local yaml dependency tarball");
   const yamlTarball = join(dependencyPackDir, yamlTarballs[0]);
 
+  // ── isolated consumer: CORE tarball only ───────────────────────────────────
+  const consumer = join(scratch, "consumer");
+  mkdirSync(consumer, { recursive: true });
   writeFileSync(
-    join(target, "package.json"),
-    `${JSON.stringify({
-      private: true,
-      devDependencies: { "validation-architect": `file:${tarball}` },
-    }, null, 2)}\n`,
+    join(consumer, "package.json"),
+    `${JSON.stringify({ private: true, devDependencies: { "validation-architect": `file:${coreTarball}` } }, null, 2)}\n`,
   );
   writeFileSync(
-    join(target, "pnpm-workspace.yaml"),
+    join(consumer, "pnpm-workspace.yaml"),
     `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n`,
   );
-  run(packageManager, ["install", "--offline", "--ignore-scripts"], target, { CI: "true" });
-  const installedBin = join(
-    target,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "validation-trace.cmd" : "validation-trace",
-  );
-  const help = run(installedBin, ["--help"], target);
-  if (!help.stdout.includes("validation-trace <target-repo>")) {
-    throw new Error("installed package help did not render");
+  run(packageManager, ["install", "--offline", "--ignore-scripts", "--config.minimumReleaseAge=0"], consumer, { CI: "true" });
+
+  // Dependency tree: yaml present, NO provider SDK anywhere. pnpm keeps the
+  // real tree under node_modules/.pnpm, so inspect the virtual store.
+  const virtualStore = () =>
+    existsSync(join(consumer, "node_modules", ".pnpm")) ? readdirSync(join(consumer, "node_modules", ".pnpm")) : [];
+  if (!virtualStore().some((entry) => entry.startsWith("yaml@"))) {
+    throw new Error("core install did not bring the yaml runtime dependency");
   }
-  const trace = run(installedBin, [target, "--quiet"], target);
-  if (!trace.stderr.includes("[validation-trace] green")) {
-    throw new Error("clean-target trace did not close green");
+  const forbiddenDependency = (entries) =>
+    entries.find((entry) => entry.includes("claude-agent-sdk") || entry.includes("codex"));
+  {
+    const hit = forbiddenDependency(virtualStore());
+    if (hit) throw new Error(`core install must not bring provider SDKs (found ${hit})`);
   }
 
-  console.log(`package smoke passed: ${tarballs[0]} (${listed.length} entries)`);
+  // Import surface: nine entry points + schema IDs + assets + fakes; deep
+  // imports refused by the exports map.
+  writeFileSync(
+    join(consumer, "surface.mjs"),
+    `
+import { createRequire } from "node:module";
+import {
+  compile, check, explain, plan, ingest, render, migrate, design, resume,
+  PUBLISHED_SCHEMA_IDS, schemaAssetFile, isGreenValidationResult,
+  FakeRepositoryPort, ScriptedTurnPort, InMemoryCampaignStore, PublicContractError,
+} from "validation-architect";
+
+const nine = { compile, check, explain, plan, ingest, render, migrate, design, resume };
+for (const [name, value] of Object.entries(nine)) {
+  if (typeof value !== "function") throw new Error(name + " is not exported as a function");
+}
+for (const fake of [FakeRepositoryPort, ScriptedTurnPort, InMemoryCampaignStore, PublicContractError]) {
+  if (typeof fake !== "function") throw new Error("conformance fake missing");
+}
+if (Object.keys(PUBLISHED_SCHEMA_IDS).length !== 6) throw new Error("expected six published schema IDs");
+const require = createRequire(import.meta.url);
+for (const id of Object.values(PUBLISHED_SCHEMA_IDS)) {
+  const asset = require("validation-architect/schemas/" + schemaAssetFile(id));
+  if (typeof asset !== "object" || asset === null) throw new Error("schema asset unreadable for " + id);
+}
+if (typeof isGreenValidationResult !== "function") throw new Error("isGreenValidationResult missing");
+// The fakes run offline end to end.
+const repo = new FakeRepositoryPort({ revision: "rev-1", files: {} });
+if ((await repo.revision()) !== "rev-1") throw new Error("FakeRepositoryPort broken");
+// Unsupported deep imports must fail (no wildcard into dist).
+try {
+  await import("validation-architect/dist/api/errors.js");
+  throw new Error("deep import into dist unexpectedly succeeded");
+} catch (error) {
+  if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+}
+console.log("surface ok");
+`,
+  );
+  const surface = run("node", ["surface.mjs"], consumer);
+  if (!surface.stdout.includes("surface ok")) throw new Error("consumer surface script did not confirm");
+
+  // ── installed core bins ────────────────────────────────────────────────────
+  const binPath = (name) =>
+    join(consumer, "node_modules", ".bin", process.platform === "win32" ? `${name}.cmd` : name);
+
+  const rootHelp = run(binPath("validation-architect"), ["--help"], consumer);
+  if (!rootHelp.stdout.includes("usage: validation-architect <command>")) {
+    throw new Error("validation-architect --help did not render");
+  }
+  const checkHelp = run(binPath("validation-architect"), ["check", "--help"], consumer);
+  if (!checkHelp.stdout.includes("validation-architect check [dir]")) {
+    throw new Error("validation-architect check --help did not render");
+  }
+  const unknown = tryRun(binPath("validation-architect"), ["frobnicate"], consumer);
+  if (unknown.status !== 2) throw new Error(`unknown command must exit 2, got ${unknown.status}`);
+
+  const aliasHelp = tryRun(binPath("validation-trace"), ["--help"], consumer);
+  if (aliasHelp.status !== 0) throw new Error("validation-trace --help must exit 0");
+  if (!aliasHelp.stderr.includes(TRACE_WARNING)) {
+    throw new Error("validation-trace did not print the deterministic deprecation warning");
+  }
+  if (aliasHelp.stderr.split(TRACE_WARNING).length - 1 !== 1) {
+    throw new Error("the deprecation warning must be exactly one line per invocation");
+  }
+  const aliasGenerate = tryRun(binPath("validation-trace"), ["generate", "a.md", "b.md"], consumer);
+  if (aliasGenerate.status !== 2 || !aliasGenerate.stderr.includes("validation-architect compile")) {
+    throw new Error("validation-trace generate must exit 2 and point at validation-architect compile");
+  }
+
+  // ── target-repo behavior: check against a committed model corpus ───────────
+  const { CURRENT_CORE_VERSIONS } = await import(pathToFileURL(join(repoRoot, "dist", "versions.js")).href);
+  const target = join(scratch, "target");
+  const model = join(target, "validation-design", "model");
+  mkdirSync(model, { recursive: true });
+  mkdirSync(join(target, "docs"), { recursive: true });
+  mkdirSync(join(target, "tests"), { recursive: true });
+  writeFileSync(join(target, "docs", "PRODUCT.md"), "# Product\n\nContract\n");
+  // JSON is valid YAML: the corpus files mirror test/model-corpus-fixture.ts.
+  const writeModel = (name, value) => writeFileSync(join(model, name), `${JSON.stringify(value, null, 2)}\n`);
+  writeModel("project.yaml", {
+    schema: "validation-architect/model/project/v1",
+    product: {
+      id: "smoke-x",
+      name: "Smoke X",
+      revision: "abc123",
+      intended_use: "Packaging smoke fixture",
+      criticality: "C1",
+      criticality_reason: "Synthetic local data with bounded consequences",
+    },
+    versions: CURRENT_CORE_VERSIONS,
+  });
+  writeModel("owners.yaml", {
+    schema: "validation-architect/model/owners/v1",
+    owners: [{ id: "OWN-1", name: "Runtime", responsibility: "Own the validation contract" }],
+  });
+  writeModel("sources.yaml", {
+    schema: "validation-architect/model/sources/v1",
+    sources: [{ id: "SRC-1", kind: "doc", path: "docs/PRODUCT.md", locator: "Contract" }],
+  });
+  writeModel("structures.yaml", {
+    schema: "validation-architect/model/structures/v1",
+    structures: [
+      {
+        id: "CON-1",
+        kind: "contract",
+        title: "Smoke contract",
+        meaning: "The smoke response remains stable",
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+        acceptance_criteria: ["The same controlled request returns the same response without mutation"],
+        changed_paths: ["src/**"],
+      },
+    ],
+  });
+  writeModel("policy.yaml", {
+    schema: "validation-architect/model/policy/v1",
+    default: "blocking",
+    inheritance: "tighten-only",
+    layers: [
+      { id: "L1", title: "Invariant and contract", status: "declared-empty", reason: "Focused L2 fixture" },
+      { id: "L2", title: "Hermetic system", status: "active" },
+      { id: "L3", title: "Live sandbox", status: "declared-empty", reason: "No live target" },
+      { id: "L4", title: "Eval qualification", status: "declared-empty", reason: "No model site" },
+      { id: "L5", title: "Ops hardening", status: "declared-empty", reason: "C1 fixture" },
+      { id: "L6", title: "Outcome acceptance", status: "declared-empty", reason: "No judged output" },
+    ],
+    lanes: [
+      { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- fixture" },
+      { id: "per-commit", title: "Hermetic", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test" },
+      { id: "triggered", title: "Triggered", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No triggered work" },
+      { id: "release", title: "Release", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No release work" },
+      { id: "scheduled", title: "Scheduled", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No scheduled work" },
+    ],
+    exceptions: [],
+  });
+  writeModel("controls.yaml", {
+    schema: "validation-architect/model/controls/v1",
+    controls: [
+      {
+        id: "NC-X01",
+        title: "Smoke mutation",
+        family_id: "CF-X01-S",
+        owner: "OWN-1",
+        expected_failure: "The detector turns red when the stable response changes",
+      },
+    ],
+  });
+  writeModel("families.yaml", {
+    schema: "validation-architect/model/families/v1",
+    families: [
+      {
+        id: "CF-X01-S",
+        title: "Smoke happy path",
+        meaning: "The stable response is preserved",
+        structure_ids: ["CON-1"],
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+        lane: "per-commit",
+        status: "implementable",
+        layer: "L2",
+        oracle: "state",
+        risk: "STD",
+        control_ids: ["NC-X01"],
+        ticket: "HB-001",
+        planned_tests: ["tests/fixture.test.ts"],
+      },
+    ],
+  });
+  writeModel("backlog.yaml", {
+    schema: "validation-architect/model/backlog/v1",
+    tickets: [
+      {
+        id: "HB-001",
+        title: "Minimal harness",
+        wave: "0",
+        status: "pending",
+        owner: "OWN-1",
+        executor: "standing coding agent",
+        lane: "per-commit",
+        layer: "L2",
+        acceptance_criteria: ["The fixture detector and negative control pass in the per-commit lane"],
+        family_ids: ["CF-X01-S"],
+      },
+    ],
+  });
+  writeFileSync(
+    join(target, "tests", "fixture.test.ts"),
+    ["// Family: CF-X01-S", "// Ticket: HB-001", "it('holds', () => {});", ""].join("\n"),
+  );
+  git(scratch, ["init", "-q", "-b", "main", "target"]);
+  git(target, ["add", "-A"]);
+  git(target, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "init"]);
+
+  const checkRun = tryRun(binPath("validation-architect"), ["check", target], consumer);
+  if (checkRun.status !== 0) {
+    throw new Error(`validation-architect check must exit 0 on a closed corpus, got ${checkRun.status}\n${checkRun.stdout}\n${checkRun.stderr}`);
+  }
+  if (!checkRun.stdout.includes("verdict: inconclusive")) {
+    throw new Error(`structural-only evidence must record inconclusive, got:\n${checkRun.stdout}`);
+  }
+
+  // Equivalent coverage of the OLD smoke: the alias's legacy manifest trace
+  // still closes green against a case-catalog fixture, warning included.
+  const legacy = join(scratch, "legacy-target");
+  mkdirSync(join(legacy, "validation-design"), { recursive: true });
+  mkdirSync(join(legacy, "tests", "cf-smoke-001"), { recursive: true });
+  writeFileSync(
+    join(legacy, "validation-design", "case-catalog.yaml"),
+    `schema: validation-architect/case-catalog/v1\nproduct: smoke\nconventions:\n  tests_root: tests\nfamilies:\n  - id: CF-SMOKE-001\n    section: Smoke\n    layers: "1"\n    oracle: contract\n    risk: low\n    status: implementable\n    ticket: HB-001\n    wave: "1"\ntickets:\n  - id: HB-001\n    title: Smoke\n    status: landed\n    wave: "1"\n    families: [CF-SMOKE-001]\n`,
+  );
+  writeFileSync(
+    join(legacy, "tests", "cf-smoke-001", "smoke.test.js"),
+    `// CF-SMOKE-001 (HB-001; smoke contract)\nit("smoke", () => {});\n`,
+  );
+  const aliasTrace = tryRun(binPath("validation-trace"), [legacy, "--quiet"], consumer);
+  if (aliasTrace.status !== 0 || !aliasTrace.stderr.includes("[validation-trace] green")) {
+    throw new Error(`clean-target alias trace did not close green (${aliasTrace.status})\n${aliasTrace.stderr}`);
+  }
+  if (!aliasTrace.stderr.includes(TRACE_WARNING)) {
+    throw new Error("alias trace run must carry the deprecation warning");
+  }
+
+  // ── install the DESIGN tarball alongside, core dep → core tarball ──────────
+  writeFileSync(
+    join(consumer, "package.json"),
+    `${JSON.stringify(
+      {
+        private: true,
+        devDependencies: {
+          "validation-architect": `file:${coreTarball}`,
+          "validation-architect-design": `file:${designTarball}`,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  // Offline resolution must land on versions already in the pnpm store, so
+  // pin every unambiguous transitive version the ROOT workspace resolved
+  // (skipping names the root store holds at multiple versions, e.g. the
+  // platform-variant @openai/codex releases).
+  const storeVersions = new Map();
+  for (const entry of readdirSync(join(repoRoot, "node_modules", ".pnpm"))) {
+    if (entry.startsWith(".") || entry === "node_modules") continue;
+    const base = entry.split("_")[0];
+    const at = base.lastIndexOf("@");
+    if (at <= 0) continue;
+    const name = base.slice(0, at).replaceAll("+", "/");
+    const version = base.slice(at + 1);
+    if (!/^\d/.test(version)) continue;
+    if (!storeVersions.has(name)) storeVersions.set(name, new Set());
+    storeVersions.get(name).add(version);
+  }
+  const byNumericDesc = (a, b) => b.localeCompare(a, "en", { numeric: true });
+  const pins = [...storeVersions.entries()]
+    .flatMap(([name, versions]) => {
+      if (name === "yaml" || name === "validation-architect") return [];
+      // Platform-variant version schemes (e.g. @openai/codex@0.146.0-darwin-arm64)
+      // must keep their exact per-variant resolution: never pin those names.
+      const list = [...versions];
+      if (list.some((version) => version.includes("-"))) return [];
+      return [[name, list.sort(byNumericDesc)[0]]];
+    })
+    .map(([name, version]) => `  "${name}": "${version}"`)
+    .join("\n");
+  writeFileSync(
+    join(consumer, "pnpm-workspace.yaml"),
+    `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n  "validation-architect": file:${coreTarball}\n${pins}\n`,
+  );
+  // The overrides changed relative to the first install's lockfile; this is
+  // still offline, just not frozen.
+  run(packageManager, ["install", "--offline", "--ignore-scripts", "--no-frozen-lockfile", "--config.minimumReleaseAge=0"], consumer, { CI: "true" });
+
+  const designHelp = tryRun(binPath("validation-architect-design"), ["--help"], consumer);
+  if (designHelp.status !== 0 || !designHelp.stdout.includes("validation-architect-design [target-dir] --profile")) {
+    throw new Error(`validation-architect-design --help failed offline (${designHelp.status})\n${designHelp.stdout}\n${designHelp.stderr}`);
+  }
+  const designUsage = tryRun(binPath("validation-architect-design"), [], consumer);
+  if (designUsage.status !== 2) throw new Error("bare validation-architect-design must exit 2");
+
+  console.log(
+    `package smoke passed: ${coreTarballName} (${listed.length} entries) + ${designTarballName} (${designListed.length} entries)`,
+  );
 } finally {
   if (existsSync(scratch)) rmSync(scratch, { recursive: true, force: true });
 }

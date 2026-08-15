@@ -348,6 +348,24 @@ describe("a compiler-clean corpus traces green and delivers", () => {
     const result = trace([target, "--model", "validation-design/model", "--tests", "tests"]);
     expect(result.output).not.toMatch(/\bRED\b/);
     expect(result.code).toBe(0);
+    // Decision 2: exactly one deterministic deprecation line on stderr, and
+    // the warning never alters exit status.
+    const warning = 'validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.';
+    expect(result.stderr).toContain(warning);
+    expect(result.stderr.split(warning).length - 1).toBe(1);
+  });
+
+  it("warns on every alias invocation, --help included", () => {
+    const result = trace(["--help"]);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("deprecated alias");
+    expect(result.stdout).toContain("validation-trace <target-repo>");
+  });
+
+  it("routes the retired generate subcommand to validation-architect compile with exit 2", () => {
+    const result = trace(["generate", "catalog.md", "backlog.md"]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("validation-architect compile");
   });
 
   it("delivers the corpus to a branch and leaves the working tree clean", () => {
