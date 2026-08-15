@@ -6,7 +6,7 @@
   "oneOf": [
     {
       "type": "object",
-      "required": ["schema", "kind", "profile", "packageVersion", "methodVersion", "sourceRevision", "inputIdentity", "shape", "seats", "states", "transitions", "terminals", "outputSchemas", "limits"],
+      "required": ["schema", "kind", "profile", "packageVersion", "sourceRevision", "inputIdentity", "shape", "seats", "states", "transitions", "terminals", "outputSchemas", "limits"],
       "properties": {
         "schema": { "const": "validation-architect/design-run/v1" },
         "kind": { "const": "envelope" },

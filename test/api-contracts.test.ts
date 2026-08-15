@@ -33,7 +33,6 @@ function envelope(): CampaignEnvelope {
     kind: "envelope",
     profile: "C1",
     packageVersion: "0.1.1",
-    methodVersion: "0.7.0",
     sourceRevision: "rev-1",
     inputIdentity: "input-1",
     shape: "sequence",
@@ -199,6 +198,29 @@ describe("design-run checkpoint validation", () => {
     traversal.artifacts = { "../outside.yaml": "nope" };
     expect(() => validateDesignRunCheckpoint(traversal)).toThrow(PublicContractError);
   });
+
+  it("rejects a tampered pending request before it can be replayed", () => {
+    const value = checkpoint();
+    const request = {
+      ...turnRequest(),
+      metadata: { runId: "run-1", phase: "step:1", turnIndex: 1 },
+    };
+    value.pendingTurn = { idempotencyKey: request.idempotencyKey, request };
+    expect(validateDesignRunCheckpoint(value)).toBeTruthy();
+
+    value.pendingTurn.idempotencyKey = "different-key";
+    expect(() => validateDesignRunCheckpoint(value)).toThrow(PublicContractError);
+  });
+
+  it("rejects checkpoint identity or position that disagrees with its envelope/history", () => {
+    const wrongRevision = checkpoint();
+    wrongRevision.sourceRevision = "other-revision";
+    expect(() => validateDesignRunCheckpoint(wrongRevision)).toThrow(PublicContractError);
+
+    const impossiblePosition = checkpoint();
+    impossiblePosition.position = "step:2";
+    expect(() => validateDesignRunCheckpoint(impossiblePosition)).toThrow(PublicContractError);
+  });
 });
 
 describe("in-memory campaign store CAS", () => {
@@ -214,15 +236,15 @@ describe("in-memory campaign store CAS", () => {
     const store = new InMemoryCampaignStore();
     await store.save(checkpoint(1), 0);
     const writerA = checkpoint(2);
-    writerA.position = "step:2";
+    writerA.artifacts = { "validation-design/model/a.yaml": "writer-a" };
     const writerB = checkpoint(2);
-    writerB.position = "done";
+    writerB.artifacts = { "validation-design/model/a.yaml": "writer-b" };
     await store.save(writerA, 1);
     await expect(store.save(writerB, 1)).rejects.toSatisfy((error: unknown) =>
       isPublicContractError(error, "stale_generation"),
     );
     const settled = await store.load("run-1");
-    expect(settled?.position).toBe("step:2");
+    expect(settled?.artifacts["validation-design/model/a.yaml"]).toBe("writer-a");
   });
 
   it("rejects a checkpoint that skips a generation", async () => {
@@ -246,7 +268,6 @@ describe("provenance validation", () => {
     const record = {
       schema: PROVENANCE_SCHEMA,
       packageVersion: "0.1.1",
-      methodVersion: "0.7.0",
       schemas: { ...PUBLISHED_SCHEMA_IDS },
       profile: "C2" as const,
       sourceRevision: "rev-1",
@@ -256,11 +277,23 @@ describe("provenance validation", () => {
     expect(canonicalJson(record)).toBe(canonicalJson(JSON.parse(JSON.stringify(record))));
   });
 
-  it("rejects a record missing its run identity", () => {
+  it("rejects the retired duplicate method identity", () => {
     const record = {
       schema: PROVENANCE_SCHEMA,
       packageVersion: "0.1.1",
       methodVersion: "0.7.0",
+      schemas: { ...PUBLISHED_SCHEMA_IDS },
+      profile: "C2",
+      sourceRevision: "rev-1",
+      runId: "run-1",
+    };
+    expect(() => validateProvenanceRecord(record)).toThrow(PublicContractError);
+  });
+
+  it("rejects a record missing its run identity", () => {
+    const record = {
+      schema: PROVENANCE_SCHEMA,
+      packageVersion: "0.1.1",
       schemas: {},
       profile: "C2",
       sourceRevision: "rev-1",
@@ -281,6 +314,15 @@ describe("result validation at the public boundary", () => {
     // real writable usages while this negative control stays possible.
     const retired = ["validation-result", "v1"].join("/");
     expect(() => validateResult({ schema: retired })).toThrow(PublicContractError);
+  });
+
+  it("distinguishes an unsupported major from an unrelated lookalike schema", () => {
+    expect(() => validateResult({ schema: "validation-architect/result/v2" })).toThrowError(
+      expect.objectContaining({ code: "unsupported_schema_major" }),
+    );
+    expect(() => validateResult({ schema: "validation-architect/result-extra/v2" })).toThrowError(
+      expect.objectContaining({ code: "invalid_input" }),
+    );
   });
 });
 

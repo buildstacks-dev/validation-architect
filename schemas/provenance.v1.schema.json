@@ -4,11 +4,10 @@
   "title": "Validation Architect provenance",
   "description": "Versions, source revision, profile, and run identity stamped into every produced artifact so files remain self-describing after the process that wrote them is gone.",
   "type": "object",
-  "required": ["schema", "packageVersion", "methodVersion", "schemas", "profile", "sourceRevision", "runId"],
+  "required": ["schema", "packageVersion", "schemas", "profile", "sourceRevision", "runId"],
   "properties": {
     "schema": { "const": "validation-architect/provenance/v1" },
     "packageVersion": { "type": "string", "minLength": 1 },
-    "methodVersion": { "type": "string", "minLength": 1 },
     "schemas": { "type": "object", "additionalProperties": { "type": "string" } },
     "profile": { "enum": ["C0", "C1", "C2", "C3", "C4"] },
     "sourceRevision": { "type": "string", "minLength": 1 },

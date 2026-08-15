@@ -14,8 +14,12 @@ import {
   type ValidationEvidenceSet,
 } from "../model.js";
 import { GENERATED_MODEL_VIEWS } from "../model-views.js";
-import { buildRelationshipGraph, type RelationshipGraph } from "../relationship-graph.js";
-import { parseSpecSource } from "../trace.js";
+import {
+  buildRelationshipGraph,
+  type RelationshipGraph,
+  type TraceFinding,
+} from "../relationship-graph.js";
+import { parseSpecSource, type SpecFileInfo } from "../trace.js";
 import type { CompilerDiagnostic } from "../model.js";
 import { invalidInput } from "./errors.js";
 import type { RepositoryPort } from "./ports.js";
@@ -52,6 +56,43 @@ export interface RepositoryFacts extends CompiledRepositoryFacts {
 }
 
 const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
+const testId = (path: string): string => `TEST-${sha256(path).slice(0, 16)}`;
+
+function specConventionFindings(specs: readonly SpecFileInfo[], model: CompiledDesignModel): TraceFinding[] {
+  const findings: TraceFinding[] = [];
+  const families = new Map(model.families.map((family) => [family.id, family]));
+  const tickets = new Set(model.tickets.map((ticket) => ticket.id));
+  const add = (spec: SpecFileInfo, code: string, message: string, correction: string): void => {
+    findings.push({ code, level: "red", subject_id: testId(spec.path), message, correction });
+  };
+
+  for (const spec of specs) {
+    if (!spec.hasHeader) {
+      add(spec, "SPEC_HEADER_MISSING", `${spec.path} does not begin with the required traceability header.`, "Add the family and owning ticket to the first comment block.");
+    }
+    if (spec.citations.length === 0) {
+      add(spec, "ORPHAN_TEST", `${spec.path} cites no concrete validation family.`, "Cite at least one exact family ID in the first comment block.");
+    }
+    if (spec.tests === 0) {
+      add(spec, "SPEC_CASE_MISSING", `${spec.path} contains no observed it/test call site.`, "Add an executable test case or remove the empty spec file.");
+    }
+    for (const ticket of spec.tickets) {
+      if (!tickets.has(ticket)) {
+        add(spec, "TEST_TICKET_UNKNOWN", `${spec.path} cites unknown ticket ${ticket}.`, "Cite the exact owning backlog ticket from the compiled corpus.");
+      }
+    }
+    for (const familyId of spec.citations) {
+      const family = families.get(familyId);
+      if (!family) continue; // joinTestInventory reports the unknown family.
+      if (!family.ticket) {
+        add(spec, "FAMILY_TICKET_MISSING", `${familyId} has no owning backlog ticket.`, "Assign the family to a reviewed backlog ticket.");
+      } else if (!spec.tickets.includes(family.ticket)) {
+        add(spec, "TEST_TICKET_MISSING", `${spec.path} cites ${familyId} but not its owning ticket ${family.ticket}.`, "Add the exact owning ticket to the first comment block.");
+      }
+    }
+  }
+  return findings;
+}
 
 async function readSafe(repo: RepositoryPort, path: string): Promise<string | null> {
   if (!safeRepositoryPath(path)) throw invalidInput(`Repository path rejected: ${path}`, { path });
@@ -123,22 +164,24 @@ export async function loadRepositoryFacts(
   if (!safeRepositoryPath(testsRoot)) throw invalidInput(`testsRoot rejected: ${testsRoot}`);
   const environment = options.environment ?? "repository-port";
 
-  const specPaths = (await repo.listFiles([`${testsRoot}/**`]))
+  const listedTestPaths = await repo.listFiles([`${testsRoot}/**`]);
+  const specPaths = listedTestPaths
     .filter((path) => SPEC_SUFFIXES.some((suffix) => path.endsWith(suffix)))
     .sort();
-  const testsRootPresent = specPaths.length > 0 || (await repo.listFiles([`${testsRoot}/**`])).length > 0;
+  const testsRootPresent = listedTestPaths.length > 0;
   const specSources = new Map<string, string>();
   for (const path of specPaths) {
     const content = await readSafe(repo, path);
     if (content !== null) specSources.set(path, content);
   }
   const specs = [...specSources.entries()].map(([path, source]) => parseSpecSource(path, source));
+  const repositoryFindings = specConventionFindings(specs, model);
 
   const lanes = new Map(model.policy.lanes.map((item) => [item.id, item]));
   const families = new Map(model.families.map((item) => [item.id, item]));
   const inventory: TestInventory = {
     kind: "test-inventory",
-    revision: model.product.revision,
+    revision: compiled.revision,
     environment,
     tests_root: testsRoot,
     tests_root_present: testsRootPresent,
@@ -152,7 +195,7 @@ export async function loadRepositoryFacts(
         ),
       ];
       return {
-        id: `TEST-${sha256(spec.path).slice(0, 16)}`,
+        id: testId(spec.path),
         path: spec.path,
         family_ids: spec.citations,
         ...(commands.length === 1 ? { command: commands[0] } : {}),
@@ -191,7 +234,7 @@ export async function loadRepositoryFacts(
   }
   const evidence: ValidationEvidenceSet = {
     kind: "validation-evidence",
-    revision: model.product.revision,
+    revision: compiled.revision,
     environment,
     items: evidenceItems,
   };
@@ -211,6 +254,8 @@ export async function loadRepositoryFacts(
     model,
     model_identity: compiled.identity,
     projection_identity: compiled.identity,
+    repository_revision: compiled.revision,
+    repository_findings: repositoryFindings,
     inventory,
     evidence,
     observed_paths: observedPaths,

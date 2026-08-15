@@ -45,13 +45,13 @@ function fixtureFiles(): Record<string, string> {
   return files;
 }
 
-function greenRepo(overrides: Record<string, string | null> = {}): FakeRepositoryPort {
+function greenRepo(overrides: Record<string, string | null> = {}, revision = "abc123"): FakeRepositoryPort {
   const files = fixtureFiles();
   for (const [path, content] of Object.entries(overrides)) {
     if (content === null) delete files[path];
     else files[path] = content;
   }
-  return new FakeRepositoryPort({ revision: "rev-fixture", files });
+  return new FakeRepositoryPort({ revision, files });
 }
 
 describe("compile", () => {
@@ -99,6 +99,28 @@ describe("check", () => {
     expect(isGreenValidationResult(result)).toBe(false);
   });
 
+  it("fails when an additional orphan spec coexists with a covered family", async () => {
+    const result = await check(greenRepo({
+      "tests/orphan.test.ts": "// Family: CF-UNKNOWN\n// Ticket: HB-001\nit('orphan', () => {});\n",
+    }));
+    expect(result.verdict).toBe("fail");
+    expect(result.reason).toBe("traceability_broken");
+    expect(JSON.stringify(result.extensions)).toContain("ORPHAN_TEST");
+  });
+
+  it("binds a stale corpus failure to the repository revision actually checked", async () => {
+    const result = await check(greenRepo({}, "abc124"));
+    expect(result.verdict).toBe("fail");
+    expect(result.identity.product_revision).toBe("abc124");
+    expect(JSON.stringify(result.extensions)).toContain("MODEL_REVISION_STALE");
+  });
+
+  it("fails structural closure when an additional spec omits its required header", async () => {
+    const result = await check(greenRepo({ "tests/unowned.test.ts": "it('unowned', () => {});\n" }));
+    expect(result.verdict).toBe("fail");
+    expect(JSON.stringify(result.extensions)).toContain("SPEC_HEADER_MISSING");
+  });
+
   it("fails closed with a typed error when the corpus does not compile", async () => {
     await expect(check(greenRepo({ "validation-design/model/project.yaml": null }))).rejects.toSatisfy(
       (error: unknown) => isPublicContractError(error, "invalid_input"),
@@ -142,6 +164,18 @@ describe("plan", () => {
     await expect(plan(greenRepo(), ["../outside.ts"])).rejects.toSatisfy((error: unknown) =>
       isPublicContractError(error, "invalid_input"),
     );
+  });
+
+  it("rejects malformed ChangedInput objects before invoking the planner", async () => {
+    await expect(plan(greenRepo(), [{ id: "", kind: "content" } as never])).rejects.toSatisfy((error: unknown) =>
+      isPublicContractError(error, "invalid_input"),
+    );
+  });
+
+  it("binds a widened stale plan to the repository revision actually inspected", async () => {
+    const output = await plan(greenRepo({}, "abc124"), []);
+    expect(output.identity.product_revision).toBe("abc124");
+    expect(output.unknowns.join(" ")).toMatch(/stale/i);
   });
 });
 
@@ -204,6 +238,15 @@ describe("ingest", () => {
   it("rejects an unknown ingest kind and an invalid context", () => {
     expect(() => ingest({ kind: "mystery" } as never, ctx())).toThrow(/kind/i);
     expect(() => ingest({ kind: "bootstrap-failure", envelope: { message: "m" } } as never, {})).toThrow();
+  });
+
+  it("rejects a mutated or shallow relationship graph instead of trusting a claimed closed flag", async () => {
+    const { graph } = await explain(greenRepo(), "CF-X01-S");
+    const mutated = structuredClone(graph);
+    mutated.findings = [];
+    mutated.assurance_complete = true;
+    expect(() => ingest({ kind: "relationship-trace", graph: mutated }, ctx())).toThrow(/graph_identity/);
+    expect(() => ingest({ kind: "relationship-trace", graph: { identity: graph.identity } } as never, ctx())).toThrow();
   });
 });
 
