@@ -5,7 +5,9 @@
 An orchestrator that runs a full validation-harness-design campaign between
 two AI agents — a Claude **designer** driving this repo's design skill
 (`skill/validation-harness-design/`) and a Codex **stakeholder** playing the
-product owner, grounded in fixture docs plus the human's `rambling.txt` —
+product owner, grounded in fixture docs plus the human's `rambling.txt` when
+one exists (absent, intent is derived from the repo's own material and the
+run records `derived-from-repo` as its intent source) —
 then gates completion behind an independent **auditor**: fresh Claude
 sessions running `skill/validation-harness-audit/` in design-conformance
 capacity (max 2 iterations, capped feedback windows, dispositions arbitrated

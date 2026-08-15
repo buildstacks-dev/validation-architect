@@ -86,6 +86,14 @@ describe("loadTarget", () => {
     expect(info.dir).toBe(target);
     expect(info.hasRambling).toBe(true);
   });
+
+  it("loads a repo WITHOUT rambling.txt — the file is optional, never a hard requirement (issue #14)", () => {
+    const target = makeTargetRepo(tmp);
+    rmSync(join(target, "rambling.txt"));
+    const info = loadTarget(target);
+    expect(info.name).toBe("product");
+    expect(info.hasRambling).toBe(false);
+  });
 });
 
 describe("captured target revision", () => {
@@ -158,6 +166,20 @@ describe("workspace seeding (revision baseline)", () => {
     expect(git(join(ws, "target-source"), ["remote"]).trim()).toBe("");
     expect(readFileSync(join(ws, "TARGET-SNAPSHOT.md"), "utf8")).toContain(targetBase.commit);
     expect(verifyTargetSnapshot(ws, targetBase)).toBe(join(ws, "target-source"));
+  });
+
+  it("never fabricates a rambling.txt in the workspace when the target has none (issue #14)", () => {
+    const target = makeTargetRepo(tmp);
+    rmSync(join(target, "rambling.txt"));
+    git(target, ["add", "-A"]);
+    git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "no rambling"]);
+    const targetBase = captureTargetBase(target);
+    const runDir = join(tmp, "run");
+    mkdirSync(runDir, { recursive: true });
+    const ws = assembleWorkspace(repoRoot, loadTarget(target), runDir, { targetBase });
+    expect(existsSync(join(ws, "docs", "architecture.md"))).toBe(true);
+    expect(existsSync(join(ws, "rambling.txt"))).toBe(false);
+    expect(existsSync(join(ws, "target-source"))).toBe(true);
   });
 
   it("starts empty without a seed (greenfield unchanged)", () => {

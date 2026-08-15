@@ -34,7 +34,7 @@ describe("RambleWatcher", () => {
     expect(w.changed()).toBe(false);
   });
 
-  it("handles a missing file (pure-simulation mode)", () => {
+  it("handles a missing file (derived-intent mode — rambling.txt is optional)", () => {
     const w = new RambleWatcher(join(dir, "absent.txt"));
     w.prime();
     expect(w.exists()).toBe(false);

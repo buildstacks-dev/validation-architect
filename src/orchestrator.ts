@@ -356,6 +356,15 @@ export async function runCampaign(
 
   if (!state.pending) {
     // Fresh run: prime the stakeholder persona, then queue the designer kickoff.
+    // Issue #14 provenance: record which intent source grounds the owner seat
+    // so a reviewer can always tell the human's voice from derived intent.
+    state.intentSource = ramble.exists() ? "human-rambling" : "derived-from-repo";
+    transcript.note(
+      "orchestrator",
+      state.intentSource === "human-rambling"
+        ? "product intent source: human-rambling — rambling.txt present; the human's direct voice grounds the owner seat and keeps priority"
+        : "product intent source: derived-from-repo — no rambling.txt; the owner seat derives product intent from the repo's docs, README, specs, and source",
+    );
     log("priming stakeholder persona");
     ramble.prime();
     const ack: AgentTurn = await withRetry(

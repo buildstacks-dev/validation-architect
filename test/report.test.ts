@@ -53,6 +53,8 @@ describe("generateReport", () => {
     stakeholderTexts: string[];
     withRatification: boolean;
     withOwnerDocs?: boolean;
+    withRambling?: boolean;
+    intentSource?: RunState["intentSource"];
     exchanges?: number;
     extraEntries?: TranscriptEntry[];
     audit?: RunState["audit"];
@@ -67,8 +69,11 @@ describe("generateReport", () => {
       writeFileSync(join(workspace, "validation-design", "owner-briefing.md"), "# briefing");
       writeFileSync(join(workspace, "validation-design", "owner-backlog.md"), "# backlog");
     }
-    writeFileSync(join(workspace, "rambling.txt"), "thoughts");
+    if (opts.withRambling !== false) {
+      writeFileSync(join(workspace, "rambling.txt"), "thoughts");
+    }
     const state: RunState = {
+      ...(opts.intentSource ? { intentSource: opts.intentSource } : {}),
       runId: "r1",
       fixture: "lumen-webapp",
       workspace,
@@ -114,6 +119,31 @@ describe("generateReport", () => {
     expect(md).toContain("owner-briefing.md");
     expect(md).toContain("owner-backlog.md");
     expect(md).toContain("Recommended first read for the ratifying human");
+  });
+
+  it("declares derived-intent mode when no rambling.txt exists (issue #14)", () => {
+    writeRun({
+      stakeholderTexts: ["OBJECTION: x", "CONFIRMED: gate 1 — checked: invariants.md"],
+      withRatification: true,
+      withRambling: false,
+    });
+    const md = generateReport(dir);
+    expect(md).toContain("derived-intent");
+    expect(md).toContain("product intent derived from the repo");
+    expect(md).not.toContain("human-amplified");
+  });
+
+  it("trusts the recorded intent source over the filesystem heuristic (issue #14)", () => {
+    // rambling.txt appeared in the workspace after kickoff; the run itself was
+    // grounded in derived intent and the report must say so.
+    writeRun({
+      stakeholderTexts: ["OBJECTION: x"],
+      withRatification: true,
+      intentSource: "derived-from-repo",
+    });
+    const md = generateReport(dir);
+    expect(md).toContain("derived-intent");
+    expect(md).not.toContain("human-amplified");
   });
 
   it("flags a rubber-stamp-suspect run and a missing ratification package", () => {

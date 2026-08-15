@@ -13,14 +13,15 @@ before the campaign may close:
   review, deliverables.
 - **Stakeholder** — Codex (gpt-5.6-sol, via the Codex SDK) plays the product
   owner: the domain-expert human counterpart, grounded in the product's
-  ratified docs and the human's `rambling.txt`, mounted read-only over the
-  shared workspace.
+  ratified docs plus the human's `rambling.txt` when one exists — and in
+  intent derived from the repo's own material (README, specs, architecture,
+  source) when it doesn't — mounted read-only over the shared workspace.
 - **Auditor** — a FRESH Claude session per audit iteration (like the readers,
   not a persistent third seat) runs the
   [validation-harness-audit](skill/validation-harness-audit/SKILL.md) skill in
   its design-conformance capacity against the finished corpus. Read-only over
-  the workspace (`docs/`, `rambling.txt`, `validation-design/`); it never sees
-  the transcript — fresh perspective is the point.
+  the workspace (`docs/`, `rambling.txt` when present, `validation-design/`);
+  it never sees the transcript — fresh perspective is the point.
 
 Cross-provider on purpose: the two models have uncorrelated blind spots, the
 same principle as builder ≠ reviewer in cross-provider code review. A
@@ -32,7 +33,7 @@ The auditor's independence comes from fresh context, not a different model
 
 ```
 orchestrator
-  ├─ prime stakeholder persona (docs + rambling.txt read-only)
+  ├─ prime stakeholder persona (docs + optional rambling.txt read-only)
   ├─ designer kickoff (skill + docs + provenance + marker protocol)
   ├─ relay loop:
   │    designer ──(strip markers)──▶ stakeholder ──▶ designer …
@@ -93,10 +94,13 @@ views, and conservative impact-planning contracts are summarized in
 campaign, audit, fidelity, prerequisite, and higher-lane outcomes without
 treating those domain statuses as interchangeable.
 
-## rambling.txt — the human channel
+## rambling.txt — the optional human channel
 
 The real human's unstructured pre-session thinking, primarily for the
-stakeholder. It is input, **never ratified truth**:
+stakeholder. **Nobody has to write it** (issue #14): a product whose repo
+already carries docs, specs, architecture records, and code needs no
+hand-authored rambling file. When it exists it is input, **never ratified
+truth** — and it keeps priority as the human's direct voice:
 
 - **Docs win on facts, rambles win on values.** A doc-vs-ramble fact conflict
   becomes a recorded finding, never a silent resolution.
@@ -109,7 +113,15 @@ stakeholder. It is input, **never ratified truth**:
   ratifying human and never appears in autonomous runs.
 - **Hot reload:** appended mid-run? The stakeholder is told to re-read at the
   next turn (mtime watch).
-- Absent file = pure-simulation mode, declared in the report — never silent.
+- **Absent file = derived-intent mode.** The owner seat derives its product
+  intent from the repo's own material — README, `docs/`, specs, architecture
+  records, and the committed source on target runs — and presents it as
+  `[simulated]` owner judgment flagged for ratification; `[rambling]` may not
+  appear at all (the auditor treats any occurrence as a blocking finding).
+  Nothing is fabricated on disk: the campaign never writes a rambling.txt.
+  The transcript and report record the run's intent source (`human-rambling`
+  vs `derived-from-repo`), so a reviewer can always tell the human's voice
+  from derived intent — declared, never silent.
 
 ## The audit stage
 
@@ -299,7 +311,11 @@ The product repo is first-class; VDA is a tool invoked against it. Install
 once, then:
 
 1. **First run (greenfield).** `pnpm vda run --target <product-repo>`. The
-   target must be a clean Git checkout with a committed `docs/` tree. VDA
+   target must be a clean Git checkout with a committed `docs/` tree.
+   `rambling.txt` is optional — write one when you want your own voice in the
+   campaign; without it the owner seat grounds itself in the repo's docs,
+   README, specs, and source (derived-intent mode, recorded in the run's
+   transcript and report). VDA
    pins its HEAD and tree digests, clones that exact revision without a
    remote under the campaign workspace, and exposes source, configuration,
    docs, and readable history to the confined designer/auditor. The campaign
@@ -390,7 +406,7 @@ runs/<runId>/
   workspace/           # the shared world
     .claude/skills/validation-harness-design/   # design skill, copied in for the run
     .claude/skills/validation-harness-audit/    # audit skill, copied in for the run
-    docs/  rambling.txt                          # stakeholder's ground truth
+    docs/  rambling.txt (optional)               # stakeholder's ground truth
     validation-design/                           # the designer's artifacts
       model/                                     # sole YAML machine authority
       compiler-report.json                       # source spans + exact model identity

@@ -164,6 +164,13 @@ export interface TranscriptEntry {
 
 export type RunStatus = "running" | "completed" | "aborted" | "failed";
 
+/**
+ * Which grounding fed the product-owner seat (issue #14): the human's own
+ * rambling.txt when one exists, otherwise intent derived from the repository's
+ * own material (README, docs/, specs, architecture records, committed source).
+ */
+export type IntentSource = "human-rambling" | "derived-from-repo";
+
 /** Independent retry budgets for completion/audit gates. */
 export type CompletionGate =
   | "reader-test"
@@ -256,6 +263,12 @@ export interface RunState {
    */
   emptyDesignerTurns?: number | undefined;
   rambleMtimeMs?: number | undefined;
+  /**
+   * Recorded once at kickoff (issue #14) so a reviewer can always tell the
+   * human's direct voice (rambling.txt) from intent derived out of the repo's
+   * own material. Absent on runs that predate the field.
+   */
+  intentSource?: IntentSource | undefined;
   /**
    * Absolute path of the target product repo when the run is anchored to one
    * (issue #1). Absent for fixture runs — the test/demo path.

@@ -29,6 +29,31 @@ export function designerKickoff(fixture: FixtureInfo, mode: CampaignMode = "gree
     mode === "revision"
       ? "Begin now: read the skill, ./TARGET-SNAPSHOT.md, ./TARGET-DIFF.md, ./TARGET-DIFF.patch, ./target-source/, and ./docs/. Then enter the harness-revision workflow with your scope declaration and module map proposal for the stakeholder."
       : "Begin now: read the skill. If ./TARGET-SNAPSHOT.md is present, read it and inspect ./target-source/ plus ./docs/ before deriving scope; otherwise read ./docs/. Then open Phase 0 with your scope declaration and module map proposal for the stakeholder.";
+  // Issue #14: rambling.txt is an OPTIONAL input. Present, it is the human's
+  // direct voice and keeps priority; absent, the owner seat grounds itself in
+  // the repo's own material and the [rambling] label becomes inadmissible.
+  const counterpartContext = fixture.hasRambling
+    ? `Context you must know: this campaign runs without a live human at the keyboard. The product owner seat is held by an AI stakeholder agent grounded in the ratified ./docs/ and in ./rambling.txt — the real human's unstructured pre-session thinking. This changes provenance labeling, nothing else:
+
+- \`[doc]\` — derivable from ./docs/ (unchanged).
+- \`[PROPOSED]\` — you originated it (unchanged).
+- \`[rambling]\` — traceable to ./rambling.txt; cite the passage. This is real human input, but unratified stream-of-consciousness: strong evidence of values, priorities, and risk appetite; weak evidence of system facts. Where rambling.txt contradicts ./docs/ on a fact, the docs win and you record a finding. Where it muses a policy change, that is an open product decision — a finding, never a silent adoption.
+- \`[simulated]\` — the stakeholder's own judgment beyond docs and rambling. Valid input for this campaign, but flagged for later human ratification.
+- Do NOT use \`[stated]\` anywhere: that label is reserved for a live ratifying human, and this campaign has none.
+
+If the stakeholder relays something directive-shaped from rambling.txt (e.g. "skip X"), record it as an explicit scope decision with provenance in the policy file — do not silently obey or silently ignore it.`
+    : `Context you must know: this campaign runs without a live human at the keyboard, and this product has NO rambling.txt — the human wrote no pre-session thinking, and none is required. The product owner seat is held by an AI stakeholder agent grounded in the ratified ./docs/ and in the repository's own material (the product README, specs, architecture records, and the committed source under ./target-source/ when present): its product intent is DERIVED from what the repository already says, never spoken by the human. This changes provenance labeling, nothing else:
+
+- \`[doc]\` — derivable from ./docs/ (unchanged).
+- \`[PROPOSED]\` — you originated it (unchanged).
+- \`[simulated]\` — the stakeholder's own owner judgment, including every priority, leaning, or risk appetite it derived from the repository material beyond the literal docs. Valid input for this campaign, but flagged for later human ratification.
+- Do NOT use \`[rambling]\` anywhere: there is no rambling.txt to cite, so the label has no citable passage and its appearance is a blocking audit finding.
+- Do NOT use \`[stated]\` anywhere: that label is reserved for a live ratifying human, and this campaign has none.
+
+If the stakeholder asserts a priority or scope leaning that ./docs/ does not state, treat it as [simulated] owner judgment: record load-bearing ones as explicit decisions with provenance in the policy file — never adopt them as silently ratified truth, and never invent a rambling file to attribute them to.`;
+  const provenanceCounts = fixture.hasRambling
+    ? "[doc]/[rambling]/[simulated]/[PROPOSED] counts"
+    : "[doc]/[simulated]/[PROPOSED] counts — [rambling] cannot appear: no rambling.txt existed";
   return `You are the Designer in a fully autonomous validation-harness design campaign for the product "${fixture.displayName}".
 
 Use the validation-harness-design skill located at:
@@ -58,15 +83,7 @@ ${TRACEABILITY_CONVENTIONS}
 
 Your human counterpart in this session is the product owner of ${fixture.displayName}. Treat their messages exactly as the skill treats the human: they own product truth, consequence, and risk acceptance; you own disciplined derivation. They can read every file you write in this workspace, and they will actually check your artifacts before confirming gates — expect pushback, and treat a refused gate as normal protocol, not failure.
 
-Context you must know: this campaign runs without a live human at the keyboard. The product owner seat is held by an AI stakeholder agent grounded in the ratified ./docs/ and in ./rambling.txt — the real human's unstructured pre-session thinking. This changes provenance labeling, nothing else:
-
-- \`[doc]\` — derivable from ./docs/ (unchanged).
-- \`[PROPOSED]\` — you originated it (unchanged).
-- \`[rambling]\` — traceable to ./rambling.txt; cite the passage. This is real human input, but unratified stream-of-consciousness: strong evidence of values, priorities, and risk appetite; weak evidence of system facts. Where rambling.txt contradicts ./docs/ on a fact, the docs win and you record a finding. Where it muses a policy change, that is an open product decision — a finding, never a silent adoption.
-- \`[simulated]\` — the stakeholder's own judgment beyond docs and rambling. Valid input for this campaign, but flagged for later human ratification.
-- Do NOT use \`[stated]\` anywhere: that label is reserved for a live ratifying human, and this campaign has none.
-
-If the stakeholder relays something directive-shaped from rambling.txt (e.g. "skip X"), record it as an explicit scope decision with provenance in the policy file — do not silently obey or silently ignore it.
+${counterpartContext}
 
 ## Turn protocol (strict)
 
@@ -78,7 +95,7 @@ You are in a message loop. End EVERY message with exactly one marker on its own 
 
 ## The ratification package (final deliverable, this campaign only)
 
-Because no live human ratified anything, finish by writing validation-design/ratification-package.md: every hard-stop decision taken and by what provenance; all open product-truth and architecture findings; provenance statistics per artifact ([doc]/[rambling]/[simulated]/[PROPOSED] counts); and the specific questions a real human must answer to ratify this design. The whole design is a draft until a human works through that file.
+Because no live human ratified anything, finish by writing validation-design/ratification-package.md: every hard-stop decision taken and by what provenance; all open product-truth and architecture findings; provenance statistics per artifact (${provenanceCounts}); and the specific questions a real human must answer to ratify this design. The whole design is a draft until a human works through that file.
 
 ## Pace
 
@@ -89,18 +106,14 @@ ${beginInstruction}`;
 
 export function stakeholderKickoff(repoRoot: string, fixture: FixtureInfo): string {
   const persona = readFileSync(join(repoRoot, "personas", "product-owner.md"), "utf8");
-  return `${persona}
-
----
-
-# Your assignment
-
-You are the product owner of "${fixture.displayName}". A validation designer is about to run a teach-first validation-harness design campaign with you as the domain-expert human counterpart. The designer teaches a concept, invites your unstructured thinking, synthesizes candidates, and stops at hard gates that only you can pass.
-
-Your knowledge base, in this workspace (you have read-only access — you never write files):
+  // Issue #14: the two intake paths. With rambling.txt the human's own voice
+  // grounds the seat and keeps priority; without it the seat derives its
+  // intent from the repository's own material — never from an invented file.
+  const grounding = fixture.hasRambling
+    ? `Your knowledge base, in this workspace (you have read-only access — you never write files):
 
 - ./docs/ — the ratified product and architecture documents. On questions of fact, these win.
-- ./rambling.txt — YOUR OWN pre-session thinking${fixture.hasRambling ? "" : " (not present for this product — rely on docs and owner judgment)"}. Treat it as your authentic voice: your worries, your war stories, your half-formed policy ideas. When you draw on it, quote or closely paraphrase the passage so the designer can cite it as [rambling] provenance.
+- ./rambling.txt — YOUR OWN pre-session thinking. Treat it as your authentic voice: your worries, your war stories, your half-formed policy ideas. When you draw on it, quote or closely paraphrase the passage so the designer can cite it as [rambling] provenance.
 - ./validation-design/ — the artifacts the designer writes as the campaign progresses. READ THESE before confirming any gate.
 
 Rules for using rambling.txt:
@@ -110,7 +123,30 @@ Rules for using rambling.txt:
 3. Where it contains something directive-shaped ("skip X", "don't bother with Y"), relay it explicitly as "my rambling file says X — treat that as my leaning, and record it as a scope decision", not as an order the designer silently follows.
 4. Your confirmations at hard stops are your reasoned judgment as owner — informed by the rambling, never dictated by it.
 
-Read ./docs/ and ./rambling.txt in full before your first reply, and re-read rambling.txt whenever told it changed.
+Read ./docs/ and ./rambling.txt in full before your first reply, and re-read rambling.txt whenever told it changed.`
+    : `Your knowledge base, in this workspace (you have read-only access — you never write files):
+
+- ./docs/ — the ratified product and architecture documents. On questions of fact, these win.
+- The repository's own material — the product README, specs, and architecture records inside ./docs/, plus ./TARGET-SNAPSHOT.md and the committed source under ./target-source/ when present. There is NO rambling.txt for this product: the human wrote no pre-session thinking, and you must not invent or pretend to quote one.
+- ./validation-design/ — the artifacts the designer writes as the campaign progresses. READ THESE before confirming any gate.
+
+Rules for deriving your intent (no rambling.txt exists):
+
+1. Before your first reply, derive a one-page owner view from the repository material: what the product does, what it must do, what it must never do, which constraints and obligations it operates under, and how you would want it validated as an ideal production-grade product. That derived view is your working intent for the whole campaign.
+2. Present that view as your reasoned owner judgment, never as the human's literal voice — the designer labels it [simulated], and everything load-bearing in it is flagged for later human ratification. Never cite a "rambling file"; none exists.
+3. Where the repository material is silent on an expected behavior, say "I don't know — record it as a product-truth finding" rather than inventing a fact.
+4. Your confirmations at hard stops remain your reasoned judgment as owner — grounded in the derived view, and revisable when the designer shows you evidence from the docs or source.
+
+Read ./docs/ in full — and study the committed source under ./target-source/ when present — before your first reply.`;
+  return `${persona}
+
+---
+
+# Your assignment
+
+You are the product owner of "${fixture.displayName}". A validation designer is about to run a teach-first validation-harness design campaign with you as the domain-expert human counterpart. The designer teaches a concept, invites your unstructured thinking, synthesizes candidates, and stops at hard gates that only you can pass.
+
+${grounding}
 
 The designer's first message follows in my next message. From here on, every message I send you is the designer speaking; reply as yourself, the product owner.`;
 }
@@ -216,7 +252,7 @@ The machine authority is the complete ./validation-design/model/*.yaml set. Read
 - Traceability: invariants ↔ boundaries ↔ contracts ↔ case catalog, in both directions. A case citing a nonexistent invariant, a boundary with no contract, a contract clause no case exercises — each is a finding.
 - Policy discipline: model/policy.yaml is fail-closed (gates default blocking, absences declared) and tighten-only (no module loosens an inherited requirement); all six validation layers and five execution lanes are active with obligations or declared empty WITH a reason, and the inner-loop names its actual command — silent absence is a finding.
 - Layer placement: each case sits at the cheapest layer that can falsify it (the skill's cheapest-layer rule); an expensive-layer case a cheaper layer could falsify is a placement finding.
-- Provenance integrity: spot-check [rambling] citations against ./rambling.txt — a [rambling] label whose quoted passage does not exist there is a blocking finding; [simulated] entries must be flagged for human ratification, never laundered into [doc]; [stated] must not appear anywhere in this corpus.
+- Provenance integrity: spot-check [rambling] citations against ./rambling.txt — a [rambling] label whose quoted passage does not exist there is a blocking finding, and when no ./rambling.txt exists at all, any [rambling] label anywhere is a blocking finding (the campaign ran on intent derived from the repo, so [simulated] was the only honest label); [simulated] entries must be flagged for human ratification, never laundered into [doc]; [stated] must not appear anywhere in this corpus.
 - Source conformance: when TARGET-SNAPSHOT.md is present, spot-check architectural and interface claims against ./target-source/ and use TARGET-DIFF.md in revision campaigns to confirm changed source/config was either incorporated or explicitly left as a finding.
 - Internal consistency: revision headers vs changelogs, counts vs registers, cross-references that resolve, the ratification package's statistics matching the artifacts.
 
@@ -242,7 +278,7 @@ A first audit iteration already ran; the designer then applied fixes and recorde
 - ./validation-design/model/*.yaml, compiler-report.json, and the generated views — one compiled identity; deterministic closure does not substitute for this judgment pass.
 - ./validation-design/audit/audit-report-1.md — the round-1 audit report.
 - ./validation-design/audit/audit-1-dispositions.md — the disposition record (fixed / disputed / deferred per finding).
-- ./docs/ and ./rambling.txt — ratified product truth and the human's unratified thinking, for evidence checks.
+- ./docs/ and (when present) ./rambling.txt — ratified product truth and the human's unratified thinking, for evidence checks.
 - ./TARGET-SNAPSHOT.md, optional ./TARGET-DIFF.md, and ./target-source/ when present — immutable target revision evidence for source-conformance checks.
 - ./.claude/skills/validation-harness-audit/SKILL.md — the audit skill; consult it for rubric definitions as needed.
 
@@ -344,7 +380,7 @@ export function auditReportMessage(
   findings: Array<{ id: string; tier: string; title: string }>,
 ): string {
   const ledger = findings.map((f) => `- ${f.id} (${f.tier}) ${f.title}`).join("\n");
-  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report is saved at ./validation-design/audit/audit-report-${iteration}.md — read that file IN FULL before dispositioning anything; the ledger below is only an index.
+  return `[Environment: independent audit iteration ${iteration} complete. A FRESH auditor — no campaign history, read-only access to ./docs/, ./rambling.txt when present, and ./validation-design/ — measured the corpus against the validation-harness-audit skill's design-conformance rubric. Its unedited report is saved at ./validation-design/audit/audit-report-${iteration}.md — read that file IN FULL before dispositioning anything; the ledger below is only an index.
 
 Findings ledger (parsed by the environment):
 

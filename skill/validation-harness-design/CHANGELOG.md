@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+Makes `rambling.txt` an optional campaign input (issue #14): a product whose repository already carries detailed docs, specs, architecture records, and code no longer requires a human-authored rambling file, and no seat may demand one.
+
+- When `rambling.txt` is absent, the product-owner seat derives its working intent from the repository's own material — README, `docs/`, specs, architecture records, and the committed source on target runs — presented as `[simulated]` owner judgment flagged for later human ratification; `[rambling]` may not appear anywhere in such a corpus, and the auditor treats any occurrence as a blocking provenance finding.
+- When `rambling.txt` is present, nothing changes: it keeps priority as the human's direct voice, with the existing citation, docs-win-on-facts, and directive-surfacing rules.
+- Every run records its intent source (`human-rambling` vs `derived-from-repo`) in the campaign transcript and report, so a reviewer can always tell the human's voice from derived intent.
+- The campaign never fabricates a `rambling.txt` on disk; workspaces and target repos carry only what the human actually wrote, and delivery still writes nothing outside `validation-design/`.
+
 ## 0.7.0
 
 Replaces the Markdown-derived dual authority with the checked core model.
