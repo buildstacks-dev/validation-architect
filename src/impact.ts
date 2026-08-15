@@ -3,7 +3,7 @@ import { relationshipPayloadIdentity, type RelationshipGraph } from "./relations
 import type { ResultPlan } from "./validation-result.js";
 
 export const IMPACT_MAPPING_SCHEMA = "validation-architect/impact-mapping/v1";
-export const IMPACT_PLAN_SCHEMA = "validation-architect/impact-plan/v1";
+export const IMPACT_PLAN_SCHEMA = "validation-architect/plan/v1";
 const SECRET_PATTERN = /(?:AKIA[A-Z0-9]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|sk-[A-Za-z0-9_-]{12,}|(?:token|secret|password|authorization)=(?!\[REDACTED\])\S+)/i;
 
 export interface ChangedInput {

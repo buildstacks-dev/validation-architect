@@ -95,6 +95,24 @@ function firstCommentBlock(source: string): string | undefined {
   return source.match(/^\s*(\/\*[\s\S]*?\*\/)/)?.[1];
 }
 
+/** Pure per-file spec parse shared by the filesystem scanner and the
+ * RepositoryPort-based public facade. */
+export function parseSpecSource(relativePath: string, source: string): SpecFileInfo {
+  const header = firstCommentBlock(source);
+  const citations = new Set<string>();
+  for (const token of extractCfTokens(header ?? "")) {
+    for (const id of expandCellId(token).ids) citations.add(id);
+  }
+  const tickets = [...new Set((header ?? "").match(/\bHB-[A-Za-z0-9]+\b/g) ?? [])].sort();
+  return {
+    path: relativePath,
+    citations: [...citations].sort(),
+    tickets,
+    hasHeader: header !== undefined,
+    tests: countTests(source),
+  };
+}
+
 /** Collect spec files and their normalized family citations. */
 export function scanSpecs(targetRoot: string, testsRoot: string, suffixes: string[]): SpecFileInfo[] {
   const absRoot = join(targetRoot, testsRoot);
@@ -102,20 +120,7 @@ export function scanSpecs(targetRoot: string, testsRoot: string, suffixes: strin
   const specs: SpecFileInfo[] = [];
   for (const file of walk(absRoot)) {
     if (!suffixes.some((s) => file.endsWith(s))) continue;
-    const source = readFileSync(file, "utf8");
-    const header = firstCommentBlock(source);
-    const citations = new Set<string>();
-    for (const token of extractCfTokens(header ?? "")) {
-      for (const id of expandCellId(token).ids) citations.add(id);
-    }
-    const tickets = [...new Set((header ?? "").match(/\bHB-[A-Za-z0-9]+\b/g) ?? [])].sort();
-    specs.push({
-      path: relative(targetRoot, file),
-      citations: [...citations].sort(),
-      tickets,
-      hasHeader: header !== undefined,
-      tests: countTests(source),
-    });
+    specs.push(parseSpecSource(relative(targetRoot, file), readFileSync(file, "utf8")));
   }
   return specs;
 }

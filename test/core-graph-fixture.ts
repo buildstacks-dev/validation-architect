@@ -9,7 +9,7 @@ export function graphFixture(): {
   evidence: ValidationEvidenceSet;
 } {
   const model: CompiledDesignModel = {
-    schema: "validation-architect/model/v1",
+    schema: "validation-architect/corpus/v1",
     product: { id: "product", name: "Graph fixture", revision: "rev-1", intended_use: "Offline graph tests", criticality: "C1", criticality_reason: "Synthetic data" },
     versions: { ...CURRENT_CORE_VERSIONS },
     owners: [{ id: "OWN-TENANCY", name: "Runtime team", responsibility: "Own tenant isolation and retry safety" }],

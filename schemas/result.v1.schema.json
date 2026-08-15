@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-architect/result/v1",
+  "title": "Validation Architect run result",
+  "description": "One run outcome on the three locked axes (applicability, completeness, verdict) with the five reasons and fail-closed green predicate of VA-CORE-004. Hosts may add namespaced extension fields; no host may redefine an existing field. Incomplete evidence never renders as a pass.",
+  "type": "object",
+  "required": ["schema", "applicability", "completeness", "verdict", "summary", "next_action", "identity", "cases", "evidence", "extensions"],
+  "properties": {
+    "schema": { "const": "validation-architect/result/v1" },
+    "applicability": { "enum": ["applicable", "not_applicable"] },
+    "completeness": { "enum": ["complete", "incomplete"] },
+    "verdict": { "enum": ["pass", "fail", "inconclusive"] },
+    "reason": { "enum": ["product_failure", "prerequisite_unavailable", "harness_failure", "evidence_incomplete", "traceability_broken"] },
+    "not_applicable_reason": { "type": "string" },
+    "summary": { "type": "string", "minLength": 1 },
+    "next_action": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "required": ["product_revision", "lane", "environment", "versions"],
+      "properties": {
+        "product_revision": { "type": "string", "minLength": 1 },
+        "lane": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "versions": { "type": "object" }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "required": ["structure_id", "root_id", "owner"]
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "summary", "evidence_ids"],
+        "properties": {
+          "status": { "enum": ["pass", "fail", "inconclusive", "blocked", "not_applicable"] },
+          "blocked_by": { "type": "string" }
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": ["selected_scope", "expansions", "unresolved_mappings"]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "reference", "integrity"],
+        "properties": {
+          "kind": { "enum": ["artifact", "log", "probe", "result"] },
+          "integrity": {
+            "type": "object",
+            "required": ["algorithm", "digest"],
+            "properties": { "algorithm": { "const": "sha256" }, "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+          }
+        }
+      }
+    },
+    "extensions": { "type": "object" }
+  }
+}

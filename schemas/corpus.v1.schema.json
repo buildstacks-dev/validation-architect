@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-architect/corpus/v1",
+  "title": "Validation Architect design corpus",
+  "description": "The checked design model compiled from the eight logical YAML files under validation-design/model/. The package's compiler is the runtime authority; this asset is the machine-readable mirror of the accepted whole-corpus shape.",
+  "type": "object",
+  "required": ["schema", "product", "versions", "owners", "sources", "structures", "policy", "controls", "families", "tickets"],
+  "properties": {
+    "schema": { "const": "validation-architect/corpus/v1" },
+    "product": {
+      "type": "object",
+      "required": ["id", "name", "revision", "intended_use", "criticality", "criticality_reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "intended_use": { "type": "string", "minLength": 1 },
+        "criticality": { "enum": ["C0", "C1", "C2", "C3", "C4"] },
+        "criticality_reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "versions": { "type": "object" },
+    "owners": { "type": "array", "items": { "type": "object", "required": ["id"] } },
+    "sources": { "type": "array", "items": { "type": "object", "required": ["id", "kind"] } },
+    "structures": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "meaning"] } },
+    "policy": { "type": "object", "required": ["default", "inheritance", "layers", "lanes"] },
+    "controls": { "type": "array", "items": { "type": "object", "required": ["id"] } },
+    "families": { "type": "array", "items": { "type": "object", "required": ["id", "meaning", "structure_ids", "layer", "oracle", "status"] } },
+    "tickets": { "type": "array", "items": { "type": "object", "required": ["id", "status"] } }
+  }
+}

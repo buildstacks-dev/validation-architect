@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-architect/plan/v1",
+  "title": "Validation Architect explained plan",
+  "description": "An explained, advisory test plan for a changed-path set. The full required CI run remains authoritative; unknown mappings expand to the full applicable suite and paired negative controls are retained.",
+  "type": "object",
+  "required": ["schema", "identity", "advisory", "full_required_ci_authoritative", "changed_inputs", "affected_meaning", "structure_ids", "family_ids", "test_ids", "negative_control_ids", "always_run_test_ids", "expansions", "unknowns", "commands", "full_required_ci", "result_plan"],
+  "properties": {
+    "schema": { "const": "validation-architect/plan/v1" },
+    "advisory": { "const": true },
+    "full_required_ci_authoritative": { "const": true },
+    "identity": {
+      "type": "object",
+      "required": ["model_identity", "graph_identity", "inventory_identity", "mapping_identity", "product_revision", "lane", "versions"]
+    },
+    "changed_inputs": { "type": "array", "items": { "type": "object", "required": ["id", "kind"], "properties": { "kind": { "enum": ["content", "structural"] } } } },
+    "affected_meaning": { "type": "array", "items": { "type": "object", "required": ["structure_id", "meaning"] } },
+    "structure_ids": { "type": "array", "items": { "type": "string" } },
+    "family_ids": { "type": "array", "items": { "type": "string" } },
+    "test_ids": { "type": "array", "items": { "type": "string" } },
+    "negative_control_ids": { "type": "array", "items": { "type": "string" } },
+    "always_run_test_ids": { "type": "array", "items": { "type": "string" } },
+    "expansions": { "type": "array", "items": { "type": "string" } },
+    "unknowns": { "type": "array", "items": { "type": "string" } },
+    "commands": { "type": "array", "items": { "type": "object", "required": ["id", "command", "purpose"], "properties": { "purpose": { "enum": ["selected-test", "always-run", "full-required-ci"] } } } },
+    "full_required_ci": { "type": "object", "required": ["command", "run_count"], "properties": { "run_count": { "const": 1 } } },
+    "result_plan": { "type": "object", "required": ["selected_scope", "expansions", "unresolved_mappings"] }
+  }
+}
