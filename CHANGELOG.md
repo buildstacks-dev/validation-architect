@@ -3,6 +3,16 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.3 — exact secret boundaries and authorization projection (unreleased)
+
+- Credential-shaped `sk-...` values are detected only at a complete token
+  boundary, so reviewed prose such as `risk-review-gated` survives byte-exact
+  migration while standalone credentials remain redacted and red-capable.
+- The generated owner briefing now projects each lane's reviewed title, kind,
+  and authorization, including fresh `per-run-human` requirements.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.2 — atomic checked-model cutover (unreleased)
 
 - Public repository facts now join observed specs to current families and

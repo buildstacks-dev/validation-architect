@@ -71,6 +71,19 @@ function repoWithTicketStatus(
   return new FakeRepositoryPort({ revision: "abc123", files });
 }
 
+function repoWithFamilyRisk(risk: string): FakeRepositoryPort {
+  const files = fixtureFiles();
+  const familiesPath = "validation-design/model/families.yaml";
+  const families = parse(files[familiesPath] ?? "") as {
+    families: Array<Record<string, unknown>>;
+  };
+  const family = families.families[0];
+  if (!family) throw new Error("fixture is missing its family");
+  family.risk = risk;
+  files[familiesPath] = stringify(families, { lineWidth: 0 });
+  return new FakeRepositoryPort({ revision: "abc123", files });
+}
+
 function splitFamilyRepo(): FakeRepositoryPort {
   const files = fixtureFiles();
   const controlsPath = "validation-design/model/controls.yaml";
@@ -159,6 +172,23 @@ describe("check", () => {
     expect(first.reason).toBe("evidence_incomplete");
     expect(isGreenValidationResult(first)).toBe(false);
     expect(canonicalJson(first)).toBe(canonicalJson(second));
+  });
+
+  it("distinguishes embedded risk prose from a complete credential-shaped token", async () => {
+    const reviewedProse = await check(repoWithFamilyRisk("E1/E2 (risk-review-gated)"));
+    expect(reviewedProse).toMatchObject({
+      verdict: "inconclusive",
+      completeness: "incomplete",
+      reason: "evidence_incomplete",
+    });
+    expect(JSON.stringify(reviewedProse)).toContain("risk-review-gated");
+    expect(JSON.stringify(reviewedProse.extensions)).not.toContain("MODEL_SECRET_UNSAFE");
+
+    const credential = "sk-abcdefghijklmnop";
+    const unsafe = await check(repoWithFamilyRisk(credential));
+    expect(unsafe).toMatchObject({ verdict: "fail", reason: "traceability_broken" });
+    expect(JSON.stringify(unsafe.extensions)).toContain("MODEL_SECRET_UNSAFE");
+    expect(JSON.stringify(unsafe)).not.toContain(credential);
   });
 
   it("keeps an unimplemented family non-green but structurally closed while its owner ticket is pending", async () => {

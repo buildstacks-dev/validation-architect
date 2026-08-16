@@ -45,6 +45,13 @@ describe("decision 1: bare package pair", () => {
   it("spells no scoped @validation-architect package anywhere shipped", () => {
     expect(grepTree("@validation-architect/")).toEqual([]);
   });
+
+  it("documents the schema-asset wildcard without inventing a directory export", () => {
+    expect(record).toContain("validation-architect/schemas/<name>.schema.json");
+    expect(pkg.exports["./schemas/*.schema.json"])
+      .toBe("./schemas/*.schema.json");
+    expect(pkg.exports["./schemas"]).toBeUndefined();
+  });
 });
 
 describe("decision 2: validation-trace alias retained through 0.x", () => {

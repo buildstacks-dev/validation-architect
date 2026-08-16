@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { parseDocument, stringify } from "yaml";
 import type { CoreVersionBundle } from "./versions.js";
 import { RESULT_SCHEMA } from "./versions.js";
+import { containsSecretPattern } from "./secret-safety.js";
 
 export type ResultApplicability = "applicable" | "not_applicable";
 export type ResultCompleteness = "complete" | "incomplete";
@@ -70,7 +71,6 @@ const CORE_REASONS = new Set<ResultReason>([
 ]);
 const CASE_STATUSES = new Set<ResultCaseStatus>(["pass", "fail", "inconclusive", "blocked", "not_applicable"]);
 const VERSION_KEYS: Array<keyof CoreVersionBundle> = ["package", "method", "model", "compiler", "policy", "result", "golden_set"];
-const SECRET_PATTERN = /(?:AKIA[A-Z0-9]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|sk-[A-Za-z0-9_-]{12,}|(?:token|secret|password|authorization)=(?!\[REDACTED\])\S+)/i;
 
 function duplicate(values: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -115,7 +115,7 @@ function validateEvidence(result: ValidationResultV1, problems: string[]): void 
   for (const item of result.evidence) {
     if (!item.id || !item.reference || !["artifact", "log", "probe", "result"].includes(item.kind)) problems.push(`evidence ${item.id || "(missing)"} is invalid`);
     if (item.integrity?.algorithm !== "sha256" || !/^[a-f0-9]{64}$/.test(item.integrity?.digest ?? "")) problems.push(`evidence ${item.id} requires a lowercase sha256 digest`);
-    if (SECRET_PATTERN.test(item.reference)) problems.push(`evidence ${item.id} reference may expose a secret`);
+    if (containsSecretPattern(item.reference)) problems.push(`evidence ${item.id} reference may expose a secret`);
   }
 }
 
@@ -130,7 +130,7 @@ export function validateValidationResult(value: ValidationResultV1): string[] {
   const problems: string[] = [];
   if (value.schema !== RESULT_SCHEMA) problems.push(`schema must be ${RESULT_SCHEMA}`);
   if (!value.summary || !value.next_action) problems.push("summary and next_action are required");
-  if (SECRET_PATTERN.test(value.summary) || SECRET_PATTERN.test(value.next_action)) problems.push("summary or next_action may expose a secret");
+  if (containsSecretPattern(value.summary) || containsSecretPattern(value.next_action)) problems.push("summary or next_action may expose a secret");
   validateIdentity(value.identity, problems);
   validateExtensions(value.extensions ?? {}, problems);
   validateEvidence(value, problems);

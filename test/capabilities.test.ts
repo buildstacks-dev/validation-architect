@@ -113,6 +113,21 @@ describe("startup capability contract", () => {
     expect(serialized).not.toContain(secret);
     expect(serialized).toContain("[REDACTED]");
   });
+
+  it("preserves reviewed prose that merely contains an embedded sk substring", () => {
+    const result = bootstrapFailureToValidationResult(
+      {
+        stage: "library-load",
+        code: "REVIEW_REQUIRED",
+        message: "E1/E2 remains risk-review-gated.",
+        next_action: "Retain the reviewed risk gate.",
+        affected_case_ids: [],
+      },
+      context("CAP-BOOT"),
+    );
+    expect(result.summary).toBe("E1/E2 remains risk-review-gated.");
+    expect(result.summary).not.toContain("[REDACTED]");
+  });
 });
 
 function causalResult(

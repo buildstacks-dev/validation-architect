@@ -1,4 +1,5 @@
 import type { ResultMappingContext } from "./result-adapters.js";
+import { redactSecretPatterns } from "./secret-safety.js";
 import {
   createValidationResult,
   type ResultCaseRecord,
@@ -142,7 +143,7 @@ export function runStartupConformance(
 function redactText(value: string, secrets: readonly string[]): string {
   let redacted = value;
   for (const secret of secrets.filter(Boolean)) redacted = redacted.split(secret).join("[REDACTED]");
-  return redacted.replace(/AKIA[A-Z0-9]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|sk-[A-Za-z0-9_-]{12,}|((?:token|secret|password|authorization)=)\S+/gi, "$1[REDACTED]");
+  return redactSecretPatterns(redacted);
 }
 
 function redactValue(value: unknown, secrets: readonly string[]): unknown {
