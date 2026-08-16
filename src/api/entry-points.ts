@@ -6,6 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { CanonicalCompilerReport } from "../compiler-report.js";
 import {
   importLegacyCatalog,
   type LegacyMigrationLedger,
@@ -72,6 +73,8 @@ export interface CompileOutput {
   findings: CompilerDiagnostic[];
   /** Regenerated human views as data; the caller decides whether to write. */
   views: Record<string, string>;
+  /** Canonical compiler/v1 data and the exact bytes a host may persist. */
+  report: CanonicalCompilerReport;
 }
 
 /** Author-facing corpus validation and view regeneration. An invalid corpus
@@ -84,6 +87,7 @@ export async function compile(repo: RepositoryPort, options: RepositoryFactsOpti
     ...(compiled.identity ? { identity: compiled.identity } : {}),
     findings: compiled.diagnostics,
     views: compiled.views,
+    report: compiled.report,
   };
 }
 

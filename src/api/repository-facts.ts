@@ -6,6 +6,11 @@
  */
 
 import { createHash } from "node:crypto";
+import {
+  buildCompilerReport,
+  modelSourceFingerprint,
+  type CanonicalCompilerReport,
+} from "../compiler-report.js";
 import { compileValidationModel, type ModelFileSet } from "../model-compiler.js";
 import {
   MODEL_FILES,
@@ -42,6 +47,8 @@ export interface CompiledRepositoryFacts {
   identity?: string;
   diagnostics: CompilerDiagnostic[];
   views: Record<string, string>;
+  source_fingerprint: string;
+  report: CanonicalCompilerReport;
   /** Raw corpus source files that were read, keyed by repository path. */
   modelFiles: Record<string, string>;
 }
@@ -126,6 +133,7 @@ export async function compileFromRepository(
     if (content !== null) existingViews[view] = content;
   }
   const compiled = compileValidationModel(files, { existingViews, allowRegenerate: true });
+  const sourceFingerprint = modelSourceFingerprint(files);
   return {
     revision,
     accepted: compiled.accepted,
@@ -133,6 +141,8 @@ export async function compileFromRepository(
     ...(compiled.identity ? { identity: compiled.identity } : {}),
     diagnostics: compiled.diagnostics,
     views: compiled.generated_views,
+    source_fingerprint: sourceFingerprint,
+    report: buildCompilerReport(compiled, sourceFingerprint),
     modelFiles,
   };
 }

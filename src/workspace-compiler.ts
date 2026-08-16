@@ -2,6 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  buildCompilerReport,
+  modelSourceFingerprint,
+  type CanonicalCompilerReport,
+  type ModelSourceInput,
+} from "./compiler-report.js";
+import {
   MODEL_DIRECTORY,
   MODEL_FILES,
   type CompiledModelBundle,
@@ -11,7 +17,6 @@ import {
 } from "./model.js";
 import { compileValidationModel } from "./model-compiler.js";
 import { GENERATED_MODEL_VIEWS } from "./model-views.js";
-import { COMPILER_VERSION } from "./versions.js";
 
 export interface WorkspaceCompileOptions {
   regenerate: boolean;
@@ -20,6 +25,7 @@ export interface WorkspaceCompileOptions {
 export interface WorkspaceCompilation extends CompiledModelBundle {
   source_fingerprint: string;
   surface_fingerprint: string;
+  report: CanonicalCompilerReport;
   report_path: string;
 }
 
@@ -52,16 +58,15 @@ function readWorkspaceModelInput(workspace: string): {
 } {
   const root = modelRoot(workspace);
   const files: Partial<Record<ModelFilename, string>> = {};
+  const sources: ModelSourceInput = {};
   const diagnostics: CompilerDiagnostic[] = [];
-  const hash = createHash("sha256");
   for (const file of MODEL_FILES) {
     const outcome = readIfPresent(join(root, file));
-    hash.update(file).update("\0");
     if (outcome.value !== undefined) {
       files[file] = outcome.value;
-      hash.update(outcome.value);
+      sources[file] = outcome.value;
     } else if (outcome.errorCode) {
-      hash.update(`<unreadable:${outcome.errorCode}>`);
+      sources[file] = { unreadable: outcome.errorCode };
       diagnostics.push({
         code: "MODEL_FILE_UNREADABLE",
         severity: "error",
@@ -70,12 +75,9 @@ function readWorkspaceModelInput(workspace: string): {
         message: `Required logical model file ${file} could not be read (${outcome.errorCode}).`,
         correction: `Make validation-design/model/${file} a readable regular UTF-8 file, then compile again.`,
       });
-    } else {
-      hash.update("<missing>");
     }
-    hash.update("\0");
   }
-  return { files, diagnostics, sourceFingerprint: hash.digest("hex") };
+  return { files, diagnostics, sourceFingerprint: modelSourceFingerprint(sources) };
 }
 
 export function readWorkspaceModelFiles(workspace: string): Partial<ModelFileSet> {
@@ -101,22 +103,6 @@ function atomicWrite(path: string, content: string): void {
   const temporary = `${path}.tmp-${randomUUID()}`;
   writeFileSync(temporary, content);
   renameSync(temporary, path);
-}
-
-function renderReport(bundle: CompiledModelBundle, sourceFingerprint: string): string {
-  return `${JSON.stringify(
-    {
-      schema: COMPILER_VERSION,
-      accepted: bundle.accepted,
-      source_fingerprint: sourceFingerprint,
-      model_identity: bundle.identity ?? null,
-      versions: bundle.model?.versions ?? null,
-      generated_views: Object.keys(bundle.generated_views).sort(),
-      diagnostics: bundle.diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
-    },
-    null,
-    2,
-  )}\n`;
 }
 
 export function compileWorkspaceModel(
@@ -156,12 +142,14 @@ export function compileWorkspaceModel(
       if (expected !== undefined && existingViews[file] !== expected) atomicWrite(join(root, file), expected);
     }
   }
+  const report = buildCompilerReport(bundle, sourceFingerprint);
   const reportPath = join(root, "compiler-report.json");
-  atomicWrite(reportPath, renderReport(bundle, sourceFingerprint));
+  atomicWrite(reportPath, report.content);
   return {
     ...bundle,
     source_fingerprint: sourceFingerprint,
     surface_fingerprint: workspaceModelSurfaceFingerprint(workspace),
+    report,
     report_path: reportPath,
   };
 }

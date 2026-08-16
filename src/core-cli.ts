@@ -35,7 +35,8 @@ commands:
                               inconclusive and exits 0; broken closure exits 1).
   compile [dir]               Author findings + regenerated views. Exit 1 when
                               the corpus is not accepted. --write regenerates
-                              the views under <dir>/validation-design/.
+                              five Markdown views plus compiler-report.json
+                              under <dir>/validation-design/.
   plan [dir] [--changed ...]  Explained advisory test plan (JSON). No --changed
                               paths means the full-suite/environment question.
   explain <selector> [dir]    Relationship explanation: prose first, exact IDs
@@ -59,9 +60,10 @@ exits 1.`,
   compile: `usage: validation-architect compile [dir] [--tests-root <path>] [--write]
 
 Runs the public compile() entry point: source-located author findings and
-regenerated views as data. Exit 1 when the corpus is not accepted. With
---write the CLI writes the regenerated views under <dir>/validation-design/
-(the library never writes).`,
+regenerated views plus a canonical compiler/v1 report as data. Exit 1 when the
+corpus is not accepted. With --write the CLI writes compiler-report.json and
+the five Markdown views under <dir>/validation-design/ (the library never
+writes).`,
   plan: `usage: validation-architect plan [dir] [--changed <path> [<path> ...]] [--lane <laneId>] [--tests-root <path>]
 
 Prints the explained plan JSON. Without --changed this is the supported
@@ -188,17 +190,25 @@ async function cmdCompile(args: ParsedArgs): Promise<number> {
       throw new Error("validation-design must be a real directory before generated views can be written.");
     }
     mkdirSync(designRoot, { recursive: true });
-    const writes = Object.entries(output.views).map(([view, content]) => {
-      const target = resolve(designRoot, view);
+    const artifacts: Array<{ artifact: string; content: string }> = [
+      ...Object.entries(output.views).map(([artifact, content]) => ({ artifact, content })),
+      { artifact: "compiler-report.json", content: output.report.content },
+    ];
+    const writes = artifacts.map(({ artifact, content }) => {
+      const target = resolve(designRoot, artifact);
       const rel = relative(designRoot, target);
-      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error(`Generated view path escapes validation-design: ${view}`);
-      if (existsSync(target) && lstatSync(target).isSymbolicLink()) throw new Error(`Generated view refuses to follow a symlink: ${view}`);
-      return { view, content, target };
+      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+        throw new Error(`Generated artifact path escapes validation-design: ${artifact}`);
+      }
+      if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
+        throw new Error(`Generated artifact refuses to follow a symlink: ${artifact}`);
+      }
+      return { artifact, content, target };
     });
-    for (const { view, content, target } of writes) {
+    for (const { artifact, content, target } of writes) {
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, content);
-      process.stderr.write(`[validation-architect] wrote validation-design/${view}\n`);
+      process.stderr.write(`[validation-architect] wrote validation-design/${artifact}\n`);
     }
   }
   process.stdout.write(

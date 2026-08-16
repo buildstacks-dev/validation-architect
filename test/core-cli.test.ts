@@ -1,9 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { compile } from "../src/api/entry-points.js";
+import { CliLocalRepository } from "../src/cli-local-repository.js";
 import { main } from "../src/core-cli.js";
+import { GENERATED_MODEL_VIEWS } from "../src/model-views.js";
+import { COMPILER_VERSION } from "../src/versions.js";
 import { writeValidModel } from "./model-corpus-fixture.js";
 
 /**
@@ -116,15 +120,26 @@ describe("check exit-code contract", () => {
 });
 
 describe("compile", () => {
-  it("accepts a clean corpus and only writes views with --write", async () => {
+  it("mutates nothing without --write, then writes exactly five Markdown views and the canonical report", async () => {
     const target = makeTarget();
-    const catalog = join(target, "validation-design", "case-catalog.md");
-    rmSync(catalog);
+    const designRoot = join(target, "validation-design");
+    const artifacts = [...GENERATED_MODEL_VIEWS, "compiler-report.json"];
+    for (const artifact of artifacts) rmSync(join(designRoot, artifact));
+    const beforeNoWrite = git(target, ["status", "--porcelain=v1"]);
+
     expect(await main(["compile", target])).toBe(0);
-    expect(existsSync(catalog)).toBe(false); // no write without --write
+    for (const artifact of artifacts) expect(existsSync(join(designRoot, artifact)), artifact).toBe(false);
+    expect(git(target, ["status", "--porcelain=v1"])).toBe(beforeNoWrite);
+    const expectedReport = (await compile(new CliLocalRepository(target))).report.content;
+
     expect(await main(["compile", target, "--write"])).toBe(0);
-    expect(existsSync(catalog)).toBe(true);
-    expect(readFileSync(catalog, "utf8")).toContain("CF-X01-S");
+    expect(readdirSync(designRoot).filter((entry) => entry.endsWith(".md")).sort()).toEqual(
+      [...GENERATED_MODEL_VIEWS].sort(),
+    );
+    expect(readFileSync(join(designRoot, "case-catalog.md"), "utf8")).toContain("CF-X01-S");
+    const report = readFileSync(join(designRoot, "compiler-report.json"), "utf8");
+    expect(report).toBe(expectedReport);
+    expect(JSON.parse(report)).toMatchObject({ schema: COMPILER_VERSION, accepted: true });
   });
 
   it("exits 1 with findings for a corpus that does not compile", async () => {
@@ -134,6 +149,24 @@ describe("compile", () => {
     git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "break"]);
     expect(await main(["compile", target])).toBe(1);
     expect(err.join("")).toContain("[error]");
+  });
+
+  it("writes an accepted:false report for invalid input when explicitly requested", async () => {
+    const target = makeTarget();
+    const reportPath = join(target, "validation-design", "compiler-report.json");
+    rmSync(join(target, "validation-design", "model", "families.yaml"));
+    rmSync(reportPath);
+    git(target, ["add", "-A"]);
+    git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "break"]);
+
+    expect(await main(["compile", target, "--write"])).toBe(1);
+    expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+      schema: COMPILER_VERSION,
+      accepted: false,
+      model_identity: null,
+      versions: null,
+      generated_views: [],
+    });
   });
 
   it("refuses to publish a generated view through a symlink", async () => {
@@ -146,6 +179,39 @@ describe("compile", () => {
     expect(await main(["compile", target, "--write"])).toBe(1);
     expect(err.join("")).toContain("symlink");
     expect(readFileSync(outside, "utf8")).toBe("keep\n");
+  });
+
+  it("refuses compiler-report.json through the same symlink boundary before writing any artifact", async () => {
+    const target = makeTarget();
+    const designRoot = join(target, "validation-design");
+    const report = join(designRoot, "compiler-report.json");
+    const outside = join(tmp, "outside-report.json");
+    const catalog = join(designRoot, "case-catalog.md");
+    writeFileSync(outside, "keep\n");
+    writeFileSync(catalog, "sentinel\n");
+    rmSync(report);
+    symlinkSync(outside, report);
+
+    expect(await main(["compile", target, "--write"])).toBe(1);
+    expect(err.join("")).toContain("compiler-report.json");
+    expect(err.join("")).toContain("symlink");
+    expect(readFileSync(outside, "utf8")).toBe("keep\n");
+    expect(readFileSync(catalog, "utf8")).toBe("sentinel\n");
+  });
+
+  it("refuses a validation-design root symlink instead of escaping the write boundary", async () => {
+    const target = makeTarget();
+    const designRoot = join(target, "validation-design");
+    const outside = join(tmp, "outside-design");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "keep.txt"), "keep\n");
+    rmSync(designRoot, { recursive: true });
+    symlinkSync(outside, designRoot);
+
+    expect(await main(["compile", target, "--write"])).toBe(1);
+    expect(err.join("")).toContain("symlink escape");
+    expect(readFileSync(join(outside, "keep.txt"), "utf8")).toBe("keep\n");
+    expect(existsSync(join(outside, "compiler-report.json"))).toBe(false);
   });
 });
 

@@ -97,6 +97,8 @@ try {
     "package/bin/validation-trace.js",
     "package/dist/api/index.js",
     "package/dist/api/index.d.ts",
+    "package/dist/compiler-report.js",
+    "package/dist/compiler-report.d.ts",
     "package/dist/core-cli.js",
     "package/dist/trace-cli.js",
     "package/schemas/corpus.v1.schema.json",
@@ -557,6 +559,15 @@ const repo = new FakeRepositoryPort({
 });
 const compilation = await compile(repo);
 if (!compilation.accepted) throw new Error("pending corpus must compile");
+if (
+  compilation.report.record.schema !== "validation-architect/compiler/v1" ||
+  compilation.report.record.accepted !== true ||
+  compilation.report.record.generated_views.length !== 5 ||
+  Object.keys(compilation.views).length !== 5 ||
+  compilation.report.content !== JSON.stringify(compilation.report.record, null, 2) + "\\n"
+) {
+  throw new Error("public compile did not return the canonical compiler/v1 report and five Markdown views");
+}
 const result = await check(repo);
 if (result.verdict !== "inconclusive" || result.completeness !== "incomplete") {
   throw new Error("pending family must remain incomplete/inconclusive");
