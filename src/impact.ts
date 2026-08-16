@@ -1,10 +1,10 @@
 import type { CompiledDesignModel, TestInventory } from "./model.js";
 import { relationshipPayloadIdentity, type RelationshipGraph } from "./relationship-graph.js";
 import type { ResultPlan } from "./validation-result.js";
+import { containsSecretPattern } from "./secret-safety.js";
 
 export const IMPACT_MAPPING_SCHEMA = "validation-architect/impact-mapping/v1";
 export const IMPACT_PLAN_SCHEMA = "validation-architect/plan/v1";
-const SECRET_PATTERN = /(?:AKIA[A-Z0-9]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|sk-[A-Za-z0-9_-]{12,}|(?:token|secret|password|authorization)=(?!\[REDACTED\])\S+)/i;
 
 export interface ChangedInput {
   id: string;
@@ -72,11 +72,11 @@ export interface ImpactPlannerInput {
 }
 
 function safe(value: string): boolean {
-  return value.length > 0 && !value.includes("\0") && !SECRET_PATTERN.test(value) && !value.replaceAll("\\", "/").split("/").includes("..") && !value.startsWith("/");
+  return value.length > 0 && !value.includes("\0") && !containsSecretPattern(value) && !value.replaceAll("\\", "/").split("/").includes("..") && !value.startsWith("/");
 }
 
-const safeSymbol = (value: string): boolean => /^[A-Za-z0-9_.:#/-]{1,256}$/.test(value) && !SECRET_PATTERN.test(value);
-const safeCommand = (value: string | undefined): value is string => Boolean(value && !value.includes("\0") && !SECRET_PATTERN.test(value));
+const safeSymbol = (value: string): boolean => /^[A-Za-z0-9_.:#/-]{1,256}$/.test(value) && !containsSecretPattern(value);
+const safeCommand = (value: string | undefined): value is string => Boolean(value && !value.includes("\0") && !containsSecretPattern(value));
 
 function glob(pattern: string, path: string): boolean {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replaceAll("**", "\0").replaceAll("*", "[^/]*").replaceAll("\0", ".*");
@@ -128,7 +128,7 @@ export function planChangedImpact(input: ImpactPlannerInput): ExplainedImpactPla
   for (const changed of input.changed_inputs) {
     if (!changed.id || changedIds.has(changed.id) || (changed.path && !safe(changed.path)) || (changed.symbol && !safeSymbol(changed.symbol)) || (!changed.path && !changed.symbol)) {
       widen = true;
-      unknowns.push(`${SECRET_PATTERN.test(changed.id) ? "[REDACTED]" : changed.id || "(missing id)"} is duplicate or missing a safe path/symbol mapping input.`);
+      unknowns.push(`${containsSecretPattern(changed.id) ? "[REDACTED]" : changed.id || "(missing id)"} is duplicate or missing a safe path/symbol mapping input.`);
       continue;
     }
     changedIds.add(changed.id);
@@ -234,7 +234,7 @@ export function planChangedImpact(input: ImpactPlannerInput): ExplainedImpactPla
     identity: { model_identity: input.graph.identity.model_identity, graph_identity: input.graph.identity.graph_identity, inventory_identity: input.graph.identity.inventory_identity, mapping_identity: input.mappings.identity, product_revision: checkedRevision, lane: input.lane, versions: structuredClone(input.model.versions) },
     advisory: true,
     full_required_ci_authoritative: true,
-    changed_inputs: input.changed_inputs.map((item) => ({ ...item, ...(item.path && !safe(item.path) ? { path: "[REDACTED]" } : {}), ...(item.symbol && !safeSymbol(item.symbol) ? { symbol: "[REDACTED]" } : {}), ...(SECRET_PATTERN.test(item.id) ? { id: "[REDACTED]" } : {}) })).sort((a, b) => a.id.localeCompare(b.id)),
+    changed_inputs: input.changed_inputs.map((item) => ({ ...item, ...(item.path && !safe(item.path) ? { path: "[REDACTED]" } : {}), ...(item.symbol && !safeSymbol(item.symbol) ? { symbol: "[REDACTED]" } : {}), ...(containsSecretPattern(item.id) ? { id: "[REDACTED]" } : {}) })).sort((a, b) => a.id.localeCompare(b.id)),
     affected_meaning: structureIds.map((id) => ({ structure_id: id, meaning: structures.get(id)?.meaning ?? "unresolved structure" })),
     structure_ids: structureIds,
     family_ids: familyIds,

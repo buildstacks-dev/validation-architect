@@ -151,6 +151,23 @@ describe("validation model compiler", () => {
     expect(first.generated_views["planned-trace.md"]).toContain("does not claim that tests exist");
   });
 
+  it("projects fresh-human authorization into the owner execution-lane briefing", () => {
+    const files = validFiles();
+    const policy = compileValidationModel(files).model?.policy;
+    if (!policy) throw new Error("fixture policy did not compile");
+    const triggered = policy.lanes.find((lane) => lane.id === "triggered");
+    if (!triggered) throw new Error("fixture is missing its triggered lane");
+    triggered.authorization = "per-run-human";
+    const compiled = compileValidationModel({
+      ...files,
+      "policy.yaml": yaml({ schema: MODEL_FILE_SCHEMAS["policy.yaml"], ...policy }),
+    });
+    expect(compiled.accepted).toBe(true);
+    expect(compiled.generated_views["owner-briefing.md"]).toContain(
+      "`triggered` Triggered evidence (evidence): blocking, declared-empty; triggers: —; authorization: per-run-human",
+    );
+  });
+
   it("rejects duplicate ids with exact source location and a correction", () => {
     const files = validFiles();
     const family = yaml({

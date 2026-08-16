@@ -7,9 +7,9 @@ import type {
   ValidationEvidenceSet,
 } from "./model.js";
 import { joinTestInventory } from "./model-inventory.js";
+import { containsSecretPattern } from "./secret-safety.js";
 
 export const VALIDATION_TRACE_CHECK = "Validation Trace";
-const SECRET_PATTERN = /(?:AKIA[A-Z0-9]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|sk-[A-Za-z0-9_-]{12,}|(?:token|secret|password|authorization)=(?!\[REDACTED\])\S+)/i;
 
 export type RelationshipKind =
   | "owner"
@@ -118,7 +118,7 @@ function safePath(path: string): boolean {
 }
 
 function redact(value: unknown): unknown {
-  if (typeof value === "string") return SECRET_PATTERN.test(value) ? "[REDACTED]" : value;
+  if (typeof value === "string") return containsSecretPattern(value) ? "[REDACTED]" : value;
   if (Array.isArray(value)) return value.map(redact);
   if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redact(item)]));
   return value;
@@ -155,7 +155,7 @@ export function buildRelationshipGraph(input: RelationshipGraphInput): Relations
 
   for (const repositoryFinding of input.repository_findings ?? []) finding(findings, repositoryFinding);
 
-  if (SECRET_PATTERN.test(JSON.stringify(model))) finding(findings, { code: "MODEL_SECRET_UNSAFE", level: "red", subject_id: model.product.id, message: "The checked model contains text shaped like a credential or secret.", correction: "Remove secret values; cite only safe repository references." });
+  if (containsSecretPattern(JSON.stringify(model))) finding(findings, { code: "MODEL_SECRET_UNSAFE", level: "red", subject_id: model.product.id, message: "The checked model contains text shaped like a credential or secret.", correction: "Remove secret values; cite only safe repository references." });
 
   if (model.product.revision !== checkedRevision) finding(findings, { code: "MODEL_REVISION_STALE", level: "red", subject_id: model.product.id, message: `Design revision ${model.product.revision} does not match checked repository revision ${checkedRevision}.`, correction: "Regenerate and review the design corpus at the exact repository revision." });
   if (inventory.revision !== checkedRevision) finding(findings, { code: "INVENTORY_IDENTITY_MISMATCH", level: "red", subject_id: inventory.revision, message: `Inventory revision ${inventory.revision} does not match checked repository revision ${checkedRevision}.`, correction: "Regenerate inventory at the exact checked revision." });
@@ -205,7 +205,7 @@ export function buildRelationshipGraph(input: RelationshipGraphInput): Relations
 
   for (const test of inventory.tests) {
     if (!safePath(test.path)) continue;
-    if (test.command && (test.command.includes("\0") || SECRET_PATTERN.test(test.command))) finding(findings, { code: "COMMAND_UNSAFE", level: "red", subject_id: test.id, message: `Inventory command for ${test.id} is unsafe and was redacted.`, correction: "Supply a non-secret command as adapter data; core never executes it." });
+    if (test.command && (test.command.includes("\0") || containsSecretPattern(test.command))) finding(findings, { code: "COMMAND_UNSAFE", level: "red", subject_id: test.id, message: `Inventory command for ${test.id} is unsafe and was redacted.`, correction: "Supply a non-secret command as adapter data; core never executes it." });
     node(nodes, { id: test.id, kind: "test", meaning: `Executable detector at ${test.path}`, path: test.path, details: { command: test.command, always_run: test.always_run ?? false, control_ids: test.control_ids ?? [] } });
     for (const familyId of test.family_ids) if (families.has(familyId)) edge(edges, familyId, test.id, "implemented-by");
     for (const controlId of test.control_ids ?? []) if (controls.has(controlId)) edge(edges, controlId, test.id, "implemented-by");
@@ -268,7 +268,7 @@ export interface RelationshipQuery {
 
 /** Bidirectional traversal with bounded visited-node expansion. */
 export function queryRelationshipGraph(graph: RelationshipGraph, selector: string): RelationshipQuery {
-  const safeSelector = SECRET_PATTERN.test(selector) ? "[REDACTED]" : selector;
+  const safeSelector = containsSecretPattern(selector) ? "[REDACTED]" : selector;
   const roots = safeSelector === "[REDACTED]" ? [] : graph.nodes.filter((item) => item.id === selector || item.path === selector).map((item) => item.id);
   const matchedBy = graph.nodes.some((item) => item.id === selector) ? "id" : "path";
   const visited = new Set(roots);
