@@ -54,6 +54,22 @@ function greenRepo(overrides: Record<string, string | null> = {}, revision = "ab
   return new FakeRepositoryPort({ revision, files });
 }
 
+function repoWithTicketStatus(
+  status: "pending" | "landed" | "blocked" | "parked",
+  overrides: Record<string, string | null> = {},
+): FakeRepositoryPort {
+  const files = fixtureFiles();
+  const backlogPath = "validation-design/model/backlog.yaml";
+  const backlog = files[backlogPath];
+  if (!backlog) throw new Error("fixture is missing backlog.yaml");
+  files[backlogPath] = backlog.replace("status: pending", `status: ${status}`);
+  for (const [path, content] of Object.entries(overrides)) {
+    if (content === null) delete files[path];
+    else files[path] = content;
+  }
+  return new FakeRepositoryPort({ revision: "abc123", files });
+}
+
 describe("compile", () => {
   it("returns findings and regenerated views as data for a valid corpus", async () => {
     const output = await compile(greenRepo());
@@ -84,11 +100,29 @@ describe("check", () => {
     expect(canonicalJson(first)).toBe(canonicalJson(second));
   });
 
-  it("fails when the cited test disappears (orphaned meaning breaks traceability)", async () => {
-    const result = await check(greenRepo({ "tests/fixture.test.ts": null }));
+  it("keeps an unimplemented family non-green but structurally closed while its owner ticket is pending", async () => {
+    const result = await check(greenRepo({ "tests/fixture.test.ts": null, "tests/.keep": "" }));
+    expect(result.verdict).toBe("inconclusive");
+    expect(result.completeness).toBe("incomplete");
+    expect(result.reason).toBe("evidence_incomplete");
+    expect(isGreenValidationResult(result)).toBe(false);
+    expect(JSON.stringify(result.extensions)).toContain("IMPLEMENTATION_PENDING");
+    expect(JSON.stringify(result.extensions)).not.toContain("IMPLEMENTATION_MISSING");
+    expect(JSON.stringify(result.extensions)).not.toContain("PLANNED_IMPLEMENTATION_DRIFT");
+  });
+
+  it("fails when the cited test disappears after its owner ticket is landed", async () => {
+    const result = await check(repoWithTicketStatus("landed", { "tests/fixture.test.ts": null, "tests/.keep": "" }));
     expect(result.verdict).toBe("fail");
     expect(result.reason).toBe("traceability_broken");
+    expect(JSON.stringify(result.extensions)).toContain("LANDED_STATUS_FALSE");
     expect(isGreenValidationResult(result)).toBe(false);
+  });
+
+  it("removes the pending-implementation finding when the exact planned test exists", async () => {
+    const result = await check(repoWithTicketStatus("pending"));
+    expect(result.verdict).toBe("inconclusive");
+    expect(JSON.stringify(result.extensions)).not.toContain("IMPLEMENTATION_PENDING");
   });
 
   it("fails when the spec loses its family citation", async () => {

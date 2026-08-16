@@ -3,6 +3,7 @@ import { buildRelationshipGraph, queryRelationshipGraph, VALIDATION_TRACE_CHECK 
 import { explainRelationshipQuery, generateRelationshipViews } from "../src/relationship-views.js";
 import { relationshipTraceToValidationResult } from "../src/result-adapters.js";
 import { validateValidationResult } from "../src/validation-result.js";
+import type { TicketStatus } from "../src/model.js";
 import { graphFixture } from "./core-graph-fixture.js";
 
 function build() {
@@ -71,6 +72,28 @@ describe("model-native relationship graph", () => {
     expect(graph.findings).toContainEqual(expect.objectContaining({ code: "EVIDENCE_PARTIAL", level: "partial", subject_id: "EV-TENANT" }));
     expect(queryRelationshipGraph(graph, "EV-TENANT").nodes.find((item) => item.id === "EV-TENANT")?.state).toBe("inconclusive");
   });
+
+  const nonLandedStatuses: TicketStatus[] = ["pending", "blocked", "parked"];
+  for (const status of nonLandedStatuses) {
+    it(`keeps absent implementation explicitly partial while its owner ticket is ${status}`, () => {
+      const fixture = graphFixture();
+      const ticket = fixture.model.tickets.find((item) => item.id === "HB-RETRY");
+      if (!ticket) throw new Error("graph fixture is missing HB-RETRY");
+      ticket.status = status;
+      fixture.inventory.tests = fixture.inventory.tests.filter((item) => !item.family_ids.includes("CF-RETRY"));
+      fixture.evidence.items = fixture.evidence.items.filter((item) => !item.family_ids.includes("CF-RETRY"));
+
+      const graph = buildRelationshipGraph({ ...fixture, model_identity: "model-1" });
+      const closureFindings = graph.findings.filter((item) => item.subject_id === "CF-RETRY");
+      expect(graph.structurally_closed).toBe(true);
+      expect(graph.assurance_complete).toBe(false);
+      expect(closureFindings).toContainEqual(expect.objectContaining({ code: "IMPLEMENTATION_PENDING", level: "partial" }));
+      expect(closureFindings).not.toContainEqual(expect.objectContaining({ level: "red" }));
+      expect(closureFindings.map((item) => item.code)).not.toEqual(
+        expect.arrayContaining(["IMPLEMENTATION_MISSING", "EVIDENCE_ARTIFACT_MISSING", "PLANNED_IMPLEMENTATION_DRIFT"]),
+      );
+    });
+  }
 
   it("maps green, partial, and red graphs to fail-closed results and an operator view", () => {
     const context = (versions: ReturnType<typeof graphFixture>["model"]["versions"]) => ({

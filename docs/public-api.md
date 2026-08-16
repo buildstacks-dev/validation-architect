@@ -60,7 +60,10 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   `validation-architect/result/v1` record). A closed trace whose evidence is
   structural-only is reported `inconclusive`/`incomplete` — the trace proves
   closure, never product green (`isGreenValidationResult` stays false). Broken
-  closure is `fail`/`traceability_broken`.
+  closure is `fail`/`traceability_broken`. A family with no implementation and
+  a known `pending`, `blocked`, or `parked` owner ticket is explicitly partial
+  and remains inconclusive; the same absence under a `landed` or unknown owner
+  is broken closure.
 - **`plan(repo, [])`** is the supported environment/full-suite question.
   Unknown, uncertain, stale, or structural mappings expand to the full
   applicable suite; the plan is advisory and the full required CI run stays

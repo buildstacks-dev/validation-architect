@@ -98,6 +98,14 @@ runtime identity mismatch, and stale generated views. Structural artifacts may
 close a link while remaining explicitly partial evidence. Trace proves closure,
 not oracle fidelity; independent fidelity review remains separate.
 
+Implementation closure is backlog-status-aware without becoming green by
+absence. An implementable family with no observed implementation is an explicit
+partial `IMPLEMENTATION_PENDING` finding while its known owner ticket is
+`pending`, `blocked`, or `parked`; planned paths are future work in those
+states. The same absence with a `landed` or unknown owner is red, and a landed
+owner additionally produces `LANDED_STATUS_FALSE`. Pending partials therefore
+remain `inconclusive`/`incomplete`, never pass.
+
 The current CLI route is:
 
 ```bash

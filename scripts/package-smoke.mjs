@@ -465,6 +465,53 @@ console.log("surface ok");
   git(target, ["add", "validation-design"]);
   git(target, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "design"]);
 
+  // The packed PUBLIC ROOT import must preserve honest pre-implementation
+  // backlog state: pending is partial/inconclusive, never green and never a
+  // false closure red. Keep an observed test root while omitting the planned
+  // spec so TESTS_ROOT_ABSENT remains an independent fail-closed detector.
+  const pendingFiles = {
+    "docs/PRODUCT.md": readFileSync(join(target, "docs", "PRODUCT.md"), "utf8"),
+    "tests/.keep": "",
+  };
+  for (const name of readdirSync(model)) {
+    pendingFiles[`validation-design/model/${name}`] = readFileSync(join(model, name), "utf8");
+  }
+  writeFileSync(
+    join(consumer, "pending-root-import.mjs"),
+    `
+import {
+  check, compile, explain, FakeRepositoryPort, isGreenValidationResult,
+} from "validation-architect";
+
+const repo = new FakeRepositoryPort({
+  revision: ${JSON.stringify(sourceRevision)},
+  files: ${JSON.stringify(pendingFiles)},
+});
+const compilation = await compile(repo);
+if (!compilation.accepted) throw new Error("pending corpus must compile");
+const result = await check(repo);
+if (result.verdict !== "inconclusive" || result.completeness !== "incomplete") {
+  throw new Error("pending family must remain incomplete/inconclusive");
+}
+if (isGreenValidationResult(result)) throw new Error("pending family became green by absence");
+const graph = (await explain(repo, "CF-X01-S")).graph;
+const familyFindings = graph.findings.filter((finding) => finding.subject_id === "CF-X01-S");
+if (!familyFindings.some((finding) => finding.code === "IMPLEMENTATION_PENDING" && finding.level === "partial")) {
+  throw new Error("pending family lacks the explicit partial finding");
+}
+for (const code of ["IMPLEMENTATION_MISSING", "EVIDENCE_ARTIFACT_MISSING", "PLANNED_IMPLEMENTATION_DRIFT"]) {
+  if (familyFindings.some((finding) => finding.code === code && finding.level === "red")) {
+    throw new Error("pending family produced false closure red " + code);
+  }
+}
+console.log("pending public root import ok");
+`,
+  );
+  const pendingRootImport = run("node", ["pending-root-import.mjs"], consumer);
+  if (!pendingRootImport.stdout.includes("pending public root import ok")) {
+    throw new Error("packed public root did not confirm pending-family semantics");
+  }
+
   const checkRun = tryRun(binPath("validation-architect"), ["check", target], consumer);
   if (checkRun.status !== 0) {
     throw new Error(`validation-architect check must exit 0 on a closed corpus, got ${checkRun.status}\n${checkRun.stdout}\n${checkRun.stderr}`);
