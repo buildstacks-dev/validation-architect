@@ -3,6 +3,22 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.0 — lossless reviewed legacy migration (unreleased)
+
+- The public `migrate` review can normalize one legacy family into explicit
+  canonical layer/lane outputs and split a legacy ticket into actionable
+  single-layer/single-lane tickets without parsing composite prose.
+- A complete reviewed target policy may replace the canonical import fallback,
+  preserving product-specific lane triggers, authorization, exceptions, and
+  criticality obligations without host inference.
+- Migration evidence now carries a deterministic ledger for every legacy
+  family and ticket. It separates ticket citations from first-owner work and
+  retains no-owner tickets as historical evidence instead of emitting invalid
+  empty backlog entries.
+- Synthetic Cormidia-shaped negative controls cover dropped or duplicate IDs,
+  unreviewed placement, layer/lane mismatch, missing historical disposition,
+  unknown review IDs, and deterministic regeneration.
+
 ## 0.3.0 — first public release candidate (unreleased)
 
 The corrected core/API/packaging boundary, superseding all `0.1.x` internal
