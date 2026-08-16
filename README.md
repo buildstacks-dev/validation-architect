@@ -74,6 +74,12 @@ invalid model blocks readers, audit, completion, and delivery. Narrative
 rationale remains authored prose, while the actual test inventory and run
 evidence stay separate from design authority.
 
+The public repository composition joins observed executable specs to current
+families and controls by exact reviewed `planned_tests` path. One path may
+implement several reviewed split families. Legacy first-comment CF/HB tokens
+remain human-readable annotations; they cannot create or reject current model
+facts, while an observed unplanned spec remains a red orphan.
+
 Fresh readers are additionally confined to an ephemeral bundle containing only
 those five generated views, the accepted compiler report, and a bundle identity
 manifest. They cannot read YAML source, authored design prose, product docs,
@@ -262,12 +268,12 @@ pnpm vda repos --stale-days 7
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.4.1
+pnpm add --save-dev --save-exact validation-architect@0.4.2
 pnpm exec validation-architect check .            # the CI gate (result/v1)
 pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
-Before a registry release, replace `validation-architect@0.4.1` with the exact
+Before a registry release, replace `validation-architect@0.4.2` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 **Two lockstep packages** (VA-PKG-001). This repository publishes a pair that
@@ -296,9 +302,15 @@ version together:
 
 **Deprecated alias.** `validation-trace` remains a bin of the core package
 through 0.x as a deprecated alias for `validation-architect check`: every
-invocation prints one deterministic warning line on stderr, exit codes are
-identical, and it is removed at 1.0. Its former `generate` subcommand is
-superseded by `validation-architect compile`.
+invocation prints one deterministic warning line on stderr, and it is removed
+at 1.0. The alias alone carries one bounded cutover bridge for consumers that
+still invoke `--manifest`/`--tests`: with no checked-model file it runs the
+retained legacy closure; once any checked-model file exists it selects
+checked-model authority without fallback, ignores `--manifest`, and maps
+`--tests` to `--tests-root`. A partial or corrupt model therefore fails closed.
+Without those legacy flags, exit codes and output remain identical to `check`.
+The former `generate` subcommand is superseded by
+`validation-architect compile`.
 
 Flags: `--max-exchanges N` (default 60) · `--wall-minutes N` (default 300) ·
 `--designer-model` / `--stakeholder-model` / `--reader-model` ·

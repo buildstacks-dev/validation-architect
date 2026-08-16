@@ -84,6 +84,11 @@ describe("help and unknown commands", () => {
 });
 
 describe("check exit-code contract", () => {
+  it("keeps legacy manifest flags off the public checked-model command", async () => {
+    expect(await main(["check", ".", "--manifest", "legacy.yaml"])).toBe(2);
+    expect(err.join("")).toContain("unknown flag --manifest");
+  });
+
   it("exits 0 with an inconclusive record for a closed but evidence-incomplete corpus", async () => {
     const target = makeTarget();
     expect(await main(["check", target, "--json"])).toBe(0);

@@ -56,6 +56,15 @@ describe("decision 2: validation-trace alias retained through 0.x", () => {
       expect(pkg.bin["validation-trace"]).toBeUndefined();
     }
   });
+
+  it("records the bounded bridge without changing the public check command", () => {
+    const alias = readFileSync(join(root, "src", "trace-cli.ts"), "utf8");
+    const core = readFileSync(join(root, "src", "core-cli.ts"), "utf8");
+    expect(record).toContain("Bounded cutover bridge");
+    expect(alias).toContain("TRACE_LEGACY_BRIDGE_ACTIVE");
+    expect(alias).toContain("hasCheckedModelFile");
+    expect(core).not.toContain('"manifest"');
+  });
 });
 
 describe("decision 3: one canonical result schema ID", () => {

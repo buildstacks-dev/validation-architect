@@ -17,7 +17,8 @@ install the lockstep companion package `validation-architect-design` (its CLI
 composes `design`/`resume` with local fs/git/store/SDK adapters). The
 `validation-architect` CLI (`check`/`compile`/`plan`/`explain`/`report`) ships
 with the core package; `validation-trace` stays a deprecated alias for
-`validation-architect check` until 1.0.
+`validation-architect check` until 1.0. The public core command remains
+checked-model-only; the alias has the bounded pre-model bridge described below.
 
 ## The effect boundary: three ports
 
@@ -64,6 +65,11 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   a known `pending`, `blocked`, or `parked` owner ticket is explicitly partial
   and remains inconclusive; the same absence under a `landed` or unknown owner
   is broken closure.
+- **Repository inventory join**: current family/control links are derived from
+  exact compiled `planned_tests` paths joined to observed spec files and call
+  sites at the RepositoryPort revision. One path may implement several reviewed
+  split families. Legacy first-comment CF/HB tokens are annotations, never
+  current authority; an observed unplanned spec remains a red orphan.
 - **`plan(repo, [])`** is the supported environment/full-suite question.
   Unknown, uncertain, stale, or structural mappings expand to the full
   applicable suite; the plan is advisory and the full required CI run stays
@@ -165,3 +171,15 @@ exported per family (`validateCorpus`, `validateCaseCatalog`,
 mirrors ship under `schemas/*.schema.json`; the validators are authoritative.
 Hosts may add namespaced extension fields to results and may never redefine an
 existing field.
+
+## Deprecated-alias cutover bridge
+
+`validation-architect check` rejects `--manifest`/`--tests`. The deprecated
+`validation-trace` alias accepts those historical flags only to let a consumer
+land an exact preparatory dependency/tooling commit before a
+`validation-design/`-only authority cutover. With no checked-model file it runs
+the retained legacy closure. Once any of the eight model files exists, it never
+falls back: `--tests` maps to `--tests-root`, `--manifest` is a deterministic
+no-op, and the exact public checked-model path runs. A partial, corrupt, or
+stale model fails closed. No migration or write occurs, and the bridge is
+removed with the alias at 1.0.

@@ -12,8 +12,9 @@
  *   2. the DESIGN tarball's packed manifest depends on validation-architect
  *      at the EXACT version (workspace:* rewritten, no range), installs
  *      alongside the core tarball, and answers --help offline.
- * Plus target-repo behavior: `validation-architect check` and its deprecated
- * alias execute the same committed-model code path.
+ * Plus target-repo behavior: the deprecated alias preserves legacy closure
+ * before cutover, refuses fallback after the first model file appears, and
+ * executes the same committed-model path after cutover.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -58,6 +59,8 @@ const git = (cwd, args) =>
 
 const TRACE_WARNING =
   'validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.';
+const LEGACY_BRIDGE_ACTIVE = "validation-trace legacy manifest bridge active";
+const CHECKED_MODEL_SELECTED = "validation-trace checked-model authority selected";
 
 try {
   // ── build + pack both packages ─────────────────────────────────────────────
@@ -338,6 +341,71 @@ console.log("surface ok");
     throw new Error("validation-trace generate must exit 2 and point at validation-architect compile");
   }
 
+  // A legacy consumer can pin the package in a preparatory commit without
+  // dropping its incumbent closure gate. This bridge is alias-only and ends
+  // as soon as the first checked-model file appears.
+  const legacyTarget = join(scratch, "legacy-target");
+  mkdirSync(join(legacyTarget, "validation-design"), { recursive: true });
+  mkdirSync(join(legacyTarget, "tests", "cf-legacy"), { recursive: true });
+  writeFileSync(
+    join(legacyTarget, "validation-design", "case-catalog.yaml"),
+    [
+      "schema: validation-architect/case-catalog/v1",
+      "product: legacy-smoke",
+      "families:",
+      "  - id: CF-LEGACY",
+      "    section: Legacy bridge",
+      "    status: implementable",
+      "    layers: '2'",
+      "    risk: STD",
+      "    ticket: HB-LEGACY",
+      "    wave: '0'",
+      "tickets:",
+      "  - id: HB-LEGACY",
+      "    wave: '0'",
+      "    status: landed",
+      "    families: [CF-LEGACY]",
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(
+    join(legacyTarget, "tests", "cf-legacy", "cf-legacy.test.ts"),
+    ["// CF-LEGACY — retained detector (HB-LEGACY)", "it('holds', () => {});", ""].join("\n"),
+  );
+  const legacyAlias = tryRun(
+    binPath("validation-trace"),
+    [legacyTarget, "--manifest", "validation-design/case-catalog.yaml", "--tests", "tests"],
+    consumer,
+  );
+  if (legacyAlias.status !== 0 || !legacyAlias.stdout.includes("Trace report — legacy-smoke")) {
+    throw new Error(`legacy alias bridge did not preserve closure\n${legacyAlias.stdout}\n${legacyAlias.stderr}`);
+  }
+  if (!legacyAlias.stderr.includes(LEGACY_BRIDGE_ACTIVE)) {
+    throw new Error("legacy alias bridge did not identify the selected legacy authority");
+  }
+
+  mkdirSync(join(legacyTarget, "validation-design", "model"), { recursive: true });
+  writeFileSync(
+    join(legacyTarget, "validation-design", "model", "project.yaml"),
+    "schema: validation-architect/model/project/v1\n",
+  );
+  git(scratch, ["init", "-q", "-b", "main", "legacy-target"]);
+  git(legacyTarget, ["add", "-A"]);
+  git(legacyTarget, ["-c", "user.name=smoke", "-c", "user.email=smoke@local", "commit", "-q", "-m", "partial model"]);
+  const partialAlias = tryRun(
+    binPath("validation-trace"),
+    [legacyTarget, "--manifest", "validation-design/case-catalog.yaml", "--tests", "tests"],
+    consumer,
+  );
+  if (
+    partialAlias.status !== 1 ||
+    !partialAlias.stderr.includes(CHECKED_MODEL_SELECTED) ||
+    !partialAlias.stderr.includes("invalid_input") ||
+    partialAlias.stdout.includes("Trace report — legacy-smoke")
+  ) {
+    throw new Error(`partial model fell back to legacy closure\n${partialAlias.stdout}\n${partialAlias.stderr}`);
+  }
+
   // ── target-repo behavior: check against a committed model corpus ───────────
   const { CURRENT_CORE_VERSIONS } = await import(pathToFileURL(join(repoRoot, "dist", "versions.js")).href);
   const target = join(scratch, "target");
@@ -526,6 +594,17 @@ console.log("pending public root import ok");
   }
   if (!aliasTrace.stderr.includes(TRACE_WARNING)) {
     throw new Error("alias trace run must carry the deprecation warning");
+  }
+  const cutoverAlias = tryRun(
+    binPath("validation-trace"),
+    [target, "--manifest", "validation-design/legacy-does-not-exist.yaml", "--tests", "tests"],
+    consumer,
+  );
+  if (cutoverAlias.status !== checkRun.status || cutoverAlias.stdout !== checkRun.stdout) {
+    throw new Error("legacy alias flags did not select the exact checked-model result after cutover");
+  }
+  if (!cutoverAlias.stderr.includes(CHECKED_MODEL_SELECTED)) {
+    throw new Error("cutover alias did not identify checked-model authority");
   }
 
   // ── install the DESIGN tarball alongside, core dep → core tarball ──────────

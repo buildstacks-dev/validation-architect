@@ -37,12 +37,13 @@ The compiler-clean model is authoritative. On conflict with a generated view, fi
 
 Follow these so the trace CLI closes by construction. They mirror the AGENTS.md contribution block the design campaign emitted.
 
-1. **Keep the model authoritative.** Tests implement family meaning; they do not define it. The repository adapter emits explicit family/control links at the exact revision.
+1. **Keep the model authoritative.** Tests implement family meaning; they do not define it. Exact `planned_tests` paths and declared control relationships map observed files at the exact revision; legacy CF/HB header tokens remain human-readable history, not current machine facts.
 2. **Match planned paths and controls.** Land every planned test/evidence artifact and the declared negative control. Always-run safety checks stay paired in impact advice.
-3. **Keep status honest.** Every implementable family must be observed by the modern trace graph before a ticket becomes `landed`; absence is red, and false landed status is a second red.
+3. **Keep status honest.** A missing implementation remains explicit partial/inconclusive while its owner ticket is `pending`, `blocked`, or `parked`; it is never green. Before a ticket becomes `landed`, every owned family must be observed at its reviewed path. Absence under `landed` is red, and false landed status is a second red.
 4. **Update traceability in the same change.** If planned paths, meaning, control links, or status change, update `model/families.yaml`, `controls.yaml`, or `backlog.yaml` and recompile. Never hand-edit generated projections.
 
-Example header shape (adapt suffix/path to the repo's test runner):
+Example informational header shape (adapt suffix/path to the repo's test
+runner; the checked model, not these tokens, owns current links):
 
 ```typescript
 // CF-W01-R — duplicate widget id refuses pre-mutation (HB-001; INV-003 §2.1).
@@ -94,7 +95,10 @@ Owner-facing companions are compiler-generated, non-normative follow-alongs — 
 3. **Expand enumerations.** For each family, open the upstream artifact and write down every seed/failure mode/clause you must bind. That list is your case checklist; its length is not negotiable.
 4. **Place at layer.** Use the family's assigned layer and oracle from the model. Build hermetic doubles for fakeable layer-2 seams; reserve live/eval for declared evidence lanes. For `L-ACC`, keep scored axes human-rubric based and mechanical guardrails in layers 1–2. Never run a live campaign without explicit per-campaign human authorization.
 5. **Land red-then-green.** For each detector family: failing seed → green fix. Include negative-control tests in the same spec file where the design expects them.
-6. **Update traceability.** Same change: spec files, directory names, headers, and any affected model planned paths or ticket status. Mark `landed` only when every owned implementable family has citing specs, then recompile all generated views.
+6. **Update traceability.** Same change: spec files, directory names,
+   informational headers, and every affected model planned path or ticket
+   status. Mark `landed` only when every owned implementable family is observed
+   at its reviewed path, then recompile all generated views.
 7. **Run closure.** Execute `validation-architect check` against the repo root (see below). Fix every red before declaring the ticket done. Structural closure does not replace fidelity audit — it proves the graph is wired, not that oracles match intent.
 
 For evidence lanes, missing, stopped, stale, or unauthorized work remains
@@ -111,7 +115,8 @@ pnpm exec validation-architect check . --tests-root <tests_root>
 
 It fail-closes on:
 
-- **Forward** — implementable family with no observed test/evidence
+- **Forward** — implementable family with no observed test/evidence (partial
+  while its known owner is non-landed; red for landed or unknown ownership)
 - **Backward** — inventory cites an unknown family (orphan)
 - **Status honesty** — ticket marked `LANDED` but families lack specs
 - **Relationship closure** — broken owner/source/control/planned/evidence links or identity mismatch

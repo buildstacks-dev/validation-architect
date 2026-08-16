@@ -1,11 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompilationState, RunConfig, RunState } from "../src/types.js";
 import { captureTargetBase } from "../src/target.js";
+import { TRACE_ALIAS_DEPRECATION } from "../src/trace-cli.js";
 import { COMPILER_VERSION, CURRENT_CORE_VERSIONS } from "../src/versions.js";
 import { acceptedBundleIdentity, versionedValueHash } from "../src/version-compatibility.js";
 import { compileWorkspaceModel } from "../src/workspace-compiler.js";
@@ -366,6 +367,77 @@ describe("a compiler-clean corpus traces green and delivers", () => {
     const result = trace(["generate", "catalog.md", "backlog.md"]);
     expect(result.code).toBe(2);
     expect(result.stderr).toContain("validation-architect compile");
+  });
+
+  it("keeps the incumbent legacy closure gate green before any checked-model file exists", () => {
+    const legacy = join(repoRoot, "test", "fixtures", "trace", "conforming");
+    const result = trace([
+      legacy,
+      "--manifest",
+      "validation-design/case-catalog.yaml",
+      "--tests",
+      "tests",
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("# Trace report — widgetd");
+    expect(result.stderr).toContain("legacy manifest bridge active");
+    expect(result.stderr.split(TRACE_ALIAS_DEPRECATION).length - 1).toBe(1);
+  });
+
+  it("preserves a legacy closure red through the bounded bridge", () => {
+    const legacy = join(repoRoot, "test", "fixtures", "trace", "orphan-spec");
+    const result = trace([
+      legacy,
+      "--manifest",
+      "validation-design/case-catalog.yaml",
+      "--tests",
+      "tests",
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("[validation-trace] RED");
+  });
+
+  it("never falls back to the legacy manifest after any checked-model file appears", () => {
+    const target = join(tmp, "partial-model");
+    cpSync(join(repoRoot, "test", "fixtures", "trace", "conforming"), target, { recursive: true });
+    mkdirSync(join(target, "validation-design", "model"), { recursive: true });
+    writeFileSync(
+      join(target, "validation-design", "model", "project.yaml"),
+      "schema: validation-architect/model/project/v1\n",
+    );
+    git(tmp, ["init", "-q", "-b", "main", "partial-model"]);
+    git(target, ["add", "-A"]);
+    git(target, ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "partial model"]);
+
+    const result = trace([
+      target,
+      "--manifest",
+      "validation-design/case-catalog.yaml",
+      "--tests",
+      "tests",
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("checked-model authority");
+    expect(result.stderr).toContain("invalid_input");
+    expect(result.stdout).not.toContain("# Trace report — widgetd");
+  });
+
+  it("maps legacy alias flags onto the exact checked-model path after cutover", () => {
+    const target = makeTargetRepo();
+    const workspace = makeWorkspace(git(target, ["rev-parse", "HEAD"]).trim());
+    execFileSync("cp", ["-R", join(workspace, "validation-design"), target]);
+    const checked = trace([target, "--tests-root", "tests"]);
+    const aliased = trace([
+      target,
+      "--manifest",
+      "validation-design/does-not-exist.yaml",
+      "--tests",
+      "tests",
+    ]);
+    expect(aliased.code).toBe(checked.code);
+    expect(aliased.stdout).toBe(checked.stdout);
+    expect(aliased.stderr).toContain("checked-model authority");
+    expect(aliased.stderr.split(TRACE_ALIAS_DEPRECATION).length - 1).toBe(1);
   });
 
   it("delivers the corpus to a branch and leaves the working tree clean", () => {
