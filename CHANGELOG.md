@@ -9,6 +9,9 @@ all three skills (their own CHANGELOGs remain as readable history).
   registry with kind, path, locator, and cited quote, so the isolated
   fresh-reader bundle can resolve every provenance reference without YAML
   access.
+- The same trace renders every product structure's protected meaning,
+  acceptance criteria, failure modes, changed paths, provenance, and owner;
+  absent optional lists are explicit rather than silently omitted.
 - Explicit legacy ticket outputs now preserve reviewed per-output status and
   dependencies; compact ticket reviews preserve reviewed dependencies while
   continuing to inherit legacy status. Neither fact is inferred from prose.

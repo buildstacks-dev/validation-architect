@@ -92,7 +92,9 @@ evidence; and first cause/affected cases/next action/run identity. No view is a
 separate authority or independently editable artifact. The generated planned
 trace also carries the complete, ID-ordered source registry so its provenance
 references resolve to kind, path, locator, and quote inside the fresh-reader
-surface; absent optional fields remain explicit.
+surface. Its product-structure rows retain every acceptance criterion and
+failure mode alongside meaning, changed paths, provenance, and ownership;
+absent optional fields remain explicit.
 
 The named `Validation Trace` contract detects missing implementation, orphan
 tests, false landed status, missing owners, broken sources/structures/negative

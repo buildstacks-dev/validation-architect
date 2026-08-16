@@ -132,14 +132,17 @@ function renderProvenanceRegistry(model: CompiledDesignModel): string {
 }
 
 function renderPlannedTrace(model: CompiledDesignModel): string {
-  const structures = model.structures.map((structure) => `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`);
+  const structures = model.structures.map(
+    (structure) =>
+      `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.acceptance_criteria)} | ${list(structure.failure_modes)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`,
+  );
   const rows = model.families.map((family) => {
     const implementation = family.evidence
       ? `${family.evidence.state}:${family.evidence.path}`
       : list(family.planned_tests);
     return `| ${md(family.id)} | ${list(family.structure_ids)} | ${md(family.ticket ?? "—")} | ${list(family.control_ids)} | ${md(implementation)} | ${md(family.owner)} |`;
   });
-  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 export function generateModelViews(model: CompiledDesignModel): Record<GeneratedModelView, string> {

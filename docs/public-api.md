@@ -64,7 +64,10 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   two-space JSON with one trailing newline. `planned-trace.md` carries the
   complete deterministic source-ID registry (kind, path, locator, and quote)
   needed to resolve provenance from a fresh-reader bundle without exposing the
-  YAML model. The library returns those bytes without writing them. `check`
+  YAML model, plus every product structure's acceptance criteria and failure
+  modes alongside meaning, changed paths, provenance, and owner. Absent
+  optional lists render explicitly. The library returns those bytes without
+  writing them. `check`
   answers a gate (one fail-closed
   `validation-architect/result/v1` record). A closed trace whose evidence is
   structural-only is reported `inconclusive`/`incomplete` — the trace proves

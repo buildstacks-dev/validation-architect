@@ -70,7 +70,10 @@ From one canonical identity it generates `case-catalog.md`,
 `harness-backlog.md`, `owner-briefing.md`, `owner-backlog.md`, and
 `planned-trace.md`, plus `compiler-report.json`. The planned trace includes a
 complete source-ID registry, so a fresh reader can resolve every provenance
-kind, path, locator, and cited quote without access to the YAML authority.
+kind, path, locator, and cited quote without access to the YAML authority. It
+also renders every product structure's protected meaning, acceptance criteria,
+failure modes, changed paths, provenance, and owner, with absent optional lists
+shown explicitly.
 These projections are never editable authority. A stale or missing view is
 regenerated before review; an invalid model blocks readers, audit, completion,
 and delivery. Narrative rationale remains authored prose, while the actual test
