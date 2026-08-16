@@ -3,6 +3,20 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.2 — atomic checked-model cutover (unreleased)
+
+- Public repository facts now join observed specs to current families and
+  controls through the checked model's exact `planned_tests` paths. Legacy
+  first-comment CF/HB tokens remain historical annotations rather than a
+  second machine authority; unplanned specs remain red orphans.
+- The deprecated `validation-trace` alias has a bounded pre-model bridge for
+  historical `--manifest`/`--tests` invocations. The first checked-model file
+  selects checked-model closure permanently and fail-closed; the public
+  `validation-architect check` surface remains unchanged.
+- This enables a preparatory product/tooling squash followed by a
+  `validation-design/`-only authority cutover bound to the exact preparation
+  revision, without a gate gap or self-referential commit identity.
+
 ## 0.4.1 — status-aware implementation closure (unreleased)
 
 - An implementable family whose known owner ticket is `pending`, `blocked`, or

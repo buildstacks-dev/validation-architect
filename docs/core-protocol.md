@@ -98,6 +98,14 @@ runtime identity mismatch, and stale generated views. Structural artifacts may
 close a link while remaining explicitly partial evidence. Trace proves closure,
 not oracle fidelity; independent fidelity review remains separate.
 
+For the public RepositoryPort composition, the checked model's exact
+`planned_tests` paths own current test/family links. The adapter observes which
+spec paths and executable call sites exist at the exact revision, then joins a
+path to every reviewed family and control that plans it. Legacy first-comment
+CF/HB tokens remain annotations only: they cannot create, rename, or reject a
+current model relationship. An observed spec planned by no current family is a
+red orphan, and a missing header or executable call remains a structural red.
+
 Implementation closure is backlog-status-aware without becoming green by
 absence. An implementable family with no observed implementation is an explicit
 partial `IMPLEMENTATION_PENDING` finding while its known owner ticket is
@@ -112,10 +120,15 @@ The current CLI route is:
 pnpm exec validation-architect check . --tests-root <tests-root>
 ```
 
-`validation-trace` is the deprecated 0.x alias for this exact `check` path;
-legacy `--model`/`--manifest` flags are no longer accepted by the public bin.
-Hosts own repository reads and CI wiring; core graph inputs are provider- and
-product-neutral.
+`validation-trace` is the deprecated 0.x alias for this exact `check` path.
+`validation-architect check` itself never accepts legacy flags. The alias alone
+has a bounded bridge for historical `--manifest`/`--tests` invocations: with no
+checked-model file it runs retained legacy closure; the presence of any one of
+the eight model files selects checked-model closure for that invocation, maps `--tests`
+to `--tests-root`, and makes `--manifest` a visible no-op. Partial/corrupt
+models therefore fail without legacy fallback. The bridge and alias disappear
+at 1.0. Hosts own repository reads and CI wiring; core graph inputs are
+provider- and product-neutral.
 
 ## Conservative changed-path impact planning
 

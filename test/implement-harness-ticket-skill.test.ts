@@ -81,10 +81,11 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toMatch(/detector-deposit|detector deposit/);
 
     // Model-native trace conventions and the supported public check path
-    expect(text).toMatch(/repository adapter.*explicit family\/control links|explicit family\/control links/);
+    expect(text).toMatch(/planned_tests.*control relationships|control relationships.*planned_tests/);
     expect(text).toContain("validation-architect check");
     expect(text).not.toMatch(/--manifest|--model/);
-    expect(text).toMatch(/observed.*before.*landed/);
+    expect(text).toMatch(/before.*landed.*observed|observed.*before.*landed/);
+    expect(text).toMatch(/pending.*blocked.*parked.*never green/);
     expect(text).toMatch(/same change/);
 
     // Structural escalation + architect boundary

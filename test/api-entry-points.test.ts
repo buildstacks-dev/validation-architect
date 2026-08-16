@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { parse, stringify } from "yaml";
 import { FakeRepositoryPort } from "../src/api/conformance.js";
 import { check, compile, explain, ingest, migrate, plan, render } from "../src/api/entry-points.js";
 import { isPublicContractError } from "../src/api/errors.js";
@@ -70,6 +71,66 @@ function repoWithTicketStatus(
   return new FakeRepositoryPort({ revision: "abc123", files });
 }
 
+function splitFamilyRepo(): FakeRepositoryPort {
+  const files = fixtureFiles();
+  const controlsPath = "validation-design/model/controls.yaml";
+  const familiesPath = "validation-design/model/families.yaml";
+  const backlogPath = "validation-design/model/backlog.yaml";
+  const controls = parse(files[controlsPath] ?? "") as { controls: Array<Record<string, unknown>> };
+  const families = parse(files[familiesPath] ?? "") as { families: Array<Record<string, unknown>> };
+  const backlog = parse(files[backlogPath] ?? "") as { tickets: Array<Record<string, unknown>> };
+  controls.controls.push({
+    id: "NC-X01-R",
+    title: "Fixture refusal mutation",
+    family_id: "CF-X01-R",
+    owner: "OWN-1",
+    expected_failure: "The refusal detector turns red when mutation happens before refusal",
+  });
+  families.families.push({
+    id: "CF-X01-R",
+    title: "Fixture refusal path",
+    meaning: "An invalid fixture response refuses before mutation",
+    structure_ids: ["CON-1"],
+    owner: "OWN-1",
+    source_ids: ["SRC-1"],
+    lane: "per-commit",
+    status: "implementable",
+    layer: "L2",
+    oracle: "refusal",
+    risk: "E1",
+    control_ids: ["NC-X01-R"],
+    ticket: "HB-002",
+    planned_tests: ["tests/fixture.test.ts"],
+  });
+  backlog.tickets.push({
+    id: "HB-002",
+    title: "Minimal refusal harness",
+    wave: "0",
+    status: "pending",
+    owner: "OWN-1",
+    executor: "standing coding agent",
+    lane: "per-commit",
+    layer: "L2",
+    acceptance_criteria: ["The refusal detector and negative control pass in the per-commit lane"],
+    family_ids: ["CF-X01-R"],
+  });
+  files[controlsPath] = stringify(controls, { lineWidth: 0 });
+  files[familiesPath] = stringify(families, { lineWidth: 0 });
+  files[backlogPath] = stringify(backlog, { lineWidth: 0 });
+  for (const path of Object.keys(files)) {
+    if (path.startsWith("validation-design/") && !path.startsWith("validation-design/model/")) {
+      delete files[path];
+    }
+  }
+  files["tests/fixture.test.ts"] = [
+    "// Historical family: CF-LEGACY-COMPOSITE",
+    "// Historical ticket: HB-HISTORICAL",
+    "it('preserves the split obligations', () => {});",
+    "",
+  ].join("\n");
+  return new FakeRepositoryPort({ revision: "abc123", files });
+}
+
 describe("compile", () => {
   it("returns findings and regenerated views as data for a valid corpus", async () => {
     const output = await compile(greenRepo());
@@ -125,17 +186,51 @@ describe("check", () => {
     expect(JSON.stringify(result.extensions)).not.toContain("IMPLEMENTATION_PENDING");
   });
 
-  it("fails when the spec loses its family citation", async () => {
+  it("uses the reviewed planned path when a spec header carries no current family citation", async () => {
     const result = await check(
-      greenRepo({ "tests/fixture.test.ts": "it('uncited', () => {});\n" }),
+      greenRepo({ "tests/fixture.test.ts": "// Historical trace note only\nit('planned', () => {});\n" }),
     );
-    expect(result.verdict).toBe("fail");
+    expect(result.verdict).toBe("inconclusive");
     expect(isGreenValidationResult(result)).toBe(false);
+    expect(JSON.stringify(result.extensions)).not.toContain("ORPHAN_TEST");
+  });
+
+  it("keeps header presence and an executable call red-capable on a planned path", async () => {
+    const missingHeader = await check(
+      greenRepo({ "tests/fixture.test.ts": "it('planned but headerless', () => {});\n" }),
+    );
+    expect(missingHeader.verdict).toBe("fail");
+    expect(JSON.stringify(missingHeader.extensions)).toContain("SPEC_HEADER_MISSING");
+    expect(JSON.stringify(missingHeader.extensions)).not.toContain("ORPHAN_TEST");
+
+    const missingCase = await check(
+      greenRepo({ "tests/fixture.test.ts": "// Historical trace note only\nconst planned = true;\n" }),
+    );
+    expect(missingCase.verdict).toBe("fail");
+    expect(JSON.stringify(missingCase.extensions)).toContain("SPEC_CASE_MISSING");
+  });
+
+  it("maps one observed planned path to every reviewed split family and control, ignoring historical tokens", async () => {
+    const repo = splitFamilyRepo();
+    const result = await check(repo);
+    expect(result.verdict).toBe("inconclusive");
+    expect(JSON.stringify(result.extensions)).not.toContain("ORPHAN_TEST");
+    expect(JSON.stringify(result.extensions)).not.toContain("TEST_TICKET_UNKNOWN");
+
+    const { graph } = await explain(repo, "tests/fixture.test.ts");
+    const test = graph.nodes.find((node) => node.kind === "test" && node.path === "tests/fixture.test.ts");
+    expect(test).toBeDefined();
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      { from: "CF-X01-S", to: test?.id, type: "implemented-by" },
+      { from: "CF-X01-R", to: test?.id, type: "implemented-by" },
+      { from: "NC-X01", to: test?.id, type: "implemented-by" },
+      { from: "NC-X01-R", to: test?.id, type: "implemented-by" },
+    ]));
   });
 
   it("fails when an additional orphan spec coexists with a covered family", async () => {
     const result = await check(greenRepo({
-      "tests/orphan.test.ts": "// Family: CF-UNKNOWN\n// Ticket: HB-001\nit('orphan', () => {});\n",
+      "tests/orphan.test.ts": "// Family: CF-X01-S\n// Ticket: HB-001\nit('orphan', () => {});\n",
     }));
     expect(result.verdict).toBe("fail");
     expect(result.reason).toBe("traceability_broken");
@@ -188,7 +283,7 @@ describe("plan", () => {
   });
 
   it("expands an unknown changed path to the full applicable suite with the unknown recorded", async () => {
-    const output = await plan(greenRepo(), ["src/mystery/unmapped.ts"]);
+    const output = await plan(greenRepo(), ["unmapped/mystery.ts"]);
     expect(output.unknowns.length + output.expansions.length).toBeGreaterThan(0);
     expect(output.family_ids).toContain("CF-X01-S");
     expect(output.negative_control_ids).toContain("NC-X01");

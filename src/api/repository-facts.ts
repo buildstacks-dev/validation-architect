@@ -58,37 +58,38 @@ export interface RepositoryFacts extends CompiledRepositoryFacts {
 const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
 const testId = (path: string): string => `TEST-${sha256(path).slice(0, 16)}`;
 
-function specConventionFindings(specs: readonly SpecFileInfo[], model: CompiledDesignModel): TraceFinding[] {
+type PlannedFamily = CompiledDesignModel["families"][number];
+
+function plannedFamiliesByPath(model: CompiledDesignModel): Map<string, PlannedFamily[]> {
+  const planned = new Map<string, PlannedFamily[]>();
+  for (const family of [...model.families].sort((left, right) => left.id.localeCompare(right.id))) {
+    for (const path of family.planned_tests ?? []) {
+      const families = planned.get(path) ?? [];
+      if (!families.some((candidate) => candidate.id === family.id)) families.push(family);
+      planned.set(path, families);
+    }
+  }
+  return planned;
+}
+
+function specConventionFindings(
+  specs: readonly SpecFileInfo[],
+  planned: ReadonlyMap<string, readonly PlannedFamily[]>,
+): TraceFinding[] {
   const findings: TraceFinding[] = [];
-  const families = new Map(model.families.map((family) => [family.id, family]));
-  const tickets = new Set(model.tickets.map((ticket) => ticket.id));
   const add = (spec: SpecFileInfo, code: string, message: string, correction: string): void => {
     findings.push({ code, level: "red", subject_id: testId(spec.path), message, correction });
   };
 
   for (const spec of specs) {
     if (!spec.hasHeader) {
-      add(spec, "SPEC_HEADER_MISSING", `${spec.path} does not begin with the required traceability header.`, "Add the family and owning ticket to the first comment block.");
+      add(spec, "SPEC_HEADER_MISSING", `${spec.path} does not begin with the required traceability header.`, "Add a first-comment traceability note; current family links remain authoritative in model/families.yaml planned_tests.");
     }
-    if (spec.citations.length === 0) {
-      add(spec, "ORPHAN_TEST", `${spec.path} cites no concrete validation family.`, "Cite at least one exact family ID in the first comment block.");
+    if ((planned.get(spec.path) ?? []).length === 0) {
+      add(spec, "ORPHAN_TEST", `${spec.path} is not named by any compiled family's planned_tests.`, "Add the exact path through the reviewed model workflow and recompile, or remove the unplanned spec from the configured test root.");
     }
     if (spec.tests === 0) {
       add(spec, "SPEC_CASE_MISSING", `${spec.path} contains no observed it/test call site.`, "Add an executable test case or remove the empty spec file.");
-    }
-    for (const ticket of spec.tickets) {
-      if (!tickets.has(ticket)) {
-        add(spec, "TEST_TICKET_UNKNOWN", `${spec.path} cites unknown ticket ${ticket}.`, "Cite the exact owning backlog ticket from the compiled corpus.");
-      }
-    }
-    for (const familyId of spec.citations) {
-      const family = families.get(familyId);
-      if (!family) continue; // joinTestInventory reports the unknown family.
-      if (!family.ticket) {
-        add(spec, "FAMILY_TICKET_MISSING", `${familyId} has no owning backlog ticket.`, "Assign the family to a reviewed backlog ticket.");
-      } else if (!spec.tickets.includes(family.ticket)) {
-        add(spec, "TEST_TICKET_MISSING", `${spec.path} cites ${familyId} but not its owning ticket ${family.ticket}.`, "Add the exact owning ticket to the first comment block.");
-      }
     }
   }
   return findings;
@@ -175,7 +176,8 @@ export async function loadRepositoryFacts(
     if (content !== null) specSources.set(path, content);
   }
   const specs = [...specSources.entries()].map(([path, source]) => parseSpecSource(path, source));
-  const repositoryFindings = specConventionFindings(specs, model);
+  const planned = plannedFamiliesByPath(model);
+  const repositoryFindings = specConventionFindings(specs, planned);
 
   const lanes = new Map(model.policy.lanes.map((item) => [item.id, item]));
   const families = new Map(model.families.map((item) => [item.id, item]));
@@ -186,18 +188,21 @@ export async function loadRepositoryFacts(
     tests_root: testsRoot,
     tests_root_present: testsRootPresent,
     tests: specs.map((spec) => {
-      const familyIds = spec.citations.filter((id) => families.has(id));
+      const plannedFamilies = planned.get(spec.path) ?? [];
+      const familyIds = plannedFamilies.map((family) => family.id);
+      const controlIds = [...new Set(plannedFamilies.flatMap((family) => family.control_ids ?? []))].sort();
       const commands = [
         ...new Set(
-          familyIds
-            .map((id) => lanes.get(families.get(id)?.lane ?? "")?.command)
+          plannedFamilies
+            .map((family) => lanes.get(family.lane)?.command)
             .filter((item): item is string => Boolean(item)),
         ),
       ];
       return {
         id: testId(spec.path),
         path: spec.path,
-        family_ids: spec.citations,
+        family_ids: familyIds,
+        ...(controlIds.length > 0 ? { control_ids: controlIds } : {}),
         ...(commands.length === 1 ? { command: commands[0] } : {}),
         case_count: spec.tests,
       };

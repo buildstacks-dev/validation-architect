@@ -5,10 +5,13 @@ import { designerKickoff } from "../src/prompts.js";
 describe("TRACEABILITY_CONVENTIONS (issue #4)", () => {
   it("states the model-native conventions and keeps legacy syntax explicit", () => {
     expect(TRACEABILITY_CONVENTIONS).toContain("The checked YAML model is authority");
-    expect(TRACEABILITY_CONVENTIONS).toContain("Repository facts stay injected facts");
-    expect(TRACEABILITY_CONVENTIONS).toContain("Every implementable family has an observed implementation");
+    expect(TRACEABILITY_CONVENTIONS).toContain("Repository facts stay observed facts");
+    expect(TRACEABILITY_CONVENTIONS).toContain("Implementation closure is status-aware");
+    expect(TRACEABILITY_CONVENTIONS).toContain("pending");
+    expect(TRACEABILITY_CONVENTIONS).toContain("planned_tests");
     expect(TRACEABILITY_CONVENTIONS).toContain("Negative controls remain paired");
-    expect(TRACEABILITY_CONVENTIONS).toContain("Legacy headers are adapter syntax, not authority");
+    expect(TRACEABILITY_CONVENTIONS).toContain("Legacy headers are annotations, not authority");
+    expect(TRACEABILITY_CONVENTIONS).toContain("Historical tokens cannot create or reject current model facts");
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-design/model/*.yaml");
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-architect check");
     expect(TRACEABILITY_CONVENTIONS).toContain("implement-harness-ticket");

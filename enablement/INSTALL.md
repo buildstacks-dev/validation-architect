@@ -6,7 +6,7 @@ This directory is the executable handoff that accompanies the ratified design co
    version, or the exact `.tgz` release artifact before registry publication):
 
    ```bash
-   pnpm add --save-dev --save-exact validation-architect@0.4.1
+   pnpm add --save-dev --save-exact validation-architect@0.4.2
    ```
 
 2. Install `skills/implement-harness-ticket/` in the repository's supported agent-skill location (for example `.agents/skills/implement-harness-ticket/`) and land the ratified `validation-design/agents-md-contribution.md` in the standing agent instructions.
@@ -21,6 +21,11 @@ This invokes the checked-model graph through the public `check()` entry point.
 `validation-trace` remains a deprecated alias for the check through 0.x — it
 prints one deterministic warning on stderr and is removed at 1.0; its former
 `generate` subcommand is superseded by `validation-architect compile`. The
+alias alone accepts historical `--manifest`/`--tests` during an atomic
+cutover: zero checked-model files selects retained legacy closure, while any
+model file selects the checked path without fallback (`--tests` maps to
+`--tests-root`; `--manifest` has no effect). New installations use the command
+above and never need the bridge. The
 check proves deterministic closure only; the complete Core Checks suite still
 runs, and fidelity remains a separate architect audit. A live
 outcome-acceptance (`L-ACC`) campaign is never implied by installation or CI:

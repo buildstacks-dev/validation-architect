@@ -15,11 +15,13 @@ semantics, reserves no registry name, creates no tag, and publishes nothing.
 ## Pre-publication candidate correction — 2026-08-15
 
 Version `0.3.0` remained an unpublished release candidate. VA-CORE-008 (#40)
-therefore advances the lockstep candidate to `0.4.0` before any registry
-publication. In Decision 2 below, the historical phrase "first public release"
-now applies to `0.4.0`; the retained-through-0.x alias lifecycle, warning, and
-1.0 removal decision are unchanged. No package name was reserved and no tag or
-release was created by this correction.
+therefore advanced the lockstep candidate to `0.4.0`; status-aware closure
+(#42) advanced it to `0.4.1`; and the ratified atomic-cutover correction (#44)
+advances it to `0.4.2`. None was published. In Decision 2 below, the historical
+phrase "first public release" now applies to `0.4.2`; the retained-through-0.x
+alias lifecycle, warning, and 1.0 removal decision are unchanged. The #44
+correction adds only the bounded legacy-flag bridge recorded below. No package
+name was reserved and no tag or release was created by these corrections.
 
 ## Decision 1 — Package names: the bare pair
 
@@ -61,12 +63,13 @@ core name.
 
 | Property | Value |
 | --- | --- |
-| Alias target | `validation-architect check` — the alias runs the same code path |
-| First deprecated version | `0.4.0` (the first public release; `0.3.0` remained an unpublished candidate) |
+| Alias target | Without legacy flags, `validation-architect check` — the alias runs the same code path |
+| Bounded cutover bridge | The alias alone accepts historical `--manifest`/`--tests`: zero model files selects retained legacy closure; any model file selects checked-model closure without fallback, maps `--tests`, and makes `--manifest` a visible no-op |
+| First deprecated version | `0.4.2` (the current first-public-release candidate; `0.3.0`–`0.4.1` remained unpublished) |
 | Last supported version | the final `0.x` release |
 | Removal version | `1.0.0` |
 | Warning behavior | one deterministic line on stderr on every invocation: `validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.` |
-| Exit codes | identical to `validation-architect check` in every case; the warning never alters exit status |
+| Exit codes | Without legacy flags, identical to `validation-architect check`; bridge invocations preserve the exit status of the authority selected by model-file presence; warnings never alter exit status |
 
 **Why retained.** Three in-flight consumers reference `validation-trace` today:
 the completed trace issue (#5), the enablement CI handoff
@@ -74,8 +77,18 @@ the completed trace issue (#5), the enablement CI handoff
 immediate removal from the then-`0.3.0` candidate would require proving all
 three migrate in one coordinated change,
 including one in a downstream repository this workstream must not edit. A
-deprecated alias with identical behavior costs one shim file and makes the
-rename observable instead of breaking.
+deprecated alias with identical default behavior costs one shim file and makes
+the rename observable instead of breaking.
+
+**Atomic-cutover bridge.** Cormidia's exact source-revision contract exposed a
+self-reference: a squash PR cannot both change product/tooling files and embed
+its own future squash SHA. A preparatory product/tooling PR followed by a
+`validation-design/`-only cutover is exact, but 0.4.1 could not keep the legacy
+gate alive during preparation. The owner ratified #44's narrow bridge. It is
+not a read-time migration and never creates dual authority: no model file means
+legacy closure; the first model file irreversibly selects the checked path for
+that invocation, including when the model is partial, corrupt, or stale. The
+public `validation-architect check` command remains checked-model-only.
 
 **Downstream changes required before 1.0** (migration owners):
 
@@ -161,8 +174,9 @@ immediately with this record in `test/public-contract-decision.test.ts`):
 5. **Stale release number** — no doc or manifest presents `0.2.0` as the
    planned public release.
 6. **Alias presence** — through 0.x, the core package ships a `validation-trace`
-   bin that warns deterministically and exits identically to `check`; at 1.0 a
-   detector flips to asserting its absence.
+   bin that warns deterministically and exits identically to `check` without
+   legacy flags. The bounded legacy bridge is model-presence fail-closed; at
+   1.0 a detector flips to asserting the alias and bridge are absent.
 7. **License pair** — manifests declare `LicenseRef-FSL-1.1-MIT`, tarballs ship
    `LICENSE.md`, and the notice names the confirmed holder with no template
    placeholder.
