@@ -94,8 +94,32 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
       else if (family.ticket !== ticket.id) linkError("backlog.yaml", ticket.id, `${ticket.id} claims ${id}, but that family points to ${family.ticket ?? "no ticket"}.`, "Make ticket ownership agree in both directions.");
       else if (family.lane !== ticket.lane || family.layer !== ticket.layer) linkError("backlog.yaml", ticket.id, `${ticket.id} mixes ${id} from ${family.layer}/${family.lane} into ${ticket.layer}/${ticket.lane}.`, "Split tickets at layer/lane boundaries so expansion gates cannot stall cheaper work.");
     }
-    for (const id of ticket.depends_on ?? []) if (!tickets.has(id)) linkError("backlog.yaml", ticket.id, `${ticket.id} depends on missing ticket ${id}.`, "Declare the dependency or remove the broken depends_on entry.");
+    const dependencies = ticket.depends_on ?? [];
+    if (new Set(dependencies).size !== dependencies.length) shapeError("backlog.yaml", ticket.id, "depends_on", "List each dependency exactly once.");
+    for (const id of dependencies) {
+      if (id === ticket.id) linkError("backlog.yaml", ticket.id, `${ticket.id} cannot depend on itself.`, "Remove the self-reference or name the actual prerequisite ticket.");
+      else if (!tickets.has(id)) linkError("backlog.yaml", ticket.id, `${ticket.id} depends on missing ticket ${id}.`, "Declare the dependency or remove the broken depends_on entry.");
+    }
   }
+  const visitedTickets = new Set<string>();
+  const visitingTickets = new Set<string>();
+  const visitTicket = (ticketId: string, path: string[]): void => {
+    if (visitedTickets.has(ticketId)) return;
+    visitingTickets.add(ticketId);
+    for (const dependency of tickets.get(ticketId)?.depends_on ?? []) {
+      if (!tickets.has(dependency) || dependency === ticketId) continue;
+      if (visitingTickets.has(dependency)) {
+        const start = path.indexOf(dependency);
+        const cycle = [...path.slice(Math.max(0, start)), dependency];
+        linkError("backlog.yaml", ticketId, `Ticket dependency cycle: ${cycle.join(" -> ")}.`, "Break the cycle so every ticket has a finite prerequisite order.");
+      } else {
+        visitTicket(dependency, [...path, dependency]);
+      }
+    }
+    visitingTickets.delete(ticketId);
+    visitedTickets.add(ticketId);
+  };
+  for (const ticket of model.tickets) visitTicket(ticket.id, [ticket.id]);
   for (const layer of model.policy.layers) {
     const used = model.families.some((family) => family.layer === layer.id);
     if (layer.status === "active" && !used) shapeError("policy.yaml", layer.id, "status", "An active layer needs at least one family; otherwise declare it empty with a reason.");

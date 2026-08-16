@@ -19,6 +19,7 @@ export type GeneratedModelView = (typeof GENERATED_MODEL_VIEWS)[number];
 const md = (value: string): string => value.replaceAll("|", "\\|").replaceAll("\n", " ").trim();
 const list = (values: readonly string[] | undefined): string =>
   values && values.length > 0 ? values.map(md).join(", ") : "—";
+const optional = (value: string | undefined): string => (value ? md(value) || "—" : "—");
 
 const GENERATED_NOTICE =
   "> Generated from `validation-design/model/*.yaml`. Do not edit machine facts here; edit the YAML model and recompile.\n";
@@ -119,15 +120,29 @@ function renderOwnerBacklog(model: CompiledDesignModel): string {
   return `# Owner backlog\n\n${GENERATED_NOTICE}\nThis is a non-normative projection, not a second source of truth. Backlog revision: current canonical model; generated from model/backlog.yaml through harness-backlog.md.\n\n| Wave | Ticket | Work | Status | Owner | Families |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
+function renderProvenanceRegistry(model: CompiledDesignModel): string {
+  if (model.sources.length === 0) return "- No provenance sources declared.\n";
+  const rows = [...model.sources]
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+    .map(
+      (source) =>
+        `| ${md(source.id)} | ${md(source.kind)} | ${optional(source.path)} | ${optional(source.locator)} | ${optional(source.quote)} |`,
+    );
+  return `| Source | Kind | Path | Locator | Quote |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+}
+
 function renderPlannedTrace(model: CompiledDesignModel): string {
-  const structures = model.structures.map((structure) => `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`);
+  const structures = model.structures.map(
+    (structure) =>
+      `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.acceptance_criteria)} | ${list(structure.failure_modes)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`,
+  );
   const rows = model.families.map((family) => {
     const implementation = family.evidence
       ? `${family.evidence.state}:${family.evidence.path}`
       : list(family.planned_tests);
     return `| ${md(family.id)} | ${list(family.structure_ids)} | ${md(family.ticket ?? "—")} | ${list(family.control_ids)} | ${md(implementation)} | ${md(family.owner)} |`;
   });
-  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 export function generateModelViews(model: CompiledDesignModel): Record<GeneratedModelView, string> {

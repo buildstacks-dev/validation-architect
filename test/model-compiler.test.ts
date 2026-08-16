@@ -168,6 +168,111 @@ describe("validation model compiler", () => {
     );
   });
 
+  it("gives fresh readers a complete, ordered, and escaped provenance registry", () => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model;
+    if (!model) throw new Error("fixture model did not compile");
+    const sourceIds = ["SRC-Z-DOC"];
+    const compiled = compileValidationModel({
+      ...files,
+      "sources.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["sources.yaml"],
+        sources: [
+          { id: "SRC-Z-DOC", kind: "doc", path: "docs/PRODUCT|DETAILS.md" },
+          {
+            id: "SRC-A-RAMBLING",
+            kind: "rambling",
+            path: "rambling.txt",
+            quote: "Keep | tenant\nboundary literal",
+          },
+          { id: "SRC-N-SIMULATED", kind: "simulated", locator: "owner review | derived\njudgment" },
+          { id: "SRC-M-PROPOSED", kind: "proposed", locator: "ratification package §4" },
+        ],
+      }),
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: model.structures.map((structure) => ({ ...structure, source_ids: sourceIds })),
+      }),
+      "families.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["families.yaml"],
+        families: model.families.map((family) => ({ ...family, source_ids: sourceIds })),
+      }),
+    });
+    expect(compiled.accepted).toBe(true);
+    const trace = compiled.generated_views["planned-trace.md"];
+    if (!trace) throw new Error("planned trace was not generated");
+    const registry = trace
+      .split("## Provenance registry\n\n")[1]
+      ?.split("\n\n## Product structure routing")[0];
+    if (!registry) throw new Error("provenance registry was not generated");
+
+    expect(registry.match(/^\| SRC-/gm)).toHaveLength(4);
+    expect(registry).toContain(
+      "| SRC-A-RAMBLING | rambling | rambling.txt | — | Keep \\| tenant boundary literal |",
+    );
+    expect(registry).toContain("| SRC-M-PROPOSED | proposed | — | ratification package §4 | — |");
+    expect(registry).toContain(
+      "| SRC-N-SIMULATED | simulated | — | owner review \\| derived judgment | — |",
+    );
+    expect(registry).toContain("| SRC-Z-DOC | doc | docs/PRODUCT\\|DETAILS.md | — | — |");
+    expect(registry.indexOf("SRC-A-RAMBLING")).toBeLessThan(registry.indexOf("SRC-M-PROPOSED"));
+    expect(registry.indexOf("SRC-M-PROPOSED")).toBeLessThan(registry.indexOf("SRC-N-SIMULATED"));
+    expect(registry.indexOf("SRC-N-SIMULATED")).toBeLessThan(registry.indexOf("SRC-Z-DOC"));
+  });
+
+  it("renders every structure criterion and failure mode without truncation", () => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model;
+    if (!model) throw new Error("fixture model did not compile");
+    const contract = model.structures[0];
+    if (!contract) throw new Error("fixture structure missing");
+    const compiled = compileValidationModel({
+      ...files,
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: [
+          {
+            ...contract,
+            acceptance_criteria: [
+              "First criterion | exact\ncontinuation",
+              "Second criterion remains visible",
+            ],
+            failure_modes: [
+              "Cross | boundary\nleak",
+              "Crash-mid-step leaves partial state",
+            ],
+          },
+          {
+            id: "IF-EMPTY",
+            kind: "interface",
+            title: "Empty optional structure",
+            meaning: "Optional lists are absent",
+            owner: "OWN-1",
+            source_ids: ["SRC-1"],
+          },
+        ],
+      }),
+    });
+    expect(compiled.accepted).toBe(true);
+    const trace = compiled.generated_views["planned-trace.md"];
+    if (!trace) throw new Error("planned trace was not generated");
+    const routing = trace
+      .split("## Product structure routing\n\n")[1]
+      ?.split("\n\n## Planned family closure")[0];
+    if (!routing) throw new Error("product structure routing was not generated");
+
+    expect(routing).toContain(
+      "| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |",
+    );
+    expect(routing).toContain(
+      "| CON-1 | contract | An org\\|app lookup never crosses tenants | First criterion \\| exact continuation, Second criterion remains visible | Cross \\| boundary leak, Crash-mid-step leaves partial state | src/contracts/** | SRC-1 | OWN-1 |",
+    );
+    expect(routing).toContain(
+      "| IF-EMPTY | interface | Optional lists are absent | — | — | — | SRC-1 | OWN-1 |",
+    );
+    expect(routing.match(/^\| (?:CON|IF)-/gm)).toHaveLength(2);
+  });
+
   it("rejects duplicate ids with exact source location and a correction", () => {
     const files = validFiles();
     const family = yaml({

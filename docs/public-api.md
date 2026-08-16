@@ -61,8 +61,14 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   content }`). The report record carries `schema`, `accepted`, the ordered
   eight-file source fingerprint, nullable model identity and versions, the
   generated-view names, and error diagnostics; `content` is its canonical
-  two-space JSON with one trailing newline. The library returns those bytes
-  without writing them. `check` answers a gate (one fail-closed
+  two-space JSON with one trailing newline. `planned-trace.md` carries the
+  complete deterministic source-ID registry (kind, path, locator, and quote)
+  needed to resolve provenance from a fresh-reader bundle without exposing the
+  YAML model, plus every product structure's acceptance criteria and failure
+  modes alongside meaning, changed paths, provenance, and owner. Absent
+  optional lists render explicitly. The library returns those bytes without
+  writing them. `check`
+  answers a gate (one fail-closed
   `validation-architect/result/v1` record). A closed trace whose evidence is
   structural-only is reported `inconclusive`/`incomplete` — the trace proves
   closure, never product green (`isGreenValidationResult` stays false). Broken
@@ -96,8 +102,11 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   canonical fallback. The returned deterministic ledger accounts separately
   for every legacy family, first-owner ticket relationship, non-owning ticket
   citation, and historical ticket with no actionable family. Composite prose
-  is never parsed into current meaning, and ordinary loads never mutate or
-  reinterpret.
+  is never parsed into current meaning. Reviewed ticket dependencies pass
+  through both compact and explicit ticket outputs; explicit split outputs may
+  carry reviewed per-output status and otherwise inherit the legacy status.
+  The compiler rejects malformed dependency graphs. Ordinary loads never
+  mutate or reinterpret.
 
 ## Campaign contracts (used by `design`/`resume`)
 

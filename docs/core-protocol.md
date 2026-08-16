@@ -89,7 +89,12 @@ Author, architect, Reviewer, and operator views are generated from the same
 graph identity. They respectively emphasize affected meaning/commands/unknowns;
 enumeration/ownership/rationale/findings; protected meaning/exclusions/controls/
 evidence; and first cause/affected cases/next action/run identity. No view is a
-separate authority or independently editable artifact.
+separate authority or independently editable artifact. The generated planned
+trace also carries the complete, ID-ordered source registry so its provenance
+references resolve to kind, path, locator, and quote inside the fresh-reader
+surface. Its product-structure rows retain every acceptance criterion and
+failure mode alongside meaning, changed paths, provenance, and ownership;
+absent optional fields remain explicit.
 
 The named `Validation Trace` contract detects missing implementation, orphan
 tests, false landed status, missing owners, broken sources/structures/negative
@@ -165,6 +170,9 @@ looks familiar.
 The current release line is pre-1.0: it reads and writes only the exact current
 clean schema and promises no legacy compatibility. The legacy catalog importer
 and legacy target re-anchor are named recovery inputs, not silent schema reads.
+The importer preserves only explicitly reviewed ticket dependencies and split
+statuses; it never derives those facts from legacy prose, and the resulting
+canonical dependency graph must have known, non-self, acyclic edges.
 
 At stable 1.0+, the compatibility matrix is deliberately narrow:
 

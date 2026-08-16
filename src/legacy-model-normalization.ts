@@ -3,6 +3,7 @@ import type {
   BacklogTicket,
   EvidenceDeclaration,
   NegativeControl,
+  TicketStatus,
   ValidationFamily,
   ValidationLayerId,
 } from "./model.js";
@@ -17,6 +18,7 @@ import type {
 } from "./legacy-model-contracts.js";
 
 const LAYERS: readonly ValidationLayerId[] = ["L1", "L2", "L3", "L4", "L5", "L6"];
+const TICKET_STATUSES: readonly TicketStatus[] = ["pending", "landed", "blocked", "parked"];
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isLayer = (value: unknown): value is ValidationLayerId =>
   typeof value === "string" && LAYERS.includes(value as ValidationLayerId);
@@ -250,11 +252,25 @@ function addReviewedTicket(
   if (!isLayer(output.layer) || !isLane(output.lane) || !laneKinds.has(output.lane)) {
     throw new Error(`legacy ticket ${legacy.id} output ${output.id} needs one canonical L1-L6 layer and lane`);
   }
+  if (output.status !== undefined && !TICKET_STATUSES.includes(output.status)) {
+    throw new Error(
+      `legacy ticket ${legacy.id} output ${output.id} needs a canonical pending, landed, blocked, or parked status`,
+    );
+  }
   if (!Array.isArray(output.acceptance_criteria) || output.acceptance_criteria.length === 0) {
     throw new Error(`legacy ticket ${legacy.id} output ${output.id} needs acceptance criteria`);
   }
   if (!Array.isArray(output.family_ids) || output.family_ids.length === 0) {
     throw new Error(`legacy ticket ${legacy.id} output ${output.id} needs owned families`);
+  }
+  if (
+    output.depends_on !== undefined &&
+    (!Array.isArray(output.depends_on) || !output.depends_on.every(nonEmpty))
+  ) {
+    throw new Error(`legacy ticket ${legacy.id} output ${output.id} needs non-empty dependency ids`);
+  }
+  if (output.depends_on && new Set(output.depends_on).size !== output.depends_on.length) {
+    throw new Error(`legacy ticket ${legacy.id} output ${output.id} has duplicate dependency ids`);
   }
   for (const id of output.family_ids) {
     const family = families.get(id);
@@ -276,13 +292,14 @@ function addReviewedTicket(
     id: output.id,
     title: output.title,
     wave: legacy.wave,
-    status: legacy.status,
+    status: output.status ?? legacy.status,
     owner: output.owner,
     executor: output.executor,
     lane: output.lane,
     layer: output.layer,
     acceptance_criteria: [...output.acceptance_criteria],
     family_ids: [...output.family_ids],
+    ...(output.depends_on ? { depends_on: [...output.depends_on] } : {}),
   });
 }
 
@@ -333,6 +350,11 @@ export function normalizeLegacyManifest(
   for (const legacy of manifest.tickets) {
     const reviewed = input.ticket_reviews[legacy.id];
     if (!reviewed) throw new Error(`legacy ticket ${legacy.id} has no explicit reviewed mapping`);
+    if (Object.prototype.hasOwnProperty.call(reviewed, "status")) {
+      throw new Error(
+        `legacy ticket ${legacy.id} cannot override status in the compact review; put reviewed status on each explicit output`,
+      );
+    }
     const ownedLegacyFamilyIds = legacy.families.filter((id) => legacyFamilyById.get(id)?.ticket === legacy.id);
     const expectedFamilies = ownedLegacyFamilyIds.flatMap((id) => familyOutputs.get(id) ?? []);
     const expectedIds = expectedFamilies.map((family) => family.id);
@@ -347,7 +369,12 @@ export function normalizeLegacyManifest(
           `legacy ticket ${legacy.id} owns no families and needs an explicit historical disposition and reason`,
         );
       }
-      if (reviewed.outputs !== undefined || reviewed.executor || reviewed.acceptance_criteria !== undefined) {
+      if (
+        reviewed.outputs !== undefined ||
+        reviewed.executor ||
+        reviewed.acceptance_criteria !== undefined ||
+        reviewed.depends_on !== undefined
+      ) {
         throw new Error(`legacy ticket ${legacy.id} owns no families and cannot emit actionable ticket outputs`);
       }
       ticketLedger.push({
@@ -365,7 +392,7 @@ export function normalizeLegacyManifest(
       if (!Array.isArray(reviewed.outputs) || reviewed.outputs.length === 0) {
         throw new Error(`legacy ticket ${legacy.id} outputs must contain at least one explicit reviewed split`);
       }
-      if (reviewed.executor || reviewed.acceptance_criteria !== undefined) {
+      if (reviewed.executor || reviewed.acceptance_criteria !== undefined || reviewed.depends_on !== undefined) {
         throw new Error(
           `legacy ticket ${legacy.id} mixes the compact review form with explicit outputs; use exactly one form`,
         );
@@ -411,6 +438,7 @@ export function normalizeLegacyManifest(
       layer,
       acceptance_criteria: reviewed.acceptance_criteria,
       family_ids: expectedIds,
+      ...(reviewed.depends_on !== undefined ? { depends_on: reviewed.depends_on } : {}),
     };
     addReviewedTicket(legacy, output, familyById, laneKinds, ticketIds, tickets);
     ticketLedger.push({ ...ledgerBase, disposition: "actionable", output_ids: [legacy.id] });
