@@ -3,6 +3,15 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.1 — status-aware implementation closure (unreleased)
+
+- An implementable family whose known owner ticket is `pending`, `blocked`, or
+  `parked` now records an explicit partial `IMPLEMENTATION_PENDING` finding
+  when no implementation exists. It remains inconclusive and never green.
+- Planned test paths are not drift while their owner ticket is non-landed;
+  missing implementation under a landed or unknown owner remains red and
+  landed status-honesty enforcement is unchanged.
+
 ## 0.4.0 — lossless reviewed legacy migration (unreleased)
 
 - The public `migrate` review can normalize one legacy family into explicit
