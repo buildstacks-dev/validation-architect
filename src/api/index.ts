@@ -148,3 +148,4 @@ export type {
   LegacyTicketReview,
 } from "../legacy-model-import.js";
 export type { ResultMappingContext } from "../result-adapters.js";
+export type { CanonicalCompilerReport, CompilerReportRecord } from "../compiler-report.js";

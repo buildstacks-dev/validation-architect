@@ -3,6 +3,20 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.4 — canonical public compiler report (unreleased)
+
+- Public `compile()` now returns the canonical `compiler/v1` report as typed
+  data plus its deterministic two-space JSON bytes, alongside the unchanged
+  findings and five generated Markdown views.
+- RepositoryPort and workspace compilation share one ordered eight-file source
+  fingerprint and one report builder/serializer, so identical model bytes
+  produce byte-identical reports for both accepted and rejected input.
+- `validation-architect compile --write` writes `compiler-report.json` with the
+  five Markdown views, refuses report/view symlinks before any artifact write,
+  and remains mutation-free without `--write`.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.3 — exact secret boundaries and authorization projection (unreleased)
 
 - Credential-shaped `sk-...` values are detected only at a complete token

@@ -49,7 +49,7 @@ import {
 
 const repo = new FakeRepositoryPort({ revision: "abc123", files: { /* … */ } });
 
-const compiled = await compile(repo);        // author findings + regenerated views (data)
+const compiled = await compile(repo);        // findings + views + canonical compiler/v1 report (data)
 const gate = await check(repo);              // fail-closed result/v1 record for CI
 const why = await explain(repo, "CF-X01-S"); // graph query + prose, unresolved hops explicit
 const suite = await plan(repo, []);          // full-suite plan + capability requirements
@@ -57,7 +57,12 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
 ```
 
 - **`compile` vs `check`**: `compile` answers an author (source-located
-  findings, regenerated views); `check` answers a gate (one fail-closed
+  findings, exactly five regenerated Markdown views, and `report: { record,
+  content }`). The report record carries `schema`, `accepted`, the ordered
+  eight-file source fingerprint, nullable model identity and versions, the
+  generated-view names, and error diagnostics; `content` is its canonical
+  two-space JSON with one trailing newline. The library returns those bytes
+  without writing them. `check` answers a gate (one fail-closed
   `validation-architect/result/v1` record). A closed trace whose evidence is
   structural-only is reported `inconclusive`/`incomplete` — the trace proves
   closure, never product green (`isGreenValidationResult` stays false). Broken

@@ -18,13 +18,14 @@ Version `0.3.0` remained an unpublished release candidate. VA-CORE-008 (#40)
 therefore advanced the lockstep candidate to `0.4.0`; status-aware closure
 (#42) advanced it to `0.4.1`; and the ratified atomic-cutover correction (#44)
 advanced it to `0.4.2`. Exact credential-token boundaries and authorization
-projection (#46) advance it to `0.4.3`. None was published. In Decision 2
-below, the historical phrase "first public release" now applies to `0.4.3`;
-the retained-through-0.x
+projection (#46) advanced it to `0.4.3`; public compiler-report closure (#48)
+advances it to `0.4.4`. None was published. In Decision 2 below, the historical
+phrase "first public release" now applies to `0.4.4`; the retained-through-0.x
 alias lifecycle, warning, and 1.0 removal decision are unchanged. The #44
 correction adds only the bounded legacy-flag bridge recorded below. No package
 name was reserved and no tag or release was created by these corrections. The
-#46 correction changes no schema, method, campaign, or provider contract.
+#46 and #48 corrections change no schema, method, campaign, or provider
+contract.
 
 ## Decision 1 — Package names: the bare pair
 
@@ -68,7 +69,7 @@ core name.
 | --- | --- |
 | Alias target | Without legacy flags, `validation-architect check` — the alias runs the same code path |
 | Bounded cutover bridge | The alias alone accepts historical `--manifest`/`--tests`: zero model files selects retained legacy closure; any model file selects checked-model closure without fallback, maps `--tests`, and makes `--manifest` a visible no-op |
-| First deprecated version | `0.4.3` (the current first-public-release candidate; `0.3.0`–`0.4.2` remained unpublished) |
+| First deprecated version | `0.4.4` (the current first-public-release candidate; `0.3.0`–`0.4.3` remained unpublished) |
 | Last supported version | the final `0.x` release |
 | Removal version | `1.0.0` |
 | Warning behavior | one deterministic line on stderr on every invocation: `validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.` |
