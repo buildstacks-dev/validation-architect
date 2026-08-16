@@ -6,6 +6,7 @@ import type {
   NegativeControl,
   ProductIdentity,
   ProductStructure,
+  TicketStatus,
   ValidationLayerId,
   ValidationPolicy,
 } from "./model.js";
@@ -55,14 +56,20 @@ export interface LegacyTicketOutputReview {
   executor: string;
   lane: LegacyMigrationLane;
   layer: ValidationLayerId;
+  /** Explicit split status; omit to preserve the legacy ticket status. */
+  status?: TicketStatus;
   acceptance_criteria: string[];
   family_ids: string[];
+  /** Exact reviewed canonical ticket dependencies; never inferred from prose. */
+  depends_on?: string[];
 }
 
 export interface LegacyTicketReview {
   /** Existing one-ticket form for already-canonical legacy work. */
   executor?: string;
   acceptance_criteria?: string[];
+  /** Exact reviewed dependencies for the compact single-output form. */
+  depends_on?: string[];
   /** Explicit split for work that crosses a current-model layer or lane. */
   outputs?: LegacyTicketOutputReview[];
   /** Legacy tickets with no first-owned family are historical, not actionable. */

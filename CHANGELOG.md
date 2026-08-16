@@ -3,6 +3,20 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.5 — fresh-reader and migration fidelity (unreleased)
+
+- Generated `planned-trace.md` now carries a complete deterministic source-ID
+  registry with kind, path, locator, and cited quote, so the isolated
+  fresh-reader bundle can resolve every provenance reference without YAML
+  access.
+- Explicit legacy ticket outputs now preserve reviewed per-output status and
+  dependencies; compact ticket reviews preserve reviewed dependencies while
+  continuing to inherit legacy status. Neither fact is inferred from prose.
+- Ticket dependency review rejects malformed and duplicate IDs, while the
+  canonical compiler rejects missing targets, self-references, and cycles.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.4 — canonical public compiler report (unreleased)
 
 - Public `compile()` now returns the canonical `compiler/v1` report as typed

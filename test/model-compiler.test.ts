@@ -168,6 +168,58 @@ describe("validation model compiler", () => {
     );
   });
 
+  it("gives fresh readers a complete, ordered, and escaped provenance registry", () => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model;
+    if (!model) throw new Error("fixture model did not compile");
+    const sourceIds = ["SRC-Z-DOC"];
+    const compiled = compileValidationModel({
+      ...files,
+      "sources.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["sources.yaml"],
+        sources: [
+          { id: "SRC-Z-DOC", kind: "doc", path: "docs/PRODUCT|DETAILS.md" },
+          {
+            id: "SRC-A-RAMBLING",
+            kind: "rambling",
+            path: "rambling.txt",
+            quote: "Keep | tenant\nboundary literal",
+          },
+          { id: "SRC-N-SIMULATED", kind: "simulated", locator: "owner review | derived\njudgment" },
+          { id: "SRC-M-PROPOSED", kind: "proposed", locator: "ratification package §4" },
+        ],
+      }),
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: model.structures.map((structure) => ({ ...structure, source_ids: sourceIds })),
+      }),
+      "families.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["families.yaml"],
+        families: model.families.map((family) => ({ ...family, source_ids: sourceIds })),
+      }),
+    });
+    expect(compiled.accepted).toBe(true);
+    const trace = compiled.generated_views["planned-trace.md"];
+    if (!trace) throw new Error("planned trace was not generated");
+    const registry = trace
+      .split("## Provenance registry\n\n")[1]
+      ?.split("\n\n## Product structure routing")[0];
+    if (!registry) throw new Error("provenance registry was not generated");
+
+    expect(registry.match(/^\| SRC-/gm)).toHaveLength(4);
+    expect(registry).toContain(
+      "| SRC-A-RAMBLING | rambling | rambling.txt | — | Keep \\| tenant boundary literal |",
+    );
+    expect(registry).toContain("| SRC-M-PROPOSED | proposed | — | ratification package §4 | — |");
+    expect(registry).toContain(
+      "| SRC-N-SIMULATED | simulated | — | owner review \\| derived judgment | — |",
+    );
+    expect(registry).toContain("| SRC-Z-DOC | doc | docs/PRODUCT\\|DETAILS.md | — | — |");
+    expect(registry.indexOf("SRC-A-RAMBLING")).toBeLessThan(registry.indexOf("SRC-M-PROPOSED"));
+    expect(registry.indexOf("SRC-M-PROPOSED")).toBeLessThan(registry.indexOf("SRC-N-SIMULATED"));
+    expect(registry.indexOf("SRC-N-SIMULATED")).toBeLessThan(registry.indexOf("SRC-Z-DOC"));
+  });
+
   it("rejects duplicate ids with exact source location and a correction", () => {
     const files = validFiles();
     const family = yaml({

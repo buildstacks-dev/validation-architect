@@ -15,6 +15,7 @@ const catalog = `## Contract matrix
 | --- | --- | --- | --- | --- |
 | CF-COMPOSITE | One legacy detector with two deterministic placements | 1/2 | state | E1 |
 | CF-FAST | Deterministic refusal detector | 2 | refusal | E1 |
+| CF-FOLLOW | Deterministic follow-up detector | 1 | state | E1 |
 | CF-LIVE | Live certification EVIDENCE:incomplete:evidence/live.json | 3 | live | E1 |
 `;
 
@@ -22,12 +23,15 @@ const backlog = `## Wave 0
 
 HB-LAYER LANDED
 HB-CROSS LANDED
+HB-FOLLOW LANDED
 HB-HIST LANDED
 HB-EMPTY LANDED
 
 **HB-CROSS — Test and evidence detector.** CF-FAST, CF-LIVE.
 
 **HB-LAYER — Composite layer detector.** CF-COMPOSITE. It also cites CF-FAST after that family was already owned.
+
+**HB-FOLLOW — Deterministic follow-up detector.** CF-FOLLOW.
 
 **HB-HIST — Historical follow-up record.** References CF-FAST after its owning ticket; this is migration history only.
 
@@ -166,6 +170,15 @@ function review(): LegacyModelImportInput {
         control: control("CF-FAST"),
         planned_tests: ["test/fast.test.ts"],
       },
+      "CF-FOLLOW": {
+        title: "Follow-up detector",
+        meaning: "The deterministic follow-up runs after the composite detector",
+        structure_ids: ["CON-1"],
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+        control: control("CF-FOLLOW"),
+        planned_tests: ["test/follow.test.ts"],
+      },
       "CF-LIVE": {
         title: "Live evidence",
         meaning: "The live certification remains incomplete and separately authorized",
@@ -236,6 +249,11 @@ function review(): LegacyModelImportInput {
           },
         ],
       },
+      "HB-FOLLOW": {
+        executor: "standing coding agent",
+        acceptance_criteria: ["The follow-up detector runs after the composite detector"],
+        depends_on: ["HB-LAYER"],
+      },
       "HB-HIST": {
         historical: { reason: "The follow-up cited an already-owned family and owns no actionable work." },
       },
@@ -283,6 +301,7 @@ describe("reviewed legacy migration expansion", () => {
       families: [
         { legacy_id: "CF-COMPOSITE", output_ids: ["CF-COMPOSITE", "CF-COMPOSITE-L2"] },
         { legacy_id: "CF-FAST", output_ids: ["CF-FAST"] },
+        { legacy_id: "CF-FOLLOW", output_ids: ["CF-FOLLOW"] },
         { legacy_id: "CF-LIVE", output_ids: ["CF-LIVE"] },
       ],
       tickets: [
@@ -300,6 +319,13 @@ describe("reviewed legacy migration expansion", () => {
           owned_legacy_family_ids: [],
           output_ids: [],
           reason: "The bootstrap work landed before family-level tracking existed.",
+        },
+        {
+          legacy_id: "HB-FOLLOW",
+          disposition: "actionable",
+          legacy_family_ids: ["CF-FOLLOW"],
+          owned_legacy_family_ids: ["CF-FOLLOW"],
+          output_ids: ["HB-FOLLOW"],
         },
         {
           legacy_id: "HB-HIST",
@@ -331,6 +357,70 @@ describe("reviewed legacy migration expansion", () => {
       triggers: ["release-qualification"],
       authorization: "per-run-human",
     });
+    expect(compiled.model?.tickets.find((ticket) => ticket.id === "HB-FOLLOW")?.depends_on).toEqual([
+      "HB-LAYER",
+    ]);
+    expect(compiled.generated_views["harness-backlog.md"]).toContain("Depends on `HB-LAYER`.");
+  });
+
+  it("preserves explicit ticket dependencies and reviewed split statuses", () => {
+    const value = review();
+    const family = value.families["CF-COMPOSITE"];
+    const ticket = value.ticket_reviews["HB-LAYER"];
+    if (!family?.outputs || !ticket?.outputs) throw new Error("fixture split outputs missing");
+    family.outputs.push({
+      id: "CF-COMPOSITE-PENDING",
+      layer: "L2",
+      lane: "per-commit",
+      owner: "OWN-1",
+      structure_ids: ["CON-1"],
+      source_ids: ["SRC-1"],
+      ticket: "HB-LAYER-PENDING",
+      control: control("CF-COMPOSITE-PENDING"),
+      planned_tests: ["test/composite-pending.test.ts"],
+    });
+    ticket.outputs[0]!.status = "landed";
+    ticket.outputs[0]!.depends_on = ["HB-CROSS"];
+    ticket.outputs[1]!.status = "landed";
+    ticket.outputs[1]!.depends_on = ["HB-CROSS"];
+    ticket.outputs.push({
+      id: "HB-LAYER-PENDING",
+      title: "Pending composite follow-up",
+      owner: "OWN-1",
+      executor: "standing coding agent",
+      lane: "per-commit",
+      layer: "L2",
+      acceptance_criteria: ["The pending detector rejects the seeded composition failure"],
+      family_ids: ["CF-COMPOSITE-PENDING"],
+      depends_on: ["HB-LAYER", "HB-LAYER-L2"],
+    });
+
+    const migrated = migrate(
+      {
+        kind: "legacy-catalog",
+        catalogMarkdown: catalog,
+        backlogMarkdown: backlog.replace("HB-LAYER LANDED", "HB-LAYER PENDING"),
+        review: value,
+      },
+      CORPUS_SCHEMA,
+    );
+    const compiled = compileValidationModel(modelFiles(migrated));
+    expect(compiled.accepted).toBe(true);
+    expect(
+      compiled.model?.tickets
+        .filter((candidate) => candidate.id.startsWith("HB-LAYER"))
+        .map((candidate) => [candidate.id, candidate.status, candidate.depends_on]),
+    ).toEqual([
+      ["HB-LAYER", "landed", ["HB-CROSS"]],
+      ["HB-LAYER-L2", "landed", ["HB-CROSS"]],
+      ["HB-LAYER-PENDING", "pending", ["HB-LAYER", "HB-LAYER-L2"]],
+    ]);
+    expect(compiled.generated_views["harness-backlog.md"]).toContain(
+      "**HB-LAYER-PENDING — Pending composite follow-up** (pending;",
+    );
+    expect(compiled.generated_views["harness-backlog.md"]).toContain(
+      "Depends on `HB-LAYER`, `HB-LAYER-L2`.",
+    );
   });
 
   it("refuses composite prose without explicit reviewed outputs", () => {
@@ -392,6 +482,81 @@ describe("reviewed legacy migration expansion", () => {
       ticket.acceptance_criteria = ["Ambiguous duplicate acceptance"];
     });
     expect(error.message).toMatch(/mixes the compact review form with explicit outputs/);
+  });
+
+  it("refuses invalid split status and malformed or duplicate reviewed dependencies", () => {
+    const invalidStatus = invalid((value) => {
+      const output = value.ticket_reviews["HB-LAYER"]?.outputs?.[0];
+      if (!output) throw new Error("fixture ticket output missing");
+      Object.assign(output, { status: "done" });
+    });
+    expect(invalidStatus.message).toMatch(/canonical pending, landed, blocked, or parked status/);
+
+    const compactStatus = invalid((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      Object.assign(ticket, { status: "pending" });
+    });
+    expect(compactStatus.message).toMatch(/cannot override status in the compact review/);
+
+    const malformedDependencies = invalid((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      Object.assign(ticket, { depends_on: "HB-LAYER" });
+    });
+    expect(malformedDependencies.message).toMatch(/non-empty dependency ids/);
+
+    const emptyDependency = invalid((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      ticket.depends_on = [""];
+    });
+    expect(emptyDependency.message).toMatch(/non-empty dependency ids/);
+
+    const duplicateDependency = invalid((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      ticket.depends_on = ["HB-LAYER", "HB-LAYER"];
+    });
+    expect(duplicateDependency.message).toMatch(/duplicate dependency ids/);
+  });
+
+  it("leaves unknown, self-referential, and cyclic dependencies red in the canonical compiler", () => {
+    const compileMutated = (mutator: (value: LegacyModelImportInput) => void) => {
+      const value = review();
+      mutator(value);
+      const migrated = migrate(
+        { kind: "legacy-catalog", catalogMarkdown: catalog, backlogMarkdown: backlog, review: value },
+        CORPUS_SCHEMA,
+      );
+      return compileValidationModel(modelFiles(migrated));
+    };
+
+    const unknown = compileMutated((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      ticket.depends_on = ["HB-MISSING"];
+    });
+    expect(unknown.accepted).toBe(false);
+    expect(unknown.diagnostics.map((item) => item.message).join("\n")).toMatch(/depends on missing ticket HB-MISSING/);
+
+    const self = compileMutated((value) => {
+      const ticket = value.ticket_reviews["HB-FOLLOW"];
+      if (!ticket) throw new Error("fixture compact ticket missing");
+      ticket.depends_on = ["HB-FOLLOW"];
+    });
+    expect(self.accepted).toBe(false);
+    expect(self.diagnostics.map((item) => item.message).join("\n")).toMatch(/cannot depend on itself/);
+
+    const cycle = compileMutated((value) => {
+      const output = value.ticket_reviews["HB-LAYER"]?.outputs?.find(
+        (candidate) => candidate.id === "HB-LAYER",
+      );
+      if (!output) throw new Error("fixture ticket output missing");
+      output.depends_on = ["HB-FOLLOW"];
+    });
+    expect(cycle.accepted).toBe(false);
+    expect(cycle.diagnostics.map((item) => item.message).join("\n")).toMatch(/dependency cycle/);
   });
 
   it("refuses a ticket with no owned families without a reviewed historical disposition", () => {

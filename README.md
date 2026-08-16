@@ -68,11 +68,13 @@ parallel-greenfield protections.
 
 From one canonical identity it generates `case-catalog.md`,
 `harness-backlog.md`, `owner-briefing.md`, `owner-backlog.md`, and
-`planned-trace.md`, plus `compiler-report.json`. These projections are never
-editable authority. A stale or missing view is regenerated before review; an
-invalid model blocks readers, audit, completion, and delivery. Narrative
-rationale remains authored prose, while the actual test inventory and run
-evidence stay separate from design authority.
+`planned-trace.md`, plus `compiler-report.json`. The planned trace includes a
+complete source-ID registry, so a fresh reader can resolve every provenance
+kind, path, locator, and cited quote without access to the YAML authority.
+These projections are never editable authority. A stale or missing view is
+regenerated before review; an invalid model blocks readers, audit, completion,
+and delivery. Narrative rationale remains authored prose, while the actual test
+inventory and run evidence stay separate from design authority.
 
 The public repository composition joins observed executable specs to current
 families and controls by exact reviewed `planned_tests` path. One path may
@@ -94,7 +96,8 @@ family outputs name their exact owner, provenance, and structures; legacy
 placement prose is never parsed into current meaning. The migration
 ledger accounts for every legacy family and ticket, including non-owning family
 citations and historical tickets that cannot become empty actionable work. The
-import preserves `LANDED` status and
+import preserves reviewed ticket dependencies, per-output split status (with
+legacy status inherited when omitted), `LANDED` status, and
 `EVIDENCE:complete|incomplete|inconclusive|unobserved:<path>` declarations,
 but reading an old corpus never rewrites it or assigns a current schema by
 guess. The prior EVIDENCE behavior from local commit `42e1918` is therefore
@@ -268,12 +271,12 @@ pnpm vda repos --stale-days 7
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.4.4
+pnpm add --save-dev --save-exact validation-architect@0.4.5
 pnpm exec validation-architect check .            # the CI gate (result/v1)
 pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
-Before a registry release, replace `validation-architect@0.4.4` with the exact
+Before a registry release, replace `validation-architect@0.4.5` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 **Two lockstep packages** (VA-PKG-001). This repository publishes a pair that
