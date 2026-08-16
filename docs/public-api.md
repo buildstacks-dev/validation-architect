@@ -74,7 +74,16 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   operator` prose from one graph + query identity; it adds no fact.
 - **`migrate(corpus, to)`** is the only upgrade path (currently: the explicit
   reviewed `legacy-catalog` import to `validation-architect/corpus/v1`).
-  Ordinary loads never mutate or reinterpret.
+  Already-canonical legacy rows retain the compact review form. Composite
+  placement uses explicit family outputs and actionable ticket outputs; the
+  caller supplies every current ID, layer, lane, owner, provenance link,
+  structure link, control, implementation, and ticket relationship. A complete
+  reviewed target policy may replace the
+  canonical fallback. The returned deterministic ledger accounts separately
+  for every legacy family, first-owner ticket relationship, non-owning ticket
+  citation, and historical ticket with no actionable family. Composite prose
+  is never parsed into current meaning, and ordinary loads never mutate or
+  reinterpret.
 
 ## Campaign contracts (used by `design`/`resume`)
 

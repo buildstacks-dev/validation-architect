@@ -12,6 +12,15 @@ VA-CORE-004 ([#22](https://github.com/cormidia/validation-architect/issues/22)).
 This record chooses public spellings and lifecycles only. It changes no result
 semantics, reserves no registry name, creates no tag, and publishes nothing.
 
+## Pre-publication candidate correction — 2026-08-15
+
+Version `0.3.0` remained an unpublished release candidate. VA-CORE-008 (#40)
+therefore advances the lockstep candidate to `0.4.0` before any registry
+publication. In Decision 2 below, the historical phrase "first public release"
+now applies to `0.4.0`; the retained-through-0.x alias lifecycle, warning, and
+1.0 removal decision are unchanged. No package name was reserved and no tag or
+release was created by this correction.
+
 ## Decision 1 — Package names: the bare pair
 
 | Surface | Spelling |
@@ -53,7 +62,7 @@ core name.
 | Property | Value |
 | --- | --- |
 | Alias target | `validation-architect check` — the alias runs the same code path |
-| First deprecated version | `0.3.0` (the first public release) |
+| First deprecated version | `0.4.0` (the first public release; `0.3.0` remained an unpublished candidate) |
 | Last supported version | the final `0.x` release |
 | Removal version | `1.0.0` |
 | Warning behavior | one deterministic line on stderr on every invocation: `validation-trace is a deprecated alias for "validation-architect check" and will be removed at 1.0.` |
@@ -62,7 +71,8 @@ core name.
 **Why retained.** Three in-flight consumers reference `validation-trace` today:
 the completed trace issue (#5), the enablement CI handoff
 (`enablement/ci/validation-trace.yml`), and cormidia/Cormidia#431. Removal at
-`0.3.0` would require proving all three migrate in one coordinated change,
+immediate removal from the then-`0.3.0` candidate would require proving all
+three migrate in one coordinated change,
 including one in a downstream repository this workstream must not edit. A
 deprecated alias with identical behavior costs one shim file and makes the
 rename observable instead of breaking.

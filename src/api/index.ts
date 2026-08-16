@@ -136,4 +136,15 @@ export type { RelationshipGraph, RelationshipQuery } from "../relationship-graph
 export type { RelationshipRoleView, RelationshipViewRole } from "../relationship-views.js";
 export type { CaseCatalogManifest } from "../catalog.js";
 export type { CompiledDesignModel, TestInventory } from "../model.js";
+export type {
+  LegacyFamilyMigrationEntry,
+  LegacyFamilyOutputReview,
+  LegacyFamilyReview,
+  LegacyMigrationLane,
+  LegacyMigrationLedger,
+  LegacyModelImportInput,
+  LegacyTicketMigrationEntry,
+  LegacyTicketOutputReview,
+  LegacyTicketReview,
+} from "../legacy-model-import.js";
 export type { ResultMappingContext } from "../result-adapters.js";

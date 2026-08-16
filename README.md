@@ -80,9 +80,15 @@ manifest. They cannot read YAML source, authored design prose, product docs,
 rambling, or campaign history; all visible files are bound to one model identity.
 
 This is an explicit pre-1.0 clean break. A legacy Markdown catalog/backlog is
-accepted only by `importLegacyCatalog`, whose caller must supply reviewed
-ownership, provenance, product structures, negative controls, and planned
-tests. It preserves `LANDED` status and
+accepted only by the public `migrate` entry point, whose caller must supply
+reviewed ownership, provenance, product structures, negative controls, planned
+tests/evidence, canonical family placement, actionable ticket splits, and the
+complete target policy when the canonical fallback is insufficient. Composite
+family outputs name their exact owner, provenance, and structures; legacy
+placement prose is never parsed into current meaning. The migration
+ledger accounts for every legacy family and ticket, including non-owning family
+citations and historical tickets that cannot become empty actionable work. The
+import preserves `LANDED` status and
 `EVIDENCE:complete|incomplete|inconclusive|unobserved:<path>` declarations,
 but reading an old corpus never rewrites it or assigns a current schema by
 guess. The prior EVIDENCE behavior from local commit `42e1918` is therefore
@@ -256,12 +262,12 @@ pnpm vda repos --stale-days 7
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.3.0
+pnpm add --save-dev --save-exact validation-architect@0.4.0
 pnpm exec validation-architect check .            # the CI gate (result/v1)
 pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
-Before a registry release, replace `validation-architect@0.3.0` with the exact
+Before a registry release, replace `validation-architect@0.4.0` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 **Two lockstep packages** (VA-PKG-001). This repository publishes a pair that

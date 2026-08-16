@@ -6,7 +6,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { importLegacyCatalog, type LegacyModelImportInput } from "../legacy-model-import.js";
+import {
+  importLegacyCatalog,
+  type LegacyMigrationLedger,
+  type LegacyModelImportInput,
+} from "../legacy-model-import.js";
 import type { CompilerDiagnostic } from "../model.js";
 import {
   IMPACT_MAPPING_SCHEMA,
@@ -605,7 +609,11 @@ export interface MigrateOutput {
   to: typeof CORPUS_SCHEMA;
   /** New corpus files as unwritten data under validation-design/model/. */
   files: Array<{ path: string; content: string }>;
-  evidence: { imported_family_ids: string[]; review_evidence: string[] };
+  evidence: {
+    imported_family_ids: string[];
+    review_evidence: string[];
+    migration_ledger: LegacyMigrationLedger;
+  };
 }
 
 /**
@@ -638,6 +646,7 @@ export function migrate(corpus: MigrateInput, to: string): MigrateOutput {
     evidence: {
       imported_family_ids: imported.imported_family_ids,
       review_evidence: imported.review_evidence,
+      migration_ledger: imported.migration_ledger,
     },
   };
 }

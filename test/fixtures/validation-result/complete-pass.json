@@ -32,7 +32,7 @@
       "golden_set": "validation-architect/golden-set/v1",
       "method": "0.8.0",
       "model": "validation-architect/corpus/v1",
-      "package": "0.3.0",
+      "package": "0.4.0",
       "policy": "validation-architect/policy/v1",
       "result": "validation-architect/result/v1"
     }
