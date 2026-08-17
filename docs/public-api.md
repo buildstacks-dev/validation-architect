@@ -97,7 +97,9 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   Already-canonical legacy rows retain the compact review form. Composite
   placement uses explicit family outputs and actionable ticket outputs; the
   caller supplies every current ID, layer, lane, owner, provenance link,
-  structure link, control, implementation, and ticket relationship. A complete
+  structure link, control, implementation, and ticket relationship. Each
+  explicit family output may also supply a non-empty reviewed `oracle` and
+  `risk`; either omission preserves the exact legacy family value. A complete
   reviewed target policy may replace the
   canonical fallback. The returned deterministic ledger accounts separately
   for every legacy family, first-owner ticket relationship, non-owning ticket
@@ -105,7 +107,8 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   is never parsed into current meaning. Reviewed ticket dependencies pass
   through both compact and explicit ticket outputs; explicit split outputs may
   carry reviewed per-output status and otherwise inherit the legacy status.
-  The compiler rejects malformed dependency graphs. Ordinary loads never
+  The compiler rejects malformed dependency graphs, and migration refuses
+  empty or malformed per-output oracle/risk reviews. Ordinary loads never
   mutate or reinterpret.
 
 ## Campaign contracts (used by `design`/`resume`)

@@ -22,6 +22,10 @@ export interface LegacyFamilyOutputReview {
   owner: string;
   structure_ids: string[];
   source_ids: string[];
+  /** Non-empty output-specific oracle; omit to preserve the legacy family value. */
+  oracle?: string;
+  /** Non-empty output-specific risk; omit to preserve the legacy family value. */
+  risk?: string;
   /** Exact reviewed actionable ticket identity, when the family owns work. */
   ticket?: string;
   control?: Omit<NegativeControl, "family_id">;
@@ -41,9 +45,10 @@ export interface LegacyFamilyReview {
   /**
    * Explicit clean-break normalization for composite legacy placement. The
    * importer never parses composite layer prose into current-model meaning.
-   * Shared meaning, ownership, provenance, structures, and exclusions remain
-   * those reviewed above; placement, implementation, control, and ticket are
-   * reviewed per output.
+   * Shared meaning and exclusions remain those reviewed above; placement,
+   * ownership, provenance, structures, oracle/risk overrides, implementation,
+   * control, and ticket are reviewed per output. Omitted oracle/risk values
+   * preserve the exact legacy family values.
    */
   outputs?: LegacyFamilyOutputReview[];
 }

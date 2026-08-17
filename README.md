@@ -95,8 +95,10 @@ accepted only by the public `migrate` entry point, whose caller must supply
 reviewed ownership, provenance, product structures, negative controls, planned
 tests/evidence, canonical family placement, actionable ticket splits, and the
 complete target policy when the canonical fallback is insufficient. Composite
-family outputs name their exact owner, provenance, and structures; legacy
-placement prose is never parsed into current meaning. The migration
+family outputs name their exact owner, provenance, and structures; they may
+also carry distinct non-empty oracle and risk reviews, with omitted values
+preserving the exact legacy family values. Legacy placement prose is never
+parsed into current meaning. The migration
 ledger accounts for every legacy family and ticket, including non-owning family
 citations and historical tickets that cannot become empty actionable work. The
 import preserves reviewed ticket dependencies, per-output split status (with
@@ -274,12 +276,12 @@ pnpm vda repos --stale-days 7
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.4.5
+pnpm add --save-dev --save-exact validation-architect@0.4.6
 pnpm exec validation-architect check .            # the CI gate (result/v1)
 pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
-Before a registry release, replace `validation-architect@0.4.5` with the exact
+Before a registry release, replace `validation-architect@0.4.6` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 **Two lockstep packages** (VA-PKG-001). This repository publishes a pair that
