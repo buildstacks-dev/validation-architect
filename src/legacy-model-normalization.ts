@@ -32,6 +32,8 @@ interface ResolvedFamilyPlacement {
   owner: string;
   structure_ids: string[];
   source_ids: string[];
+  oracle?: string;
+  risk?: string;
   ticket?: string;
   control?: Omit<NegativeControl, "family_id">;
   planned_tests?: string[];
@@ -108,6 +110,11 @@ function reviewedPlacements(
     if (!isLane(output.lane)) {
       throw new Error(`legacy family ${legacy.id} output ${output.id} needs an exact reviewed lane id`);
     }
+    for (const field of ["oracle", "risk"] as const) {
+      if (output[field] !== undefined && !nonEmpty(output[field])) {
+        throw new Error(`legacy family ${legacy.id} output ${output.id} needs a non-empty reviewed ${field}`);
+      }
+    }
     if (
       !nonEmpty(output.owner) ||
       !Array.isArray(output.structure_ids) ||
@@ -145,6 +152,8 @@ function reviewedPlacements(
       owner: output.owner,
       structure_ids: [...output.structure_ids],
       source_ids: [...output.source_ids],
+      ...(output.oracle !== undefined ? { oracle: output.oracle } : {}),
+      ...(output.risk !== undefined ? { risk: output.risk } : {}),
       ...(output.ticket ? { ticket: output.ticket } : {}),
       ...(output.control ? { control: output.control } : {}),
       ...(output.planned_tests ? { planned_tests: output.planned_tests } : {}),
@@ -198,6 +207,8 @@ function buildFamily(
   if (legacy.ticket && !placement.ticket) {
     throw new Error(`legacy family ${legacy.id} output ${placement.id} drops owning ticket ${legacy.ticket}`);
   }
+  const oracle = placement.oracle ?? legacy.oracle;
+  const risk = placement.risk ?? legacy.risk;
   return {
     id: placement.id,
     title: reviewed.title,
@@ -208,8 +219,8 @@ function buildFamily(
     lane: placement.lane,
     status: legacy.status,
     ...(placement.layer ? { layer: placement.layer } : {}),
-    ...(legacy.oracle ? { oracle: legacy.oracle } : {}),
-    ...(legacy.risk ? { risk: legacy.risk } : {}),
+    ...(oracle !== undefined ? { oracle } : {}),
+    ...(risk !== undefined ? { risk } : {}),
     ...(placement.control ? { control_ids: [placement.control.id] } : {}),
     ...(placement.ticket ? { ticket: placement.ticket } : {}),
     ...(placement.planned_tests ? { planned_tests: [...placement.planned_tests] } : {}),

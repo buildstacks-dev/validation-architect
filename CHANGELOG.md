@@ -3,6 +3,18 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.6 — reviewed family-output semantics (unreleased)
+
+- Reviewed legacy-family outputs may override `oracle` and `risk` with exact,
+  non-empty per-output values, preserving distinct statistical and mechanical
+  semantics across one legacy family's split outputs.
+- Omitted overrides retain the exact legacy oracle and risk; malformed or empty
+  overrides fail closed rather than silently changing the compiled family.
+- This is an additive migration-input correction only. It changes no model
+  schema, method, campaign, provider, or ordinary checked-model load contract.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.5 — fresh-reader and migration fidelity (unreleased)
 
 - Generated `planned-trace.md` now carries a complete deterministic source-ID

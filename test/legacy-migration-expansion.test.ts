@@ -363,6 +363,82 @@ describe("reviewed legacy migration expansion", () => {
     expect(compiled.generated_views["harness-backlog.md"]).toContain("Depends on `HB-LAYER`.");
   });
 
+  it("preserves distinct mechanical L1/L2 and statistical L6 oracle and risk reviews", () => {
+    const value = review();
+    const family = value.families["CF-COMPOSITE"];
+    const ticket = value.ticket_reviews["HB-LAYER"];
+    const layer = value.policy?.layers.find((candidate) => candidate.id === "L6");
+    if (!family?.outputs || !ticket?.outputs || !layer) throw new Error("fixture split review missing");
+
+    family.outputs[0]!.oracle = "deterministic process state";
+    family.outputs[0]!.risk = "E2 hermetic integration drift";
+    family.outputs[1]!.oracle = "exact contract refusal";
+    family.outputs[1]!.risk = "E1 contract regression";
+    family.outputs.push({
+      id: "CF-COMPOSITE-L6",
+      layer: "L6",
+      lane: "release",
+      owner: "OWN-1",
+      structure_ids: ["CON-1"],
+      source_ids: ["SRC-1"],
+      oracle: "95% confidence interval excludes the outcome floor",
+      risk: "E6 statistical outcome regression",
+      ticket: "HB-LAYER-L6",
+      control: control("CF-COMPOSITE-L6"),
+      evidence: { state: "unobserved", path: "evidence/composite-l6.json" },
+    });
+    ticket.outputs.push({
+      id: "HB-LAYER-L6",
+      title: "Composite outcome acceptance at L6",
+      owner: "OWN-1",
+      executor: "authorized outcome reviewer",
+      lane: "release",
+      layer: "L6",
+      acceptance_criteria: ["The statistical outcome detector rejects the seeded distribution shift"],
+      family_ids: ["CF-COMPOSITE-L6"],
+    });
+    layer.status = "active";
+    delete layer.reason;
+
+    const migrated = migrate(
+      { kind: "legacy-catalog", catalogMarkdown: catalog, backlogMarkdown: backlog, review: value },
+      CORPUS_SCHEMA,
+    );
+    const compiled = compileValidationModel(modelFiles(migrated));
+    expect(compiled.diagnostics).toEqual([]);
+    expect(
+      compiled.model?.families
+        .filter((candidate) => candidate.id.startsWith("CF-COMPOSITE"))
+        .map((candidate) => [candidate.id, candidate.layer, candidate.oracle, candidate.risk]),
+    ).toEqual([
+      ["CF-COMPOSITE", "L1", "exact contract refusal", "E1 contract regression"],
+      ["CF-COMPOSITE-L2", "L2", "deterministic process state", "E2 hermetic integration drift"],
+      [
+        "CF-COMPOSITE-L6",
+        "L6",
+        "95% confidence interval excludes the outcome floor",
+        "E6 statistical outcome regression",
+      ],
+    ]);
+  });
+
+  it("falls back exactly to the legacy family oracle and risk when an output omits them", () => {
+    const migrated = migrate(
+      { kind: "legacy-catalog", catalogMarkdown: catalog, backlogMarkdown: backlog, review: review() },
+      CORPUS_SCHEMA,
+    );
+    const compiled = compileValidationModel(modelFiles(migrated));
+
+    expect(
+      compiled.model?.families
+        .filter((candidate) => candidate.id.startsWith("CF-COMPOSITE"))
+        .map((candidate) => [candidate.id, candidate.oracle, candidate.risk]),
+    ).toEqual([
+      ["CF-COMPOSITE", "state", "E1"],
+      ["CF-COMPOSITE-L2", "state", "E1"],
+    ]);
+  });
+
   it("preserves explicit ticket dependencies and reviewed split statuses", () => {
     const value = review();
     const family = value.families["CF-COMPOSITE"];
@@ -453,6 +529,24 @@ describe("reviewed legacy migration expansion", () => {
       output.source_ids = [];
     });
     expect(error.message).toMatch(/needs exact reviewed ownership, structures, and provenance/);
+  });
+
+  it.each([
+    ["oracle", ""],
+    ["oracle", "   "],
+    ["oracle", 42],
+    ["oracle", null],
+    ["risk", ""],
+    ["risk", "   "],
+    ["risk", 42],
+    ["risk", null],
+  ])("refuses malformed per-output %s review value %j", (field, invalidValue) => {
+    const error = invalid((value) => {
+      const output = value.families["CF-COMPOSITE"]?.outputs?.[0];
+      if (!output) throw new Error("fixture output missing");
+      Object.assign(output, { [field]: invalidValue });
+    });
+    expect(error.message).toMatch(new RegExp(`needs a non-empty reviewed ${field}`));
   });
 
   it("refuses a ticket split that drops a reviewed family output", () => {
