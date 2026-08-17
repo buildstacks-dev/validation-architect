@@ -18,7 +18,7 @@ export function graphFixture(): {
       { id: "SRC-RETRY", kind: "doc", path: "docs/retries.md", locator: "Retry contract" },
     ],
     structures: [
-      { id: "CON-TENANT", kind: "contract", title: "Tenant boundary", meaning: "A lookup never returns another tenant's record", owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"], changed_paths: ["src/tenant/**"], acceptance_criteria: ["Foreign records are rejected"], failure_modes: ["Cross-tenant data is returned"] },
+      { id: "CON-TENANT", kind: "contract", title: "Tenant boundary", meaning: "A lookup never returns another tenant's record", owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"], changed_paths: ["src/tenant/**"], acceptance_criteria: ["Foreign records are rejected"], error_criteria: ["A foreign-tenant lookup returns a typed not-found error without exposing the row"], failure_modes: ["Cross-tenant data is returned"] },
       { id: "INV-RETRY", kind: "invariant", title: "Retry safety", meaning: "A retry never applies the same mutation twice", owner: "OWN-TENANCY", source_ids: ["SRC-RETRY"], changed_paths: ["src/retry/**"], acceptance_criteria: ["Repeated delivery has one effect"], failure_modes: ["Mutation is duplicated"] },
     ],
     policy: {

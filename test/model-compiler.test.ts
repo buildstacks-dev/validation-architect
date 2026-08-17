@@ -57,6 +57,10 @@ function validFiles(): ModelFileSet {
             "Reject a foreign-tenant row without exposing its contents",
             "Repeating a rejected lookup does not mutate state",
           ],
+          error_criteria: [
+            "A malformed org|app request is rejected with a typed validation error and no mutation",
+            "Repeating a rejected lookup returns the same typed error without state change",
+          ],
           changed_paths: ["src/contracts/**"],
         },
       ],
@@ -264,13 +268,13 @@ describe("validation model compiler", () => {
     expect(trace).toMatch(/## Failure-mode coverage[\s\S]*\| CON-1 \| contract \| Crash-mid-step leaves partial state \| \*\*OPEN\*\* \|/);
 
     expect(routing).toContain(
-      "| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |",
+      "| Structure | Kind | Protected meaning | Acceptance criteria | Error criteria | Failure modes | Changed paths | Provenance | Owner |",
     );
     expect(routing).toContain(
-      "| CON-1 | contract | An org\\|app lookup never crosses tenants | First criterion \\| exact continuation, Second criterion remains visible | Cross \\| boundary leak, Crash-mid-step leaves partial state | src/contracts/** | SRC-1 | OWN-1 |",
+      "| CON-1 | contract | An org\\|app lookup never crosses tenants | First criterion \\| exact continuation, Second criterion remains visible | A malformed org\\|app request is rejected with a typed validation error and no mutation, Repeating a rejected lookup returns the same typed error without state change | Cross \\| boundary leak, Crash-mid-step leaves partial state | src/contracts/** | SRC-1 | OWN-1 |",
     );
     expect(routing).toContain(
-      "| IF-EMPTY | interface | Optional lists are absent | — | — | — | SRC-1 | OWN-1 |",
+      "| IF-EMPTY | interface | Optional lists are absent | — | — | — | — | SRC-1 | OWN-1 |",
     );
     expect(routing.match(/^\| (?:CON|IF)-/gm)).toHaveLength(2);
   });
@@ -470,6 +474,48 @@ describe("validation model compiler", () => {
       }),
     };
   };
+
+  it("rejects a contract that declares only happy-path criteria", () => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model!;
+    const contract = model.structures.find((structure) => structure.id === "CON-1")!;
+    const { error_criteria: _dropped, ...happyOnly } = contract;
+    const rejected = compileValidationModel({
+      ...files,
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: [happyOnly],
+      }),
+    });
+    expect(rejected.accepted).toBe(false);
+    const diagnostic = rejected.diagnostics.find((item) => item.code === "MODEL_CONTRACT_ERROR_CRITERIA_MISSING");
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic?.concept).toBe("CON-1");
+    expect(diagnostic?.location.file).toBe("validation-design/model/structures.yaml");
+
+    // The boundary failure_modes rule is unchanged: a boundary with no
+    // declared modes still fails as a missing field.
+    const bareBoundary = compileValidationModel({
+      ...files,
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: [
+          contract,
+          { id: "B-BARE", kind: "boundary", title: "Bare boundary", meaning: "Fails without modes", owner: "OWN-1", source_ids: ["SRC-1"] },
+        ],
+      }),
+    });
+    expect(bareBoundary.accepted).toBe(false);
+    expect(bareBoundary.diagnostics.map((item) => item.message).join("\n")).toContain("B-BARE has a missing or invalid failure_modes");
+  });
+
+  it("renders contract error criteria in the generated views", () => {
+    const compiled = compileValidationModel(validFiles());
+    expect(compiled.accepted).toBe(true);
+    expect(compiled.generated_views["planned-trace.md"]).toContain("Error criteria");
+    expect(compiled.generated_views["planned-trace.md"]).toContain("A malformed org\\|app request is rejected");
+    expect(compiled.generated_views["owner-briefing.md"]).toContain("Error criteria:");
+  });
 
   it("fails closed when a boundary failure mode has no covering family and no named prune", () => {
     const rejected = compileValidationModel(boundaryFiles([]));
@@ -833,6 +879,7 @@ HB-002 LANDED
           owner: "OWN-1",
           source_ids: ["SRC-1"],
           acceptance_criteria: ["Foreign tenant data is never returned"],
+          error_criteria: ["A foreign-tenant lookup is refused with a typed error and no mutation"],
         },
       ],
       ticket_reviews: {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2
+
+Contracts require typed error criteria (VA-ENF-005, validation-architect 0.4.9).
+
+- `contract` structures declare `error_criteria` beside `acceptance_criteria`: invalid-input behavior, typed errors, idempotency under retry.
+- The compiler rejects a happy-path-only contract (`MODEL_CONTRACT_ERROR_CRITERIA_MISSING`); the boundary `failure_modes` requirement is unchanged.
+- Error criteria render in the generated structure routing and owner briefing.
+- Versioned with validation-harness-audit 0.8.2.
+
 ## 0.8.1
 
 Boundary failure-mode coverage becomes a checked model fact (VA-ENF-001, validation-architect 0.4.8).

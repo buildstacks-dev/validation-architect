@@ -73,6 +73,8 @@ export interface ProductStructure {
   owner: string;
   source_ids: string[];
   acceptance_criteria?: string[];
+  /** Typed error-path clauses; required non-empty for contract structures. */
+  error_criteria?: string[];
   failure_modes?: string[];
   changed_paths?: string[];
   criticality?: CriticalityTier;

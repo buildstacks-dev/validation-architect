@@ -49,6 +49,7 @@ export function writeValidModel(root: string, sourceRevision = "abc123"): void {
         owner: "OWN-1",
         source_ids: ["SRC-1"],
         acceptance_criteria: ["The same controlled request returns the same response without mutation"],
+        error_criteria: ["An invalid fixture request is refused with a typed error and no mutation"],
         changed_paths: ["src/**"],
       },
     ],

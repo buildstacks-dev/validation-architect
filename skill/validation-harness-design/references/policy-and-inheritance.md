@@ -81,6 +81,13 @@ ticket. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact
 path; evidence never excuses an ordinary test-lane family.
 
+Contracts carry their error half in the model (VA-ENF-005). A `contract`
+structure declares `error_criteria` alongside `acceptance_criteria` —
+invalid-input behavior, typed errors, idempotency under retry — and the
+compiler rejects a happy-path-only contract
+(`MODEL_CONTRACT_ERROR_CRITERIA_MISSING`). Error criteria render in the
+generated structure routing and owner briefing.
+
 Failure-mode coverage is closed at compile time (VA-ENF-001). A family cites
 the exact declared modes it exercises as
 `covers_failure_modes: ["<structure-id>#<mode>"]`, verbatim against the

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2
+
+Consumes the typed error-criteria contract introduced by design 0.8.2 (VA-ENF-005).
+
+- Contract conformance (§4.4) leans on the compiler's rejection of happy-path-only contracts and audits whether each declared error clause is actually exercised by a family's tests.
+- Versioned with validation-harness-design 0.8.2.
+
 ## 0.8.1
 
 Consumes the failure-mode coverage contract introduced by design 0.8.1 (VA-ENF-001).
