@@ -114,7 +114,7 @@ Taught and elicited in **Phase 1** before invariants. The purpose is to make the
 
 | Not an invariant | Why | What it actually is |
 |---|---|---|
-| "The API responds in under 200ms" | Load can break it without anything being wrong | A contract term / SLO |
+| "The API responds in under 200ms" | Load can break it without anything being wrong | A contract term / SLO — and it gets *written*: numeric bounds land as contract clauses on the owning structure, recurring proofs (soak, cancellation drills) as L5 obligations, and the mechanically falsifiable slices (heartbeat emitted, cancellation leaves consistent state, errors name a next step) as L1/L2 guardrails — the operability/liveness invariant category (SKILL.md Phase 2) |
 | "Users can reset their password" | A capability, not a property | A feature with acceptance criteria |
 | "The system is reliable" | Nothing can falsify it | A wish |
 | "The planner produces good plans" | Quality is statistical, not binary | An eval rubric |

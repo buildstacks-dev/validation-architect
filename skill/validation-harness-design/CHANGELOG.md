@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.8
+
+Operability and liveness join the invariant elicitation (VA-MTH-002, validation-architect 0.4.15; docs-only).
+
+- New beat-4 invariant category: operations exceeding a few seconds show progress/heartbeat, cancellation leaves consistent state, every failure names a next step.
+- Question-bank probes in Phase 2 (long-running visibility, Ctrl-C, actionable errors) and Phase 6 (declared operability obligations per long-running operation).
+- Placement guidance: numeric bounds are contract clauses, recurring proofs are L5 obligations, mechanically falsifiable slices are L1/L2 guardrails; the primer's SLO-deflection row now points there.
+- No schema change; no check touched.
+- Versioned with validation-harness-audit 0.8.8.
+
 ## 0.8.7
 
 Unit triangulation becomes an elicited, visible layer (VA-MTH-001, validation-architect 0.4.14).
