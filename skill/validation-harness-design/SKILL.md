@@ -267,6 +267,7 @@ After risk confirmation, derive case families mechanically rather than brainstor
 | Boundary | success, timeout, partial success, retry, duplicate, stale read, and version skew |
 | Contract | valid and invalid inputs, outputs, typed errors, idempotency, ordering, freshness, and latency |
 | Interface adapter | conformance to the shared underlying behavior, including error translation |
+| Dense-logic component | a cheap example/property unit-triangulation layer (`purpose: triangulation`) for parsers, state machines, scoring/ranking functions, serializers, numerical transforms — its purpose is failure **localization**, not identity: when a behavior family goes red, this layer says *where*; it supplements the behavior families that anchor the component's meaning, never replaces them |
 | LLM call site | deterministic envelope, statistical quality, trajectory, and judge calibration as applicable |
 | Operational obligation | load at the contention point, soak, resource growth, clock skew, abuse, and recovery |
 | Outcome-acceptance scenario | realistic-input variants, every ratified rubric axis, intermediate-gate stop, sealed-plant and independence guardrails, and every incomplete/inconclusive terminal |

@@ -3,6 +3,20 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.14 — unit-triangulation elicitation and family purpose (unreleased)
+
+- VA-MTH-001 (#61): families may declare `purpose: behavior | triangulation`
+  (default `behavior`; an unrecognized value is a field error). The case
+  catalog renders a Purpose column so the failure-localization layer is
+  visible and auditable; omitting the field changes nothing.
+- The design skill gains a dense-logic derivation-grammar row and a Phase-6
+  question-bank probe; the primer's hermetic-vs-unit confusion entry names
+  the deliberate triangulation carve-out. All three pinned by test. Method
+  contract 0.8.7.
+- Additive and tighten-only; existing corpora compile unchanged.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.13 — finding-to-claim linkage (unreleased)
 
 - VA-ENF-007 (#59): new `sources.yaml` kind `finding` — the locator names the

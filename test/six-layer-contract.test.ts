@@ -38,6 +38,19 @@ describe("six-layer design/audit contract", () => {
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
   });
 
+  it("carries the unit-triangulation carve-out across grammar, probes, and primer (VA-MTH-001)", () => {
+    // The derivation grammar names dense-logic components, the question bank
+    // probes for them, and the primer's hermetic-vs-unit confusion entry
+    // points at the deliberate triangulation exception.
+    expect(read("skill/validation-harness-design/SKILL.md")).toContain("Dense-logic component");
+    expect(read("skill/validation-harness-design/references/question-bank.md")).toContain(
+      "behavior-level failure wouldn't tell you where to look",
+    );
+    expect(read("skill/validation-harness-design/references/concept-primers.md")).toContain(
+      "purpose: triangulation",
+    );
+  });
+
   it("carries the lane-budget doctrine in both skills (VA-ENF-004)", () => {
     // The design skill states that a breached budget is a defect against the
     // harness; the audit checklist compares declared budgets to observed CI

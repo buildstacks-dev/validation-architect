@@ -47,7 +47,7 @@ Taught in **Phase 1**, frame and ground beats only — it is a fixed frame the s
 
 | Confusion | Correction |
 |---|---|
-| "Hermetic = unit test with everything mocked" | Hermetic tests exercise real composition across many components; only boundaries and nondeterminism are faked. Mocking *inside* a boundary tests your mocks. |
+| "Hermetic = unit test with everything mocked" | Hermetic tests exercise real composition across many components; only boundaries and nondeterminism are faked. Mocking *inside* a boundary tests your mocks. The deliberate exception is the unit-triangulation layer (`purpose: triangulation`): algorithmically dense components — parsers, state machines, scoring functions — carry a cheap example/property unit layer whose purpose is failure localization, not identity. It says *where* a red came from; the behavior families still say *whether* the meaning holds. |
 | "Sandbox = staging" | Staging is long-lived and must be kept healthy; a sandbox is disposable by definition. If you can't afford to destroy it, it isn't a sandbox. |
 | "Evals come after the other layers are green" | Layer 4 sits *beside* layers 1–3 for every model-touching surface, from the first golden set on. It never replaces them. |
 | "Security testing is a late phase" | Only the assurance half is late (layer 5). Security invariants are layer-1 content from day one. |

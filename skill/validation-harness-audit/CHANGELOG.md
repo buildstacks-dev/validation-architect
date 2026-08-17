@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.7
+
+Consumes the unit-triangulation purpose introduced by design 0.8.7 (VA-MTH-001).
+
+- Recognizes `purpose: triangulation` families as the deliberate failure-localization layer (the technique reference's example/property unit guidance) rather than the mock-everything anti-pattern; behavior families still anchor identity.
+- Versioned with validation-harness-design 0.8.7.
+
 ## 0.8.6
 
 Consumes the finding-to-claim contract introduced by design 0.8.6 (VA-ENF-007).

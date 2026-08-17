@@ -40,10 +40,10 @@ function familyStatus(family: ValidationFamily): string {
 function renderCatalog(model: CompiledDesignModel): string {
   const rows = model.families.map(
     (family) =>
-      `| ${md(family.id)} | ${md(family.title)} | ${md(family.meaning)} | ${list(family.structure_ids)} | ${list(family.source_ids)} | ${md(family.lane)} | ${md(family.layer ?? "—")} | ${md(family.oracle ?? "—")} | ${md(family.risk ?? "—")} | ${list(family.control_ids)} | ${list(family.covers_failure_modes)} | ${md(family.owner)} | ${md(family.ticket ?? "—")} | ${md(familyStatus(family))} | ${md(familyExecution(family))} |`,
+      `| ${md(family.id)} | ${md(family.title)} | ${md(family.meaning)} | ${list(family.structure_ids)} | ${list(family.source_ids)} | ${md(family.lane)} | ${md(family.layer ?? "—")} | ${md(family.oracle ?? "—")} | ${md(family.risk ?? "—")} | ${md(family.purpose ?? "behavior")} | ${list(family.control_ids)} | ${list(family.covers_failure_modes)} | ${md(family.owner)} | ${md(family.ticket ?? "—")} | ${md(familyStatus(family))} | ${md(familyExecution(family))} |`,
   );
   const controls = model.controls.map((control) => `| ${md(control.id)} | ${md(control.title)} | ${md(control.family_id)} | ${md(control.expected_failure)} | ${md(control.owner)} |`);
-  return `# Case catalog\n\n${GENERATED_NOTICE}\n| Family | Title | Protected meaning | Structures | Provenance | Lane | Layer | Oracle | Risk | Negative controls | Failure modes covered | Owner | Ticket | Status | Planned implementation / evidence |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\n## Negative controls\n\n| Control | Title | Family | Expected red behavior | Owner |\n| --- | --- | --- | --- | --- |\n${controls.join("\n")}\n`;
+  return `# Case catalog\n\n${GENERATED_NOTICE}\n| Family | Title | Protected meaning | Structures | Provenance | Lane | Layer | Oracle | Risk | Purpose | Negative controls | Failure modes covered | Owner | Ticket | Status | Planned implementation / evidence |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\n## Negative controls\n\n| Control | Title | Family | Expected red behavior | Owner |\n| --- | --- | --- | --- | --- |\n${controls.join("\n")}\n`;
 }
 
 function renderBacklog(model: CompiledDesignModel): string {

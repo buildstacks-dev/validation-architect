@@ -183,6 +183,10 @@ export interface ValidationFamily {
   layer?: ValidationLayerId;
   oracle?: string;
   risk?: string;
+  /** behavior (default): the family proves a protected meaning holds.
+   * triangulation: a cheap unit layer over a dense-logic component whose
+   * purpose is failure localization, not identity. */
+  purpose?: "behavior" | "triangulation";
   control_ids?: string[];
   /** Declared failure modes this family covers or prunes, as
    * "<structure-id>#<mode>" references into the structure's failure_modes. */
