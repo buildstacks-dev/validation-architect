@@ -546,6 +546,17 @@ console.log("surface ok");
   for (const name of readdirSync(model)) {
     pendingFiles[`validation-design/model/${name}`] = readFileSync(join(model, name), "utf8");
   }
+  // Same corpus with a landed owner ticket: the unimplemented declared control
+  // must turn the gate red and name the control id (VA-ENF-002).
+  const landedFiles = {
+    ...pendingFiles,
+    "validation-design/model/backlog.yaml": pendingFiles[
+      "validation-design/model/backlog.yaml"
+    ].replace('"status": "pending"', '"status": "landed"'),
+  };
+  if (landedFiles["validation-design/model/backlog.yaml"] === pendingFiles["validation-design/model/backlog.yaml"]) {
+    throw new Error("landed smoke corpus did not flip the owner ticket status");
+  }
   writeFileSync(
     join(consumer, "pending-root-import.mjs"),
     `
@@ -578,10 +589,27 @@ const familyFindings = graph.findings.filter((finding) => finding.subject_id ===
 if (!familyFindings.some((finding) => finding.code === "IMPLEMENTATION_PENDING" && finding.level === "partial")) {
   throw new Error("pending family lacks the explicit partial finding");
 }
-for (const code of ["IMPLEMENTATION_MISSING", "EVIDENCE_ARTIFACT_MISSING", "PLANNED_IMPLEMENTATION_DRIFT"]) {
+if (!familyFindings.some((finding) => finding.code === "CONTROL_IMPLEMENTATION_PENDING" && finding.level === "partial")) {
+  throw new Error("pending family lacks the explicit partial negative-control finding");
+}
+for (const code of ["IMPLEMENTATION_MISSING", "EVIDENCE_ARTIFACT_MISSING", "PLANNED_IMPLEMENTATION_DRIFT", "CONTROL_UNIMPLEMENTED"]) {
   if (familyFindings.some((finding) => finding.code === code && finding.level === "red")) {
     throw new Error("pending family produced false closure red " + code);
   }
+}
+
+const landedRepo = new FakeRepositoryPort({
+  revision: ${JSON.stringify(sourceRevision)},
+  files: ${JSON.stringify(landedFiles)},
+});
+const landedResult = await check(landedRepo);
+if (landedResult.verdict !== "fail") throw new Error("landed family with an unimplemented control must fail");
+const landedFindings = (await explain(landedRepo, "CF-X01-S")).graph.findings;
+const controlRed = landedFindings.find(
+  (finding) => finding.code === "CONTROL_UNIMPLEMENTED" && finding.level === "red",
+);
+if (!controlRed || !controlRed.message.includes("NC-X01")) {
+  throw new Error("landed unimplemented control must be red and name NC-X01");
 }
 console.log("pending public root import ok");
 `,

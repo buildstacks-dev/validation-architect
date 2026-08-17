@@ -442,6 +442,64 @@ describe("validation model compiler", () => {
     expect(model.families.some((family) => family.id === "CF-INVENTED")).toBe(false);
   });
 
+  it("fails closed when a landed family's declared control is implemented by no inventory test", () => {
+    const files = validFiles();
+    files["backlog.yaml"] = files["backlog.yaml"].replace("status: pending", "status: landed");
+    const model = compileValidationModel(files).model!;
+    // Negative control for the closure rule: the spec is implemented, the
+    // declared negative control NC-1 is cited by no test at all.
+    const joined = joinTestInventory(model, {
+      kind: "test-inventory",
+      revision: "abc123",
+      environment: "local",
+      tests: [{ id: "T-1", path: "tests/contracts/tenant.test.ts", family_ids: ["CF-1"] }],
+    });
+    expect(joined.accepted).toBe(false);
+    expect(joined.unimplemented_control_ids).toEqual(["NC-1"]);
+    const diagnostic = joined.diagnostics.find((item) => item.code === "CONTROL_UNIMPLEMENTED");
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic?.family_id).toBe("CF-1");
+    expect(diagnostic?.message).toContain("NC-1");
+
+    const implemented = joinTestInventory(model, {
+      kind: "test-inventory",
+      revision: "abc123",
+      environment: "local",
+      tests: [{ id: "T-1", path: "tests/contracts/tenant.test.ts", family_ids: ["CF-1"], control_ids: ["NC-1"] }],
+    });
+    expect(implemented.accepted).toBe(true);
+    expect(implemented.unimplemented_control_ids).toEqual([]);
+  });
+
+  it("keeps an unimplemented control visible data, never red, while the owner ticket is pending", () => {
+    const model = compileValidationModel(validFiles()).model!;
+    const joined = joinTestInventory(model, {
+      kind: "test-inventory",
+      revision: "abc123",
+      environment: "local",
+      tests: [{ id: "T-1", path: "tests/contracts/tenant.test.ts", family_ids: ["CF-1"] }],
+    });
+    expect(joined.accepted).toBe(true);
+    expect(joined.diagnostics).toEqual([]);
+    expect(joined.unimplemented_control_ids).toEqual(["NC-1"]);
+  });
+
+  it("still rejects a test citing a control without implementing its family", () => {
+    const files = validFiles();
+    files["backlog.yaml"] = files["backlog.yaml"].replace("status: pending", "status: landed");
+    const model = compileValidationModel(files).model!;
+    const joined = joinTestInventory(model, {
+      kind: "test-inventory",
+      revision: "abc123",
+      environment: "local",
+      tests: [{ id: "T-1", path: "tests/contracts/other.test.ts", family_ids: ["CF-OTHER"], control_ids: ["NC-1"] }],
+    });
+    expect(joined.accepted).toBe(false);
+    expect(joined.diagnostics.map((item) => item.code)).toEqual(
+      expect.arrayContaining(["INVENTORY_FAMILY_UNKNOWN", "INVENTORY_CONTROL_FAMILY_MISMATCH"]),
+    );
+  });
+
   it("changes identity only for semantic model changes, not unrelated prose", () => {
     const workspace = mkdtempSync(join(tmpdir(), "vda-model-identity-"));
     const modelDir = join(workspace, "validation-design", "model");

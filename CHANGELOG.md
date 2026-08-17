@@ -3,6 +3,28 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.7 — declared negative controls must be implemented (unreleased)
+
+- VA-ENF-002 (#54): the design↔inventory join fails closed when a declared
+  negative control of an implementable test-lane family is implemented by no
+  inventory test while its owner ticket is `landed` or unknown — the new red
+  `CONTROL_UNIMPLEMENTED` diagnostic names the control. The join also reports
+  `unimplemented_control_ids` alongside `unimplemented_family_ids`.
+- Status-aware, mirroring the 0.4.1 implementation-closure semantics: the same
+  gap under a `pending`, `blocked`, or `parked` owner ticket is the explicit
+  partial `CONTROL_IMPLEMENTATION_PENDING` finding — inconclusive, never red,
+  never green by absence. Evidence-lane families keep their controls outside
+  the test inventory by construction.
+- The checked-model trace host adapter now emits `control_ids` for citing
+  specs from the checked model's family/control relationships, matching the
+  public RepositoryPort composition; spec prose still cannot create or reject
+  a control relationship.
+- This closes the paper-only-control hole deterministically; whether an
+  implemented control can actually fire remains the fidelity audit's judgment
+  (the recurring falsifiability sweep is tracked separately).
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.6 — reviewed family-output semantics (unreleased)
 
 - Reviewed legacy-family outputs may override `oracle` and `risk` with exact,

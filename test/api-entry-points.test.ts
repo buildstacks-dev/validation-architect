@@ -207,7 +207,20 @@ describe("check", () => {
     expect(result.verdict).toBe("fail");
     expect(result.reason).toBe("traceability_broken");
     expect(JSON.stringify(result.extensions)).toContain("LANDED_STATUS_FALSE");
+    // The landed family's declared negative control is implemented by no
+    // observed test; the gate names the control id (VA-ENF-002).
+    expect(JSON.stringify(result.extensions)).toContain("CONTROL_UNIMPLEMENTED");
+    const familyCase = result.cases.find((item) => item.id === "CF-X01-S");
+    expect(familyCase?.status).toBe("fail");
+    expect(familyCase?.summary).toContain("NC-X01");
     expect(isGreenValidationResult(result)).toBe(false);
+  });
+
+  it("keeps an unimplemented declared control partial, never red, while the owner ticket is pending", async () => {
+    const result = await check(greenRepo({ "tests/fixture.test.ts": null, "tests/.keep": "" }));
+    expect(result.verdict).toBe("inconclusive");
+    expect(JSON.stringify(result.extensions)).toContain("CONTROL_IMPLEMENTATION_PENDING");
+    expect(JSON.stringify(result.extensions)).not.toContain("CONTROL_UNIMPLEMENTED");
   });
 
   it("removes the pending-implementation finding when the exact planned test exists", async () => {

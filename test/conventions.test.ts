@@ -10,6 +10,7 @@ describe("TRACEABILITY_CONVENTIONS (issue #4)", () => {
     expect(TRACEABILITY_CONVENTIONS).toContain("pending");
     expect(TRACEABILITY_CONVENTIONS).toContain("planned_tests");
     expect(TRACEABILITY_CONVENTIONS).toContain("Negative controls remain paired");
+    expect(TRACEABILITY_CONVENTIONS).toContain("CONTROL_UNIMPLEMENTED");
     expect(TRACEABILITY_CONVENTIONS).toContain("Legacy headers are annotations, not authority");
     expect(TRACEABILITY_CONVENTIONS).toContain("Historical tokens cannot create or reject current model facts");
     expect(TRACEABILITY_CONVENTIONS).toContain("validation-design/model/*.yaml");
