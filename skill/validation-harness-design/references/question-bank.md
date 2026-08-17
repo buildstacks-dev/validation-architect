@@ -162,6 +162,7 @@ When an answer exposes something the architecture doc doesn't cover, record an a
 
 **Beat-4 probes:**
 
+- Which components are algorithmically dense enough that a behavior-level failure wouldn't tell you where to look — a parser, a state machine, a scoring or ranking function, a serializer, a numerical transform? Those earn a cheap unit-triangulation layer (`purpose: triangulation`) beside their behavior families, for localization rather than identity.
 - Which paths change most often, or have the most people touching them?
 - Given the deployment shape from Phase 1, where's the real contention point under peak load — a throughput problem or a hot-resource problem?
 - What runs always-on or unattended? (Triggers layer-5 soak: state growth under retention, missed-tick reconciliation after sleep, cost integrity under retries.)

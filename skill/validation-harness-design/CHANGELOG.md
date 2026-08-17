@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.7
+
+Unit triangulation becomes an elicited, visible layer (VA-MTH-001, validation-architect 0.4.14).
+
+- New derivation-grammar row for dense-logic components (parsers, state machines, scoring/ranking, serializers, numerical transforms): a cheap example/property unit-triangulation layer whose purpose is failure localization, not identity.
+- Question-bank probe (Phase 6): which components are dense enough that a behavior-level failure wouldn't tell you where to look?
+- Families may declare `purpose: triangulation` (default `behavior`), rendered as a catalog column; omitting the field changes nothing.
+- The primer's hermetic-vs-unit confusion entry now names the deliberate triangulation carve-out.
+- Versioned with validation-harness-audit 0.8.7.
+
 ## 0.8.6
 
 Manual findings convert to claims through the schema (VA-ENF-007, validation-architect 0.4.13).

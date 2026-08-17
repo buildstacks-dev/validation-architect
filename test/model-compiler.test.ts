@@ -492,6 +492,26 @@ describe("validation model compiler", () => {
     };
   };
 
+  it("accepts an optional triangulation purpose and marks it in the catalog", () => {
+    const files = validFiles();
+    const defaulted = compileValidationModel(files);
+    expect(defaulted.accepted).toBe(true);
+    // Omitting the field changes nothing: the family renders with the
+    // default behavior purpose.
+    expect(defaulted.generated_views["case-catalog.md"]).toContain("| behavior |");
+
+    const families = parse(files["families.yaml"]) as { families: Array<Record<string, unknown>> };
+    families.families[0]!.purpose = "triangulation";
+    const marked = compileValidationModel({ ...files, "families.yaml": yaml(families) });
+    expect(marked.accepted, marked.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+    expect(marked.generated_views["case-catalog.md"]).toContain("| triangulation |");
+
+    families.families[0]!.purpose = "localization";
+    const invalid = compileValidationModel({ ...files, "families.yaml": yaml(families) });
+    expect(invalid.accepted).toBe(false);
+    expect(invalid.diagnostics.map((item) => item.message).join("\n")).toContain("purpose");
+  });
+
   it("requires a finding source to name its locator and triggering input", () => {
     const files = validFiles();
     const withFinding = (finding: Record<string, unknown>): ReturnType<typeof compileValidationModel> =>

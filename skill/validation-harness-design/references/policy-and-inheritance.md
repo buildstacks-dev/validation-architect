@@ -88,7 +88,10 @@ triggers. Every active test lane declares its wall-clock budget as
 a breached budget is a defect against the harness, filed like any red.
 Evidence lanes may declare one; declared-empty lanes need none. C2–C4 designs keep L5 active. A family references an active lane and
 layer, then records its oracle, risk, owner, provenance, controls, status, and
-ticket. Evidence lanes require an honest
+ticket. A family may declare `purpose: triangulation` (default `behavior`) to
+mark a failure-localization unit layer over a dense-logic component
+(VA-MTH-001); the catalog renders the purpose so the localization layer stays
+visible and auditable. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact
 path; evidence never excuses an ordinary test-lane family.
 
