@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6
+
+Consumes the finding-to-claim contract introduced by design 0.8.6 (VA-ENF-007).
+
+- Recognizes `finding` provenance (issue locator + exact triggering input) and the `finding_ref` fix-ticket linkage; audit samples closed findings and confirms each fix ticket's family deposited its detector with the fix.
+- Versioned with validation-harness-design 0.8.6.
+
 ## 0.8.5
 
 Consumes the sourcing-channel contract introduced by design 0.8.5 (VA-ENF-006).

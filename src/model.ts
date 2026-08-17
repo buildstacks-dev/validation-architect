@@ -27,7 +27,7 @@ export const MODEL_FILE_SCHEMAS: Readonly<Record<ModelFilename, string>> = Objec
   "backlog.yaml": "validation-architect/model/backlog/v1",
 });
 
-export type SourceKind = "doc" | "rambling" | "simulated" | "proposed";
+export type SourceKind = "doc" | "rambling" | "simulated" | "proposed" | "finding";
 export type StructureKind =
   | "journey"
   | "invariant"
@@ -207,6 +207,9 @@ export interface BacklogTicket {
   acceptance_criteria: string[];
   family_ids: string[];
   depends_on?: string[];
+  /** The manual finding this ticket fixes; a ticket carrying one must own at
+   * least one family — a fix cannot exist without a claim. */
+  finding_ref?: string;
 }
 
 export interface CompiledDesignModel {

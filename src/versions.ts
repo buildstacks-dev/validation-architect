@@ -3,8 +3,8 @@
  * release policy; the package/API workstream owns public package naming and
  * release composition.
  */
-export const CORE_PACKAGE_VERSION = "0.4.12";
-export const METHOD_VERSION = "0.8.5";
+export const CORE_PACKAGE_VERSION = "0.4.13";
+export const METHOD_VERSION = "0.8.6";
 export const MODEL_SCHEMA = "validation-architect/corpus/v1";
 export const COMPILER_VERSION = "validation-architect/compiler/v1";
 export const POLICY_SCHEMA = "validation-architect/policy/v1";

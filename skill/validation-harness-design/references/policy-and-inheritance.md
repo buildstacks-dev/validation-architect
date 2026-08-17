@@ -12,7 +12,7 @@ document with pointers to separately maintained catalogs.
 validation-design/model/
   project.yaml       # product revision and exact package/method/schema versions
   owners.yaml        # stable owners and responsibilities
-  sources.yaml       # doc, rambling, simulated, and proposed provenance
+  sources.yaml       # doc, rambling, simulated, proposed, and finding provenance
   structures.yaml    # journeys, invariants, boundaries, contracts, interfaces, sites, operations
   policy.yaml        # fail-closed lanes and inheritance behavior
   controls.yaml      # red-capable negative controls

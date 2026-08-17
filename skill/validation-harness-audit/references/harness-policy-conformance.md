@@ -63,7 +63,7 @@ The six layer rules the audit enforces:
 ## 2. What each artifact is
 
 - `model/project.yaml` records intended use, criticality with rationale, product revision, and package/method/schema versions.
-- `owners.yaml` and `sources.yaml` make responsibility and provenance explicit.
+- `owners.yaml` and `sources.yaml` make responsibility and provenance explicit; a `finding` source (VA-ENF-007) records a manual/exploratory finding with its issue locator and exact triggering input, and a fix ticket citing it via `finding_ref` must own the family it deposits.
 - `structures.yaml` holds namespaced journeys, invariants, boundaries, contracts, interfaces, model sites, and operations with their protected meaning.
 - `policy.yaml` declares all six layers, executable test/evidence lanes and triggers, exceptions, and optional coexistence constraints under fail-closed, tighten-only semantics.
 - `controls.yaml`, `families.yaml`, and `backlog.yaml` link red-capable controls, traced obligations, planned tests/evidence, status, ownership, and implementation order.
