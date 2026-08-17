@@ -40,10 +40,10 @@ function familyStatus(family: ValidationFamily): string {
 function renderCatalog(model: CompiledDesignModel): string {
   const rows = model.families.map(
     (family) =>
-      `| ${md(family.id)} | ${md(family.title)} | ${md(family.meaning)} | ${list(family.structure_ids)} | ${list(family.source_ids)} | ${md(family.lane)} | ${md(family.layer ?? "—")} | ${md(family.oracle ?? "—")} | ${md(family.risk ?? "—")} | ${list(family.control_ids)} | ${md(family.owner)} | ${md(family.ticket ?? "—")} | ${md(familyStatus(family))} | ${md(familyExecution(family))} |`,
+      `| ${md(family.id)} | ${md(family.title)} | ${md(family.meaning)} | ${list(family.structure_ids)} | ${list(family.source_ids)} | ${md(family.lane)} | ${md(family.layer ?? "—")} | ${md(family.oracle ?? "—")} | ${md(family.risk ?? "—")} | ${list(family.control_ids)} | ${list(family.covers_failure_modes)} | ${md(family.owner)} | ${md(family.ticket ?? "—")} | ${md(familyStatus(family))} | ${md(familyExecution(family))} |`,
   );
   const controls = model.controls.map((control) => `| ${md(control.id)} | ${md(control.title)} | ${md(control.family_id)} | ${md(control.expected_failure)} | ${md(control.owner)} |`);
-  return `# Case catalog\n\n${GENERATED_NOTICE}\n| Family | Title | Protected meaning | Structures | Provenance | Lane | Layer | Oracle | Risk | Negative controls | Owner | Ticket | Status | Planned implementation / evidence |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\n## Negative controls\n\n| Control | Title | Family | Expected red behavior | Owner |\n| --- | --- | --- | --- | --- |\n${controls.join("\n")}\n`;
+  return `# Case catalog\n\n${GENERATED_NOTICE}\n| Family | Title | Protected meaning | Structures | Provenance | Lane | Layer | Oracle | Risk | Negative controls | Failure modes covered | Owner | Ticket | Status | Planned implementation / evidence |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\n## Negative controls\n\n| Control | Title | Family | Expected red behavior | Owner |\n| --- | --- | --- | --- | --- |\n${controls.join("\n")}\n`;
 }
 
 function renderBacklog(model: CompiledDesignModel): string {
@@ -131,6 +131,21 @@ function renderProvenanceRegistry(model: CompiledDesignModel): string {
   return `| Source | Kind | Path | Locator | Quote |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
+function renderFailureModeCoverage(model: CompiledDesignModel): string {
+  const withModes = model.structures.filter((structure) => structure.failure_modes?.length);
+  if (withModes.length === 0) return "- No structure declares failure modes.\n";
+  const rows = withModes.flatMap((structure) =>
+    (structure.failure_modes ?? []).map((mode) => {
+      const reference = `${structure.id}#${mode}`;
+      const covering = model.families
+        .filter((family) => family.covers_failure_modes?.includes(reference))
+        .map((family) => `${family.id}${family.status === "implementable" ? "" : ` (${family.status})`}`);
+      return `| ${md(structure.id)} | ${md(structure.kind)} | ${md(mode)} | ${covering.length > 0 ? covering.map(md).join(", ") : "**OPEN**"} |`;
+    }),
+  );
+  return `| Structure | Kind | Failure mode | Covered / pruned by |\n| --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+}
+
 function renderPlannedTrace(model: CompiledDesignModel): string {
   const structures = model.structures.map(
     (structure) =>
@@ -142,7 +157,7 @@ function renderPlannedTrace(model: CompiledDesignModel): string {
       : list(family.planned_tests);
     return `| ${md(family.id)} | ${list(family.structure_ids)} | ${md(family.ticket ?? "—")} | ${list(family.control_ids)} | ${md(implementation)} | ${md(family.owner)} |`;
   });
-  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Failure-mode coverage\n\nEvery boundary failure mode must be covered by a family or pruned by name; the compiler rejects an open boundary mode (VA-ENF-001). Non-boundary modes are listed for the same visibility.\n\n${renderFailureModeCoverage(model)}\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 export function generateModelViews(model: CompiledDesignModel): Record<GeneratedModelView, string> {

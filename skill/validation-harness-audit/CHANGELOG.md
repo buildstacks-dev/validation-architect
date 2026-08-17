@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+Consumes the failure-mode coverage contract introduced by design 0.8.1 (VA-ENF-001).
+
+- Boundary-coverage conformance (§4.5) now leans on the compiler's deterministic closure — `MODEL_FAILURE_MODE_UNCOVERED` for an uncited boundary mode — and audits what the tool cannot see: whether citing tests genuinely exercise the cited mode and whether prune reasons still hold.
+- Reads the generated failure-mode coverage table in `planned-trace.md` as the fresh-reader view of covered, pruned, and open modes.
+- Versioned with validation-harness-design 0.8.1.
+
 ## 0.8.0
 
 Consumes the optional-intent contract introduced by design 0.8.0.

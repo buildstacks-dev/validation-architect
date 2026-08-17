@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+Boundary failure-mode coverage becomes a checked model fact (VA-ENF-001, validation-architect 0.4.8).
+
+- Families cite the declared modes they exercise as `covers_failure_modes: ["<structure-id>#<mode>"]`; a pruned family citing the same reference with its reason is the named prune.
+- The compiler rejects a boundary failure mode with no covering family and no named prune (`MODEL_FAILURE_MODE_UNCOVERED` at the boundary's source location) and rejects citations of undeclared modes or missing structures.
+- Generated `planned-trace.md` gains a failure-mode coverage table and `case-catalog.md` a coverage column, so a fresh reader sees which modes are covered, pruned, or (for non-boundary structures) open.
+- Versioned with validation-harness-audit 0.8.1.
+
 ## 0.8.0
 
 Makes `rambling.txt` an optional campaign input (issue #14): a product whose repository already carries detailed docs, specs, architecture records, and code no longer requires a human-authored rambling file, and no seat may demand one.
