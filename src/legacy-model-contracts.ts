@@ -6,6 +6,7 @@ import type {
   NegativeControl,
   ProductIdentity,
   ProductStructure,
+  SourcingChannel,
   TicketStatus,
   ValidationLayerId,
   ValidationPolicy,
@@ -92,6 +93,9 @@ export interface LegacyModelImportInput {
   /** Reviewed smoke-journey designation applied to the canonical fallback
    * policy; a reviewed `policy` carries its own `smoke_journey_ids` instead. */
   smoke_journey_ids?: string[];
+  /** Reviewed standing sourcing channels for the canonical fallback policy;
+   * absent, every channel imports declared-empty for later review. */
+  sourcing?: SourcingChannel[];
   families: Record<string, LegacyFamilyReview>;
   ticket_reviews: Record<string, LegacyTicketReview>;
 }

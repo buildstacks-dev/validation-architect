@@ -103,6 +103,26 @@ export interface ValidationLane {
   reason?: string;
 }
 
+export const SOURCING_CHANNEL_IDS = [
+  "acceptance-criteria",
+  "adversarial-derivation",
+  "production-incident",
+  "substrate-drift",
+] as const;
+
+export type SourcingChannelId = (typeof SOURCING_CHANNEL_IDS)[number];
+
+/** A standing case-sourcing obligation (design SKILL.md's four ongoing
+ * channels), recorded as policy data rather than prose. */
+export interface SourcingChannel {
+  id: SourcingChannelId;
+  status: "active" | "declared-empty";
+  owner: string;
+  /** What fires the channel; required while the channel is active. */
+  trigger?: string;
+  reason?: string;
+}
+
 export interface PolicyException {
   id: string;
   kind: "waiver" | "provisional";
@@ -131,6 +151,9 @@ export interface ValidationPolicy {
   smoke_journey_ids?: string[];
   layers: ValidationLayer[];
   lanes: ValidationLane[];
+  /** The four standing case-sourcing channels; the validator requires all
+   * four declared, empties reasoned, and owners resolved. */
+  sourcing?: SourcingChannel[];
   exceptions: PolicyException[];
   coexistence?: CoexistencePolicy;
 }

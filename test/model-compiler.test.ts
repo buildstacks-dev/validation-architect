@@ -86,6 +86,12 @@ function validFiles(): ModelFileSet {
         { id: "L5", title: "Ops hardening", status: "declared-empty", reason: "C1 local fixture" },
         { id: "L6", title: "Outcome acceptance", status: "declared-empty", reason: "No human-judged output" },
       ],
+      sourcing: [
+        { id: "acceptance-criteria", status: "active", owner: "OWN-1", trigger: "A ratified acceptance criterion is added or changed" },
+        { id: "adversarial-derivation", status: "active", owner: "OWN-1", trigger: "A journey, state machine, interface, boundary, or contract changes" },
+        { id: "production-incident", status: "declared-empty", owner: "OWN-1", reason: "The fixture has no production deployment" },
+        { id: "substrate-drift", status: "declared-empty", owner: "OWN-1", reason: "No substrate dependency is tracked for this fixture" },
+      ],
       lanes: [
         { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- tenant", max_duration_seconds: 120 },
         { id: "per-commit", title: "Hermetic process", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test", max_duration_seconds: 600 },
@@ -485,6 +491,44 @@ describe("validation model compiler", () => {
       }),
     };
   };
+
+  it("fails closed when a case-sourcing channel is undeclared", () => {
+    const files = validFiles();
+    const policy = parse(files["policy.yaml"]) as { sourcing: Array<Record<string, unknown>> };
+    policy.sourcing = policy.sourcing.filter((channel) => channel.id !== "production-incident");
+    const rejected = compileValidationModel({ ...files, "policy.yaml": yaml(policy) });
+    expect(rejected.accepted).toBe(false);
+    const diagnostic = rejected.diagnostics.find((item) => item.code === "MODEL_SOURCING_CHANNEL_MISSING");
+    expect(diagnostic?.message).toContain("production-incident");
+
+    const none = parse(files["policy.yaml"]) as Record<string, unknown>;
+    delete none.sourcing;
+    const empty = compileValidationModel({ ...files, "policy.yaml": yaml(none) });
+    expect(empty.accepted).toBe(false);
+    expect(empty.diagnostics.filter((item) => item.code === "MODEL_SOURCING_CHANNEL_MISSING")).toHaveLength(4);
+  });
+
+  it("rejects unreasoned empty channels and unresolved channel owners", () => {
+    const files = validFiles();
+    const policy = parse(files["policy.yaml"]) as { sourcing: Array<Record<string, unknown>> };
+    const drift = policy.sourcing.find((channel) => channel.id === "substrate-drift")!;
+    delete drift.reason;
+    const unreasoned = compileValidationModel({ ...files, "policy.yaml": yaml(policy) });
+    expect(unreasoned.accepted).toBe(false);
+    expect(unreasoned.diagnostics.map((item) => item.message).join("\n")).toContain("substrate-drift");
+
+    const orphaned = parse(files["policy.yaml"]) as { sourcing: Array<Record<string, unknown>> };
+    orphaned.sourcing.find((channel) => channel.id === "acceptance-criteria")!.owner = "OWN-MISSING";
+    const badOwner = compileValidationModel({ ...files, "policy.yaml": yaml(orphaned) });
+    expect(badOwner.accepted).toBe(false);
+    expect(badOwner.diagnostics.map((item) => item.message).join("\n")).toContain("OWN-MISSING");
+  });
+
+  it("renders the standing sourcing obligations in the owner briefing", () => {
+    const compiled = compileValidationModel(validFiles());
+    expect(compiled.accepted, compiled.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+    expect(compiled.generated_views["owner-briefing.md"]).toMatch(/case-sourcing obligations[\s\S]*acceptance-criteria[\s\S]*production-incident[\s\S]*substrate-drift/);
+  });
 
   it("fails closed when an active test lane declares no wall-clock budget", () => {
     const files = validFiles();

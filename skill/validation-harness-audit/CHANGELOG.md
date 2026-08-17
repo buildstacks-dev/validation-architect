@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.5
+
+Consumes the sourcing-channel contract introduced by design 0.8.5 (VA-ENF-006).
+
+- Agent-routing conformance (§4.14) reads the checked `sourcing` declarations and audits the reality half: owners still hold the responsibility, active triggers actually fire (sampled), and declared-empty reasons still hold.
+- Versioned with validation-harness-design 0.8.5.
+
 ## 0.8.4
 
 Consumes the lane-budget contract introduced by design 0.8.4 (VA-ENF-004).

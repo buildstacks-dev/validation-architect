@@ -7,7 +7,9 @@ import type {
 import { normalizeLegacyManifest } from "./legacy-model-normalization.js";
 import {
   MODEL_FILE_SCHEMAS,
+  SOURCING_CHANNEL_IDS,
   type ModelFileSet,
+  type SourcingChannel,
   type ValidationFamily,
   type ValidationLayerId,
   type ValidationPolicy,
@@ -36,6 +38,7 @@ function clonePolicy(policy: ValidationPolicy): ValidationPolicy {
     ...(policy.smoke_journey_ids ? { smoke_journey_ids: [...policy.smoke_journey_ids] } : {}),
     layers: policy.layers.map((layer) => ({ ...layer })),
     lanes: policy.lanes.map((lane) => ({ ...lane, triggers: [...lane.triggers] })),
+    ...(policy.sourcing ? { sourcing: policy.sourcing.map((channel) => ({ ...channel })) } : {}),
     exceptions: policy.exceptions.map((exception) => ({ ...exception })),
     ...(policy.coexistence
       ? {
@@ -53,6 +56,8 @@ function canonicalFallbackPolicy(
   families: readonly ValidationFamily[],
   innerLoopCommand: string,
   smokeJourneyIds?: readonly string[],
+  sourcing?: readonly SourcingChannel[],
+  defaultOwner?: string,
 ): ValidationPolicy {
   const activeLayers = new Set(
     families
@@ -72,6 +77,17 @@ function canonicalFallbackPolicy(
     default: "blocking",
     inheritance: "tighten-only",
     ...(smokeJourneyIds?.length ? { smoke_journey_ids: [...smokeJourneyIds] } : {}),
+    // Without a reviewed sourcing decision nothing activates: every channel
+    // is declared empty with the imported-corpus reason, owned by the first
+    // reviewed owner, for later activation through review.
+    sourcing: sourcing?.length
+      ? sourcing.map((channel) => ({ ...channel }))
+      : SOURCING_CHANNEL_IDS.map((id) => ({
+          id,
+          status: "declared-empty" as const,
+          owner: defaultOwner ?? "",
+          reason: "Imported without a reviewed sourcing decision; activate the channel through review.",
+        })),
     layers: layerTitles.map((title, index) => {
       const id = `L${index + 1}` as ValidationLayerId;
       return activeLayers.has(id)
@@ -159,7 +175,7 @@ export function importLegacyCatalog(
   const normalized = normalizeLegacyManifest(generated.manifest, input);
   const policy = input.policy
     ? clonePolicy(input.policy)
-    : canonicalFallbackPolicy(normalized.families, input.inner_loop_command, input.smoke_journey_ids);
+    : canonicalFallbackPolicy(normalized.families, input.inner_loop_command, input.smoke_journey_ids, input.sourcing, input.owners[0]?.id);
   const files: ModelFileSet = {
     "project.yaml": asYaml({
       schema: MODEL_FILE_SCHEMAS["project.yaml"],

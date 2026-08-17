@@ -475,6 +475,12 @@ console.log("surface ok");
     default: "blocking",
     inheritance: "tighten-only",
     smoke_journey_ids: ["J-1"],
+    sourcing: [
+      { id: "acceptance-criteria", status: "active", owner: "OWN-1", trigger: "A ratified acceptance criterion is added or changed" },
+      { id: "adversarial-derivation", status: "active", owner: "OWN-1", trigger: "A journey, interface, boundary, or contract changes" },
+      { id: "production-incident", status: "declared-empty", owner: "OWN-1", reason: "The smoke fixture has no production deployment" },
+      { id: "substrate-drift", status: "declared-empty", owner: "OWN-1", reason: "No substrate dependency is tracked" },
+    ],
     layers: [
       { id: "L1", title: "Invariant and contract", status: "declared-empty", reason: "Focused L2 fixture" },
       { id: "L2", title: "Hermetic system", status: "active" },

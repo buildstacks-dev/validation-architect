@@ -3,6 +3,25 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.12 — sourcing channels become policy schema (unreleased)
+
+- VA-ENF-006 (#58): `policy.yaml` gains a `sourcing` block declaring the four
+  standing case-sourcing channels (`acceptance-criteria`,
+  `adversarial-derivation`, `production-incident`, `substrate-drift`),
+  validated exactly like layers and lanes — all four declared
+  (`MODEL_SOURCING_CHANNEL_MISSING`), active channels name a trigger,
+  declared-empty channels carry a reason, and owners must resolve.
+- The owner briefing renders the standing obligations. Legacy import carries a
+  reviewed `sourcing` block or imports every channel declared-empty for later
+  review. Method contract 0.8.5 in both skill CHANGELOGs.
+- This makes the design skill's "recorded in the policy file as standing
+  obligations" true rather than aspirational; fail-closed conversion of
+  findings into claims is the companion issue's linkage.
+- Tighten-only; breaking for existing corpora (pre-1.0 clean break). All
+  shipped fixtures migrated.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.11 — per-lane wall-clock budgets (unreleased)
 
 - VA-ENF-004 (#56): `ValidationLane` gains `max_duration_seconds`, required

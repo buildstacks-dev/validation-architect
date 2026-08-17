@@ -71,6 +71,11 @@ lanes:
     reason: No disposable live target has been ratified
   - {id: release, title: Release evidence, kind: evidence, status: declared-empty, requirement: blocking, triggers: [], reason: No separate release obligation}
   - {id: scheduled, title: Recurring evidence, kind: evidence, status: active, requirement: blocking, triggers: [weekly]}
+sourcing:
+  - {id: acceptance-criteria, status: active, owner: OWN-RUNTIME, trigger: A ratified acceptance criterion is added or changed}
+  - {id: adversarial-derivation, status: active, owner: OWN-RUNTIME, trigger: A journey, state machine, interface, boundary, or contract changes}
+  - {id: production-incident, status: active, owner: OWN-RUNTIME, trigger: An incident closes — every bug becomes a regression test before the fix merges}
+  - {id: substrate-drift, status: declared-empty, owner: OWN-RUNTIME, reason: No tracked substrate dependency yet}
 exceptions: []
 ```
 
@@ -86,6 +91,14 @@ layer, then records its oracle, risk, owner, provenance, controls, status, and
 ticket. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact
 path; evidence never excuses an ordinary test-lane family.
+
+The four ongoing case-sourcing channels are policy data (VA-ENF-006). The
+`sourcing` block declares exactly `acceptance-criteria`,
+`adversarial-derivation`, `production-incident`, and `substrate-drift` —
+validated like layers and lanes: all four declared
+(`MODEL_SOURCING_CHANNEL_MISSING` otherwise), active channels name their
+trigger, declared-empty channels carry a reason, and every owner resolves in
+`owners.yaml`. The owner briefing renders them as standing obligations.
 
 The smoke journey is named policy data (VA-ENF-003). `smoke_journey_ids`
 designates at least one `journey` structure as the always-green,
