@@ -3,6 +3,23 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.11 — per-lane wall-clock budgets (unreleased)
+
+- VA-ENF-004 (#56): `ValidationLane` gains `max_duration_seconds`, required
+  for every active test lane (`MODEL_LANE_BUDGET_MISSING` otherwise; a
+  malformed value is a field error). Evidence lanes and declared-empty lanes
+  are unaffected.
+- Doctrine lands with the field: a breached budget is a defect against the
+  harness, filed like any red (design skill lane section); the audit's
+  gate-reality checklist compares declared budgets to observed CI durations.
+  Method contract 0.8.4 in both skill CHANGELOGs.
+- Budgets render in the owner briefing; the legacy fallback policy carries
+  canonical starting budgets (120s inner-loop, 600s per-commit) for review.
+- Tighten-only; breaking for existing corpora (pre-1.0 clean break): active
+  test lanes declare budgets on recompile. All shipped fixtures migrated.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.10 — smoke-journey designation, fail-closed (unreleased)
 
 - VA-ENF-003 (#55): `policy.yaml` gains `smoke_journey_ids` naming at least

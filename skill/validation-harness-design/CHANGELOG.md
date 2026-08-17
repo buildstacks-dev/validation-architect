@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.4
+
+Per-lane wall-clock budgets become checked policy data (VA-ENF-004, validation-architect 0.4.11).
+
+- Every active test lane declares `max_duration_seconds`; the compiler rejects an active test lane without one (`MODEL_LANE_BUDGET_MISSING`). Evidence and declared-empty lanes are unaffected; suggested starting points are ~2 minutes inner-loop and ~10 minutes per-commit.
+- Doctrine: a breached budget is a defect against the harness, filed like any red — a slow lane is a lane that gets skipped (Phase 6 lane section).
+- Budgets render in the owner briefing's execution-lane summary; the legacy fallback policy carries the canonical starting budgets for review.
+- Versioned with validation-harness-audit 0.8.4.
+
 ## 0.8.3
 
 The smoke journey becomes named, fail-closed policy data (VA-ENF-003, validation-architect 0.4.10).

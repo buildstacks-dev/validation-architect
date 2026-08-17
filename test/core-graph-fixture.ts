@@ -35,8 +35,8 @@ export function graphFixture(): {
         { id: "L6", title: "Outcome", status: "declared-empty", reason: "No human output" },
       ],
       lanes: [
-        { id: "inner-loop", title: "Local", kind: "test", status: "active", requirement: "blocking", triggers: ["local"], command: "pnpm test -- tenant" },
-        { id: "per-commit", title: "CI", kind: "test", status: "active", requirement: "blocking", triggers: ["commit"], command: "pnpm test" },
+        { id: "inner-loop", title: "Local", kind: "test", status: "active", requirement: "blocking", triggers: ["local"], command: "pnpm test -- tenant", max_duration_seconds: 120 },
+        { id: "per-commit", title: "CI", kind: "test", status: "active", requirement: "blocking", triggers: ["commit"], command: "pnpm test", max_duration_seconds: 600 },
         { id: "triggered", title: "Triggered", kind: "evidence", status: "active", requirement: "blocking", triggers: ["change"] },
         { id: "release", title: "Release", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No release lane" },
         { id: "scheduled", title: "Scheduled", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No scheduled lane" },

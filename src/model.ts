@@ -96,6 +96,9 @@ export interface ValidationLane {
   requirement: "blocking" | "advisory";
   triggers: string[];
   command?: string;
+  /** Wall-clock budget in whole seconds; required for every active test lane.
+   * A breached budget is a defect against the harness, filed like any red. */
+  max_duration_seconds?: number;
   authorization?: "none" | "per-run-human";
   reason?: string;
 }

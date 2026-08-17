@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.4
+
+Consumes the lane-budget contract introduced by design 0.8.4 (VA-ENF-004).
+
+- Gate-reality conformance (§4.2) compares each lane's declared `max_duration_seconds` budget against observed CI durations; a breach is a finding against the harness, exactly like a red.
+- Versioned with validation-harness-design 0.8.4.
+
 ## 0.8.3
 
 Consumes the smoke-journey designation introduced by design 0.8.3 (VA-ENF-003).

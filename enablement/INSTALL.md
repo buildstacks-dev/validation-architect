@@ -6,7 +6,7 @@ This directory is the executable handoff that accompanies the ratified design co
    version, or the exact `.tgz` release artifact before registry publication):
 
    ```bash
-   pnpm add --save-dev --save-exact validation-architect@0.4.10
+   pnpm add --save-dev --save-exact validation-architect@0.4.11
    ```
 
 2. Install `skills/implement-harness-ticket/` in the repository's supported agent-skill location (for example `.agents/skills/implement-harness-ticket/`) and land the ratified `validation-design/agents-md-contribution.md` in the standing agent instructions.
