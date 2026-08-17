@@ -3,6 +3,29 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.16 — recurring falsifiability sweep for negative controls (unreleased)
+
+- VA-ENF-008 (#60): ships the scheduled-lane standing-obligation template —
+  `enablement/sweep/control-sweep.mjs` (with typed declarations) plus the
+  `enablement/ci/control-sweep.yml` workflow. Per landed negative control the
+  sweep runs the detector command unseeded (must be green) and again with
+  `VA_SEEDED_CONTROL=<control-id>` (must go red); a control that cannot go
+  red fails the sweep, a broken baseline fails, and an empty sweep fails
+  rather than passes (rule 17).
+- The sweep plans deterministically from the public API's relationship graph
+  (controls → implemented-by → tests, owner-ticket status, lane commands);
+  the core library and CLI still never execute product commands — execution
+  lives in the adopting repo's scheduled CI, status-aware exactly like the
+  closure checks (pending/blocked/parked controls are skipped, never failed).
+- Adoption is opt-in per model: a corpus that does not adopt the template
+  compiles and checks exactly as before (no core behavior change in this
+  release). Convention documented in the audit conformance reference and the
+  builder skill, pinned by test. Method contract 0.8.9.
+- Full mutation testing stays out of scope; this is the cheapest recurring
+  falsifiability gate consistent with rule 16.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.15 — operability and liveness invariant category (unreleased)
 
 - VA-MTH-002 (#62), docs-only: the design skill's beat-4 invariant categories

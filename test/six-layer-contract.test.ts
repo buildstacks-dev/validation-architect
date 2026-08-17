@@ -38,6 +38,15 @@ describe("six-layer design/audit contract", () => {
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
   });
 
+  it("carries the recurring-sweep convention in the conformance reference (VA-ENF-008)", () => {
+    // The audit side documents the seeded-mode convention and checks that an
+    // adopted sweep actually runs at its declared cadence.
+    const conformance = read("skill/validation-harness-audit/references/harness-policy-conformance.md");
+    expect(conformance).toContain("VA_SEEDED_CONTROL");
+    expect(conformance).toContain("an empty sweep fails rather than passes");
+    expect(read("skill/validation-harness-design/SKILL.md")).toContain("VA_SEEDED_CONTROL");
+  });
+
   it("carries the operability/liveness category across skill, probes, and primer (VA-MTH-002)", () => {
     // Beat-4 category, question-bank probes, and the primer's SLO-deflection
     // row all name the operability/liveness placement guidance.

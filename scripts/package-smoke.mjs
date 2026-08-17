@@ -109,6 +109,9 @@ try {
     "package/schemas/provenance.v1.schema.json",
     "package/enablement/INSTALL.md",
     "package/enablement/ci/validation-trace.yml",
+    "package/enablement/ci/control-sweep.yml",
+    "package/enablement/sweep/control-sweep.mjs",
+    "package/enablement/sweep/control-sweep.d.mts",
   ];
   for (const required of requiredCoreFiles) {
     if (!listed.includes(required)) throw new Error(`core package is missing ${required}`);

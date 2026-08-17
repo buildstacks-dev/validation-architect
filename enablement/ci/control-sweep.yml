@@ -1,0 +1,26 @@
+# Recurring falsifiability sweep (VA-ENF-008): the scheduled-lane standing
+# obligation that re-proves every landed negative control can still make its
+# detector go red. Adoption is opt-in: copy this workflow and the
+# enablement/sweep/control-sweep.mjs script into the product repo, activate
+# the `scheduled` lane in validation-design/model/policy.yaml with the sweep
+# as its command, and keep the cadence aligned with the lane's declared
+# trigger. A red sweep is a defect against the harness, filed like any red.
+name: control-falsifiability-sweep
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly; match the scheduled lane's declared trigger
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Prove every landed negative control can go red
+        run: node enablement/sweep/control-sweep.mjs .

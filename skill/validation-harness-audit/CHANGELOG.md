@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.9
+
+Consumes the recurring-sweep convention introduced by design 0.8.9 (VA-ENF-008).
+
+- Negative-control conformance (§4.17) documents the seeded-mode convention — control tests identified by id through the checked model's control→test join, seeding via `VA_SEEDED_CONTROL`, unseeded-green/seeded-red per landed control, empty sweeps fail — and, where a model adopts the template, checks the sweep actually runs at its declared cadence (frequency drift otherwise).
+- Versioned with validation-harness-design 0.8.9.
+
 ## 0.8.8
 
 Consumes the operability/liveness elicitation introduced by design 0.8.8 (VA-MTH-002).
