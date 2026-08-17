@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.6
+
+Manual findings convert to claims through the schema (VA-ENF-007, validation-architect 0.4.13).
+
+- New `sources.yaml` kind `finding`: the locator names the issue (URL/id) and the path/quote names the exact triggering input; the compiler refuses a finding without either half.
+- Backlog tickets gain optional `finding_ref`; a ticket carrying one must own at least one family and cite a declared finding source — a fix cannot exist without its claim.
+- Sourcing channel 3 (production incidents) documents the intake path: finding source → family → `finding_ref` fix ticket → detector in the same change; the builder skill carries the same workflow as standing rule 7.
+- Additive and non-breaking; existing corpora compile unchanged.
+- Versioned with validation-harness-audit 0.8.6.
+
 ## 0.8.5
 
 The four case-sourcing channels become checked policy data (VA-ENF-006, validation-architect 0.4.12).

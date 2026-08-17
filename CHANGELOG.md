@@ -3,6 +3,22 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.13 — finding-to-claim linkage (unreleased)
+
+- VA-ENF-007 (#59): new `sources.yaml` kind `finding` — the locator names the
+  issue (URL/id) and the path/quote names the exact triggering input; a
+  finding without either half fails compilation.
+- Backlog tickets gain optional `finding_ref`: a ticket carrying one must own
+  at least one family (a fix cannot exist without a claim) and the reference
+  must resolve to a declared finding source.
+- The design skill's production-incident channel and the builder skill both
+  document the intake path (issue → triggering input → family → fix, detector
+  in the same change), pinned by test. Method contract 0.8.6.
+- Additive fields — non-breaking; existing corpora compile unchanged.
+  Merge-time fail-closure lives in product-repo CI policy, out of scope here.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.12 — sourcing channels become policy schema (unreleased)
 
 - VA-ENF-006 (#58): `policy.yaml` gains a `sourcing` block declaring the four

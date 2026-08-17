@@ -492,6 +492,71 @@ describe("validation model compiler", () => {
     };
   };
 
+  it("requires a finding source to name its locator and triggering input", () => {
+    const files = validFiles();
+    const withFinding = (finding: Record<string, unknown>): ReturnType<typeof compileValidationModel> =>
+      compileValidationModel({
+        ...files,
+        "sources.yaml": yaml({
+          schema: MODEL_FILE_SCHEMAS["sources.yaml"],
+          sources: [
+            { id: "SRC-1", kind: "doc", path: "docs/PRODUCT.md", locator: "Contract" },
+            finding,
+          ],
+        }),
+      });
+    const missingInput = withFinding({ id: "SRC-F1", kind: "finding", locator: "github.com/example/repo/issues/7" });
+    expect(missingInput.accepted).toBe(false);
+    expect(missingInput.diagnostics.map((item) => item.message).join("\n")).toContain("SRC-F1");
+
+    const missingLocator = withFinding({ id: "SRC-F1", kind: "finding", quote: "POST /widgets with a duplicate id returns 500" });
+    expect(missingLocator.accepted).toBe(false);
+
+    const complete = withFinding({
+      id: "SRC-F1",
+      kind: "finding",
+      locator: "github.com/example/repo/issues/7",
+      quote: "POST /widgets with a duplicate id returns 500 instead of a typed refusal",
+    });
+    expect(complete.accepted, complete.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+  });
+
+  it("refuses a fix ticket that carries a finding but owns no claim", () => {
+    const files = validFiles();
+    files["sources.yaml"] = yaml({
+      schema: MODEL_FILE_SCHEMAS["sources.yaml"],
+      sources: [
+        { id: "SRC-1", kind: "doc", path: "docs/PRODUCT.md", locator: "Contract" },
+        { id: "SRC-F1", kind: "finding", locator: "github.com/example/repo/issues/7", quote: "Duplicate id returns 500" },
+      ],
+    });
+    const backlog = parse(files["backlog.yaml"]) as { tickets: Array<Record<string, unknown>> };
+    backlog.tickets.push({
+      id: "HB-FIX",
+      title: "Fix the duplicate-id 500",
+      wave: "1",
+      status: "pending",
+      owner: "OWN-1",
+      executor: "standing coding agent",
+      lane: "per-commit",
+      layer: "L2",
+      acceptance_criteria: ["The duplicate-id refusal detector and its control pass"],
+      family_ids: [],
+      finding_ref: "SRC-F1",
+    });
+    const rejected = compileValidationModel({ ...files, "backlog.yaml": yaml(backlog) });
+    expect(rejected.accepted).toBe(false);
+    const rejectedText = rejected.diagnostics.map((item) => `${item.message} ${item.correction}`).join("\n");
+    expect(rejectedText).toContain("HB-FIX");
+    expect(rejectedText).toContain("A fix ticket cannot exist without a claim");
+
+    const dangling = parse(files["backlog.yaml"]) as { tickets: Array<Record<string, unknown>> };
+    dangling.tickets[0]!.finding_ref = "SRC-MISSING";
+    const badRef = compileValidationModel({ ...files, "backlog.yaml": yaml(dangling) });
+    expect(badRef.accepted).toBe(false);
+    expect(badRef.diagnostics.map((item) => item.message).join("\n")).toContain("SRC-MISSING");
+  });
+
   it("fails closed when a case-sourcing channel is undeclared", () => {
     const files = validFiles();
     const policy = parse(files["policy.yaml"]) as { sourcing: Array<Record<string, unknown>> };

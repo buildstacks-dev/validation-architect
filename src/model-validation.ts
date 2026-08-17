@@ -11,7 +11,8 @@ interface ModelValidationContext {
 export function validateModel(model: CompiledDesignModel, context: ModelValidationContext): void {
   const { diagnostics, safePath, shapeError, linkError, codedError } = context;
   const owners = new Set(model.owners.map((item) => item.id));
-  const sources = new Set(model.sources.map((item) => item.id));
+  const sourceById = new Map(model.sources.map((item) => [item.id, item]));
+  const sources = new Set(sourceById.keys());
   const structureById = new Map(model.structures.map((item) => [item.id, item]));
   const structures = new Set(structureById.keys());
   const layers = new Map(model.policy.layers.map((item) => [item.id, item]));
@@ -25,6 +26,7 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
     if (source.kind === "doc" && !source.path) shapeError("sources.yaml", source.id, "path", "Document provenance must name its repository-relative path.");
     if (source.kind === "rambling" && (!source.quote || !source.path)) shapeError("sources.yaml", source.id, "path/quote", "Rambling provenance requires a path and cited quote.");
     if ((source.kind === "simulated" || source.kind === "proposed") && !source.locator) shapeError("sources.yaml", source.id, "locator", "Simulated and proposed provenance must explain where the judgment is recorded.");
+    if (source.kind === "finding" && (!source.locator || (!source.path && !source.quote))) shapeError("sources.yaml", source.id, "locator/path/quote", "A finding source names its locator (issue URL or id) and its triggering input (repository path or cited quote).");
   }
   for (const structure of model.structures) {
     if (!owners.has(structure.owner)) linkError("structures.yaml", structure.id, `${structure.id} cites missing owner ${structure.owner}.`, "Declare the owner in owners.yaml or correct the reference.");
@@ -138,6 +140,10 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
       if (!family) linkError("backlog.yaml", ticket.id, `${ticket.id} cites missing family ${id}.`, "Declare the family or remove the broken family_ids entry.");
       else if (family.ticket !== ticket.id) linkError("backlog.yaml", ticket.id, `${ticket.id} claims ${id}, but that family points to ${family.ticket ?? "no ticket"}.`, "Make ticket ownership agree in both directions.");
       else if (family.lane !== ticket.lane || family.layer !== ticket.layer) linkError("backlog.yaml", ticket.id, `${ticket.id} mixes ${id} from ${family.layer}/${family.lane} into ${ticket.layer}/${ticket.lane}.`, "Split tickets at layer/lane boundaries so expansion gates cannot stall cheaper work.");
+    }
+    if (ticket.finding_ref) {
+      const findingSource = sourceById.get(ticket.finding_ref);
+      if (!findingSource || findingSource.kind !== "finding") linkError("backlog.yaml", ticket.id, `${ticket.id} cites finding_ref ${ticket.finding_ref}, which is not a declared finding source.`, "Declare the finding in sources.yaml with kind: finding (locator plus triggering input) or correct finding_ref.");
     }
     const dependencies = ticket.depends_on ?? [];
     if (new Set(dependencies).size !== dependencies.length) shapeError("backlog.yaml", ticket.id, "depends_on", "List each dependency exactly once.");

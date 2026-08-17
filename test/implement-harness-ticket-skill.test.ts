@@ -97,6 +97,18 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toContain("validation-trace");
   });
 
+  it("documents the manual-finding intake path with the schema fields (VA-ENF-007)", () => {
+    const skill = readFileSync(skillPath, "utf8");
+    expect(skill).toContain("kind: finding");
+    expect(skill).toContain("finding_ref");
+    const designSkill = readFileSync(
+      resolve(__dirname, "..", "skill", "validation-harness-design", "SKILL.md"),
+      "utf8",
+    );
+    expect(designSkill).toContain("kind: finding");
+    expect(designSkill).toContain("finding_ref");
+  });
+
   it("references only known corpus artifact basenames", () => {
     const source = readFileSync(skillPath, "utf8");
     const refs = [...source.matchAll(ARTIFACT_REF)].map((m) => m[1] as string);

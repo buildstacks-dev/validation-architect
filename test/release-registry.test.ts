@@ -9,7 +9,7 @@ import {
   tarballIntegrity,
 } from "../scripts/release-registry.mjs";
 
-const version = "0.4.12";
+const version = "0.4.13";
 const integrity = `sha512-${createHash("sha512").update("tarball").digest("base64")}`;
 const processResult = (status: number, stdout: string, stderr = "") => ({ status, stdout, stderr });
 
