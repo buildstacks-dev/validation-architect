@@ -67,6 +67,12 @@ When an answer exposes something the architecture doc doesn't cover, record an a
 - What must be true immediately before and after each such action?
 - If it ran twice with identical inputs, what must the world look like? (Surfaces idempotency invariants.)
 
+*Operability and liveness (the UX of the tooling itself)*
+- If an operation runs long — a build, a campaign, a migration — what does the user see while it runs? After how many silent seconds would they reasonably assume it hung?
+- What happens on Ctrl-C mid-operation? What state is left behind, and who cleans it up?
+- Does every failure tell the user what to do next, or does something fail with a stack trace and no verb?
+- (Placement: numeric bounds become contract clauses; soak and cancellation drills become L5 obligations; the mechanically falsifiable slices become L1/L2 guardrails.)
+
 *State machines*
 - Which entities have a lifecycle? Every state, every legal transition.
 - Can any transition be skipped, reversed, or repeated? Under what authority?
@@ -166,6 +172,7 @@ When an answer exposes something the architecture doc doesn't cover, record an a
 - Which paths change most often, or have the most people touching them?
 - Given the deployment shape from Phase 1, where's the real contention point under peak load — a throughput problem or a hot-resource problem?
 - What runs always-on or unattended? (Triggers layer-5 soak: state growth under retention, missed-tick reconciliation after sleep, cost integrity under retries.)
+- Which long-running operations carry their operability obligations — progress/heartbeat cadence as a contract clause, cancellation drills at L5, an actionable-error guardrail at L1/L2 — and which have none declared anywhere?
 - Which failures only appear after days, not minutes — and what telemetry would a soak run assert on?
 - Present the matrix with each cell's layer placement; the human confirms. Do not let the doc or your own inference settle business consequence.
 - For `L-ACC`: what realistic messy input distinguishes judgment from transcription, and which human-owned axes decide whether the final work is acceptable?

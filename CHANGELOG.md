@@ -3,6 +3,18 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.15 — operability and liveness invariant category (unreleased)
+
+- VA-MTH-002 (#62), docs-only: the design skill's beat-4 invariant categories
+  gain operability/liveness (progress/heartbeat for long operations, graceful
+  cancellation, actionable errors), with Phase-2 and Phase-6 question-bank
+  probes and explicit placement guidance (contract clauses vs L5 obligations
+  vs L1/L2 guardrails). The primer's SLO-deflection row now points to where
+  the contract term gets written. All pinned by test. Method contract 0.8.8.
+- No schema change; no existing check is touched.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.14 — unit-triangulation elicitation and family purpose (unreleased)
 
 - VA-MTH-001 (#61): families may declare `purpose: behavior | triangulation`

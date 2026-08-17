@@ -160,7 +160,7 @@ Propose a criticality tier on the C0–C4 scale shared with validation-harness-a
 
 Run the concept loop. Primer: `references/concept-primers.md#invariants`. Beat-3 prompts and beat-4 probes: `references/question-bank.md`.
 
-Categories to cover in beat 4 if the human's own thinking didn't reach them: money and irreversible actions, state machines and legal transitions, resource conservation, uniqueness and mapping, ordering and idempotency, tenancy and authorization.
+Categories to cover in beat 4 if the human's own thinking didn't reach them: money and irreversible actions, state machines and legal transitions, resource conservation, uniqueness and mapping, ordering and idempotency, tenancy and authorization, and **operability and liveness** — the UX of the tooling itself: any operation that can exceed a few seconds shows progress or a heartbeat, cancellation (Ctrl-C, timeout, shutdown) leaves consistent state, and every failure tells the user what to do next. A generated CLI that runs an hour with zero output is a real defect no functional test catches — and nothing surfaces it unless this category is asked. Placement: numeric bounds (latency, progress cadence, freshness) are **contract clauses** on the operation's structure; recurring proofs (soak, cancellation drills, long-run telemetry) are **L5 obligations**; the mechanically falsifiable slices (an actionable-error scan, a cancellation leaves-no-orphan check, a heartbeat-emitted assertion) land as **L1/L2 guardrail tests** with negative controls.
 
 Per accepted invariant:
 

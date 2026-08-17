@@ -38,6 +38,19 @@ describe("six-layer design/audit contract", () => {
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
   });
 
+  it("carries the operability/liveness category across skill, probes, and primer (VA-MTH-002)", () => {
+    // Beat-4 category, question-bank probes, and the primer's SLO-deflection
+    // row all name the operability/liveness placement guidance.
+    expect(read("skill/validation-harness-design/SKILL.md")).toContain("operability and liveness");
+    const questionBank = read("skill/validation-harness-design/references/question-bank.md");
+    expect(questionBank).toContain("What happens on Ctrl-C mid-operation?");
+    expect(questionBank).toContain("what does the user see while it runs?");
+    expect(questionBank).toContain("tell the user what to do next");
+    expect(read("skill/validation-harness-design/references/concept-primers.md")).toContain(
+      "the operability/liveness invariant category",
+    );
+  });
+
   it("carries the unit-triangulation carve-out across grammar, probes, and primer (VA-MTH-001)", () => {
     // The derivation grammar names dense-logic components, the question bank
     // probes for them, and the primer's hermetic-vs-unit confusion entry

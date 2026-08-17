@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.8
+
+Consumes the operability/liveness elicitation introduced by design 0.8.8 (VA-MTH-002).
+
+- Audits designed corpora expecting operability obligations to be *placed*: latency/progress bounds as contract clauses, soak and cancellation drills at L5, actionable-error and heartbeat guardrails at L1/L2 — silence on a long-running operation is an elicitation gap, not an accepted absence.
+- Versioned with validation-harness-design 0.8.8.
+
 ## 0.8.7
 
 Consumes the unit-triangulation purpose introduced by design 0.8.7 (VA-MTH-001).

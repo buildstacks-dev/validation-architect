@@ -30,9 +30,9 @@
     "versions": {
       "compiler": "validation-architect/compiler/v1",
       "golden_set": "validation-architect/golden-set/v1",
-      "method": "0.8.7",
+      "method": "0.8.8",
       "model": "validation-architect/corpus/v1",
-      "package": "0.4.14",
+      "package": "0.4.15",
       "policy": "validation-architect/policy/v1",
       "result": "validation-architect/result/v1"
     }
