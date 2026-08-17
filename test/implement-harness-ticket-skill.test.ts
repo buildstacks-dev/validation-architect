@@ -97,6 +97,12 @@ describe("implement-harness-ticket skill (issue #6)", () => {
     expect(text).toContain("validation-trace");
   });
 
+  it("documents the seeded-mode sweep convention (VA-ENF-008)", () => {
+    const skill = readFileSync(skillPath, "utf8");
+    expect(skill).toContain("VA_SEEDED_CONTROL");
+    expect(skill).toMatch(/cannot go red fails the sweep/);
+  });
+
   it("documents the manual-finding intake path with the schema fields (VA-ENF-007)", () => {
     const skill = readFileSync(skillPath, "utf8");
     expect(skill).toContain("kind: finding");

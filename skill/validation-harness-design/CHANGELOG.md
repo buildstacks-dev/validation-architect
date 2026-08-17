@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.9
+
+Red-capability gets its recurring proof (VA-ENF-008, validation-architect 0.4.16).
+
+- Rule 16 gains the decay half: the shipped `enablement/sweep/` control-sweep template is the canonical `scheduled`-lane standing obligation, re-proving on a cadence that every landed negative control still goes red under `VA_SEEDED_CONTROL` seeding (unseeded baseline green, seeded run red; an empty sweep fails).
+- Adoption is opt-in per model; a red sweep is filed as a defect against the harness.
+- Versioned with validation-harness-audit 0.8.9.
+
 ## 0.8.8
 
 Operability and liveness join the invariant elicitation (VA-MTH-002, validation-architect 0.4.15; docs-only).
