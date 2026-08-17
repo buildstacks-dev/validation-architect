@@ -58,8 +58,11 @@ export function joinTestInventory(
 
   const families = new Set(model.families.map((family) => family.id));
   const controls = new Map(model.controls.map((control) => [control.id, control]));
+  const lanes = new Map(model.policy.lanes.map((lane) => [lane.id, lane]));
+  const tickets = new Map(model.tickets.map((ticket) => [ticket.id, ticket]));
   const seenTests = new Set<string>();
   const linked = new Map<string, Array<{ id: string; path: string }>>();
+  const implementedControls = new Set<string>();
   for (const test of inventory.tests) {
     if (!test.id || !test.path || test.family_ids.length === 0 || test.case_count === 0) {
       problem(diagnostics, {
@@ -119,7 +122,31 @@ export function joinTestInventory(
           message: `Inventory test ${test.id} implements ${controlId} but not its family ${control.family_id}.`,
           correction: "Map a negative-control test to both the control and its owning family.",
         });
+      } else {
+        implementedControls.add(controlId);
       }
+    }
+  }
+
+  // Falsifiability closure (VA-ENF-002): a declared control that exists on
+  // paper but in no test at all cannot pass a landed family. Evidence-lane
+  // families keep their controls outside the test inventory by construction,
+  // and a non-landed owner ticket keeps the gap visibly partial, never red.
+  const unimplementedControls = new Set<string>();
+  for (const family of model.families) {
+    if (family.status !== "implementable" || lanes.get(family.lane)?.kind !== "test") continue;
+    const ticketStatus = family.ticket ? tickets.get(family.ticket)?.status : undefined;
+    const nonLanded = ticketStatus === "pending" || ticketStatus === "blocked" || ticketStatus === "parked";
+    for (const controlId of family.control_ids ?? []) {
+      if (controls.get(controlId)?.family_id !== family.id || implementedControls.has(controlId)) continue;
+      unimplementedControls.add(controlId);
+      if (nonLanded) continue;
+      problem(diagnostics, {
+        code: "CONTROL_UNIMPLEMENTED",
+        family_id: family.id,
+        message: `Declared negative control ${controlId} of ${family.id} is implemented by no inventory test while its owner ticket is ${ticketStatus ?? "unknown"}.`,
+        correction: `Land a test implementing ${controlId} together with ${family.id}, or restore an honest non-landed status on the owning ticket.`,
+      });
     }
   }
 
@@ -140,5 +167,6 @@ export function joinTestInventory(
       .filter((family) => family.status === "implementable" && !implemented.has(family.id))
       .map((family) => family.id)
       .sort(),
+    unimplemented_control_ids: [...unimplementedControls].sort(),
   };
 }

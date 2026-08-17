@@ -73,6 +73,28 @@ describe("model-native relationship graph", () => {
     expect(queryRelationshipGraph(graph, "EV-TENANT").nodes.find((item) => item.id === "EV-TENANT")?.state).toBe("inconclusive");
   });
 
+  const controlPendingStatuses: TicketStatus[] = ["pending", "blocked", "parked"];
+  for (const status of controlPendingStatuses) {
+    it(`keeps an unimplemented declared control explicitly partial while its owner ticket is ${status}`, () => {
+      const fixture = graphFixture();
+      const ticket = fixture.model.tickets.find((item) => item.id === "HB-RETRY");
+      if (!ticket) throw new Error("graph fixture is missing HB-RETRY");
+      ticket.status = status;
+      const test = fixture.inventory.tests.find((item) => item.id === "TEST-RETRY");
+      if (!test) throw new Error("graph fixture is missing TEST-RETRY");
+      delete test.control_ids;
+
+      const graph = buildRelationshipGraph({ ...fixture, model_identity: "model-1" });
+      const closureFindings = graph.findings.filter((item) => item.subject_id === "CF-RETRY");
+      expect(graph.structurally_closed).toBe(true);
+      expect(graph.assurance_complete).toBe(false);
+      expect(closureFindings).toContainEqual(
+        expect.objectContaining({ code: "CONTROL_IMPLEMENTATION_PENDING", level: "partial" }),
+      );
+      expect(closureFindings).not.toContainEqual(expect.objectContaining({ level: "red" }));
+    });
+  }
+
   const nonLandedStatuses: TicketStatus[] = ["pending", "blocked", "parked"];
   for (const status of nonLandedStatuses) {
     it(`keeps absent implementation explicitly partial while its owner ticket is ${status}`, () => {
@@ -133,6 +155,7 @@ describe("Validation Trace detector species", () => {
     ["false landed", (fixture) => { fixture.inventory.tests = fixture.inventory.tests.filter((item) => !item.family_ids.includes("CF-RETRY")); fixture.evidence.items = fixture.evidence.items.filter((item) => !item.family_ids.includes("CF-RETRY")); }, "LANDED_STATUS_FALSE"],
     ["missing owner", (fixture) => { fixture.model.owners = []; }, "OWNER_MISSING"],
     ["broken negative control", (fixture) => { fixture.model.controls = fixture.model.controls.filter((item) => item.id !== "NC-RETRY"); }, "NEGATIVE_CONTROL_LINK_BROKEN"],
+    ["unimplemented negative control on a landed family", (fixture) => { const test = fixture.inventory.tests.find((item) => item.id === "TEST-RETRY"); if (test) delete test.control_ids; }, "CONTROL_UNIMPLEMENTED"],
     ["missing evidence", (fixture) => { fixture.evidence.items = fixture.evidence.items.filter((item) => item.id !== "EV-RETRY"); }, "EVIDENCE_ARTIFACT_MISSING"],
     ["absent tests root", (fixture) => { fixture.inventory.tests_root_present = false; }, "TESTS_ROOT_ABSENT"],
     ["invalid evidence hash", (fixture) => { fixture.evidence.items[0]!.integrity = "not-a-hash"; }, "EVIDENCE_ARTIFACT_INVALID"],

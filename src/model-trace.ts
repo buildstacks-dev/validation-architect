@@ -65,10 +65,14 @@ export function runModelTrace(targetRoot: string, options: ModelTraceOptions = {
     tests: specs.map((spec) => {
       const familyIds = spec.citations.filter((id) => families.has(id));
       const commands = [...new Set(familyIds.map((id) => lanes.get(families.get(id)?.lane ?? "")?.command).filter((item): item is string => Boolean(item)))];
+      // Control links follow the checked model, never spec prose: a citing
+      // test implements the controls its cited families declare (VA-ENF-002).
+      const controlIds = [...new Set(familyIds.flatMap((id) => families.get(id)?.control_ids ?? []))].sort();
       return {
         id: `TEST-${createHash("sha256").update(spec.path).digest("hex").slice(0, 16)}`,
         path: spec.path,
         family_ids: spec.citations,
+        ...(controlIds.length > 0 ? { control_ids: controlIds } : {}),
         ...(commands.length === 1 ? { command: commands[0] } : {}),
         case_count: spec.tests,
       };

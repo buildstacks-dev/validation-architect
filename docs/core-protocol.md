@@ -119,6 +119,17 @@ states. The same absence with a `landed` or unknown owner is red, and a landed
 owner additionally produces `LANDED_STATUS_FALSE`. Pending partials therefore
 remain `inconclusive`/`incomplete`, never pass.
 
+Negative-control implementation closes the same way (VA-ENF-002). Every
+declared control of an implementable test-lane family must be implemented by at
+least one inventory test's `control_ids`; a control that exists on paper but in
+no test at all is the red `CONTROL_UNIMPLEMENTED` diagnostic, naming the
+control, while the owner ticket is `landed` or unknown. Under a `pending`,
+`blocked`, or `parked` owner the same gap is the explicit partial
+`CONTROL_IMPLEMENTATION_PENDING` finding — visible, never green, never red.
+Evidence-lane families keep their controls outside the test inventory by
+construction, and whether an implemented control can actually fire remains the
+fidelity audit's judgment, not this closure's claim.
+
 The current CLI route is:
 
 ```bash

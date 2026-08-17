@@ -218,7 +218,8 @@ export interface InventoryDiagnostic {
     | "INVENTORY_PATH_UNSAFE"
     | "INVENTORY_FAMILY_UNKNOWN"
     | "INVENTORY_CONTROL_UNKNOWN"
-    | "INVENTORY_CONTROL_FAMILY_MISMATCH";
+    | "INVENTORY_CONTROL_FAMILY_MISMATCH"
+    | "CONTROL_UNIMPLEMENTED";
   test_id?: string;
   family_id?: string;
   message: string;
@@ -236,6 +237,9 @@ export interface DesignInventoryJoin {
     test_paths: string[];
   }>;
   unimplemented_family_ids: string[];
+  /** Declared controls of implementable test-lane families that no valid
+   * inventory test implements, regardless of owner-ticket status. */
+  unimplemented_control_ids: string[];
 }
 
 /** Run evidence is bound to one revision/environment and remains separate. */

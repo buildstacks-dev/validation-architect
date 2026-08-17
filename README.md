@@ -276,12 +276,12 @@ pnpm vda repos --stale-days 7
 
 # in a product repo: the packed/released packages run compiled JavaScript and
 # have no runtime dependency on tsx or this source checkout
-pnpm add --save-dev --save-exact validation-architect@0.4.6
+pnpm add --save-dev --save-exact validation-architect@0.4.7
 pnpm exec validation-architect check .            # the CI gate (result/v1)
 pnpm exec validation-architect compile . --write  # author findings + views
 ```
 
-Before a registry release, replace `validation-architect@0.4.6` with the exact
+Before a registry release, replace `validation-architect@0.4.7` with the exact
 `.tgz` produced by `pnpm pack`; the same clean-target smoke covers that path.
 
 **Two lockstep packages** (VA-PKG-001). This repository publishes a pair that

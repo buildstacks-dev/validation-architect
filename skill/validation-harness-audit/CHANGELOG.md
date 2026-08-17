@@ -7,6 +7,11 @@ Consumes the optional-intent contract introduced by design 0.8.0.
 - Treats a run's recorded intent source as immutable provenance: derived repository judgment remains `simulated`, while human rambling resolves to an exact passage.
 - Makes any `rambling` source in a `derived-from-repo` run blocking even if a file appears later, and makes a missing or unresolvable human-rambling source blocking.
 - Versioned with validation-harness-design 0.8.0.
+- Amended with validation-architect 0.4.7 (VA-ENF-002): the negative-control
+  conformance check now leans on the package's deterministic
+  `CONTROL_UNIMPLEMENTED` / `CONTROL_IMPLEMENTATION_PENDING` closure for
+  paper-only controls and keeps only can-it-fire fidelity as audit judgment
+  (`references/harness-policy-conformance.md` §4.17).
 
 ## 0.7.0
 
