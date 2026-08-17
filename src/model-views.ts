@@ -79,7 +79,7 @@ function structureBullets(structures: readonly ProductStructure[], owners: Reado
   return `${structures
     .map(
       (structure) =>
-        `- **${structure.title}** (\`${structure.id}\`, ${structure.kind}) — ${structure.meaning} Owner: ${ownerName(owners.get(structure.owner), structure.owner)}.${structure.acceptance_criteria?.length ? ` Acceptance: ${structure.acceptance_criteria.join("; ")}.` : ""}${structure.failure_modes?.length ? ` Failure modes: ${structure.failure_modes.join("; ")}.` : ""}`,
+        `- **${structure.title}** (\`${structure.id}\`, ${structure.kind}) — ${structure.meaning} Owner: ${ownerName(owners.get(structure.owner), structure.owner)}.${structure.acceptance_criteria?.length ? ` Acceptance: ${structure.acceptance_criteria.join("; ")}.` : ""}${structure.error_criteria?.length ? ` Error criteria: ${structure.error_criteria.join("; ")}.` : ""}${structure.failure_modes?.length ? ` Failure modes: ${structure.failure_modes.join("; ")}.` : ""}`,
     )
     .join("\n")}\n`;
 }
@@ -149,7 +149,7 @@ function renderFailureModeCoverage(model: CompiledDesignModel): string {
 function renderPlannedTrace(model: CompiledDesignModel): string {
   const structures = model.structures.map(
     (structure) =>
-      `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.acceptance_criteria)} | ${list(structure.failure_modes)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`,
+      `| ${md(structure.id)} | ${md(structure.kind)} | ${md(structure.meaning)} | ${list(structure.acceptance_criteria)} | ${list(structure.error_criteria)} | ${list(structure.failure_modes)} | ${list(structure.changed_paths)} | ${list(structure.source_ids)} | ${md(structure.owner)} |`,
   );
   const rows = model.families.map((family) => {
     const implementation = family.evidence
@@ -157,7 +157,7 @@ function renderPlannedTrace(model: CompiledDesignModel): string {
       : list(family.planned_tests);
     return `| ${md(family.id)} | ${list(family.structure_ids)} | ${md(family.ticket ?? "—")} | ${list(family.control_ids)} | ${md(implementation)} | ${md(family.owner)} |`;
   });
-  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Failure-mode coverage\n\nEvery boundary failure mode must be covered by a family or pruned by name; the compiler rejects an open boundary mode (VA-ENF-001). Non-boundary modes are listed for the same visibility.\n\n${renderFailureModeCoverage(model)}\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+  return `# Planned implementation trace\n\n${GENERATED_NOTICE}\nThis report proves declared planned-link closure only. It does not claim that tests exist, passed, or faithfully implement their oracle.\n\n## Provenance registry\n\nEvery provenance ID cited by the generated views resolves here to its complete compiled source record.\n\n${renderProvenanceRegistry(model)}\n## Product structure routing\n\n| Structure | Kind | Protected meaning | Acceptance criteria | Error criteria | Failure modes | Changed paths | Provenance | Owner |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n${structures.join("\n")}\n\n## Failure-mode coverage\n\nEvery boundary failure mode must be covered by a family or pruned by name; the compiler rejects an open boundary mode (VA-ENF-001). Non-boundary modes are listed for the same visibility.\n\n${renderFailureModeCoverage(model)}\n## Planned family closure\n\n| Family | Product structures | Ticket | Negative controls | Planned tests / evidence | Owner |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
 }
 
 export function generateModelViews(model: CompiledDesignModel): Record<GeneratedModelView, string> {

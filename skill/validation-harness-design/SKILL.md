@@ -189,7 +189,7 @@ Output: `boundary-map.md` with a Mermaid diagram, journey intersections, the per
 
 Run the concept loop. Primer: `references/concept-primers.md#contracts`.
 
-Per boundary, capture the contract: valid inputs, guaranteed outputs, error behavior, idempotency semantics, ordering/latency expectations. Layer-1 scope = a component honoring its own contract; layer-2 scope = two components' assumptions about each other's contracts actually matching, including the Phase-3 failure modes.
+Per boundary, capture the contract: valid inputs, guaranteed outputs, error behavior, idempotency semantics, ordering/latency expectations. Layer-1 scope = a component honoring its own contract; layer-2 scope = two components' assumptions about each other's contracts actually matching, including the Phase-3 failure modes. The error half is a checked model fact, not prose: contract structures declare `error_criteria` (invalid-input behavior, typed errors, idempotency under retry) beside `acceptance_criteria`, and the compiler rejects a happy-path-only contract (`references/policy-and-inheritance.md`).
 
 Per user journey, write acceptance criteria as given/when/then at the **behavior** level, not the UI level, each tracing to at least one invariant or contract. These are ticket-shaped: they travel with the feature spec and are written before implementation.
 

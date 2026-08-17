@@ -3,6 +3,21 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.9 — contracts require typed error criteria (unreleased)
+
+- VA-ENF-005 (#57): `contract` structures declare `error_criteria` beside
+  `acceptance_criteria` — invalid-input behavior, typed errors, idempotency
+  under retry. A happy-path-only contract rejects compilation with
+  `MODEL_CONTRACT_ERROR_CRITERIA_MISSING` at the contract's source location.
+- The boundary `failure_modes` requirement is unchanged; error criteria render
+  in the generated structure routing table and owner briefing. Method contract
+  0.8.2 in both skill CHANGELOGs.
+- Tighten-only; breaking for existing corpora (pre-1.0 clean break): every
+  contract structure must declare its error half on recompile. All shipped
+  fixtures migrated in this change.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.8 — boundary failure modes must be covered or pruned by name (unreleased)
 
 - VA-ENF-001 (#53): families may cite the declared failure modes they exercise

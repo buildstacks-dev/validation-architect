@@ -67,6 +67,7 @@ function review(): LegacyModelImportInput {
         owner: "OWN-1",
         source_ids: ["SRC-1"],
         acceptance_criteria: ["Every legacy identity has an explicit migration disposition"],
+        error_criteria: ["An unreviewed legacy identity is refused with a typed migration error"],
       },
     ],
     policy: {
