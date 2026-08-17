@@ -76,8 +76,8 @@ export function writeValidModel(root: string, sourceRevision = "abc123"): void {
       { id: "L6", title: "Outcome acceptance", status: "declared-empty", reason: "No judged output" },
     ],
     lanes: [
-      { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- fixture" },
-      { id: "per-commit", title: "Hermetic", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test" },
+      { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- fixture", max_duration_seconds: 120 },
+      { id: "per-commit", title: "Hermetic", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test", max_duration_seconds: 600 },
       { id: "triggered", title: "Triggered", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No triggered work" },
       { id: "release", title: "Release", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No release work" },
       { id: "scheduled", title: "Scheduled", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No scheduled work" },

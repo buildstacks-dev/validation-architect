@@ -44,9 +44,9 @@ function shellBlocks(workflow: string): string[] {
   return blocks;
 }
 
-describe("0.4.10 lockstep candidate identity", () => {
+describe("0.4.11 lockstep candidate identity", () => {
   it("keeps both manifests and the code constant on one version", () => {
-    expect(corePackage.version).toBe("0.4.10");
+    expect(corePackage.version).toBe("0.4.11");
     expect(designPackage.version).toBe(corePackage.version);
     expect(CORE_PACKAGE_VERSION).toBe(corePackage.version);
   });
@@ -59,8 +59,9 @@ describe("0.4.10 lockstep candidate identity", () => {
     }
   });
 
-  it("names 0.4.10 as the candidate and retains the closure history", () => {
+  it("names 0.4.11 as the candidate and retains the closure history", () => {
     const changelog = read("CHANGELOG.md");
+    expect(changelog).toContain("## 0.4.11");
     expect(changelog).toContain("## 0.4.10");
     expect(changelog).toContain("## 0.4.9");
     expect(changelog).toContain("## 0.4.8");

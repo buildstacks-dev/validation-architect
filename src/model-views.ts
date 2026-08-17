@@ -98,7 +98,7 @@ function renderOwnerBriefing(model: CompiledDesignModel): string {
   const decisions = model.families.filter((family) => family.status !== "implementable");
   const unknowns = model.sources.filter((source) => source.kind === "proposed" || source.kind === "simulated");
   const layerPolicy = model.policy.layers.map((layer) => `- \`${layer.id}\` ${layer.title}: ${layer.status}${layer.reason ? ` — ${layer.reason}` : ""}.`).join("\n");
-  const lanePolicy = model.policy.lanes.map((lane) => `- \`${lane.id}\` ${lane.title} (${lane.kind}): ${lane.requirement}, ${lane.status}; triggers: ${list(lane.triggers)}${lane.authorization ? `; authorization: ${lane.authorization}` : ""}${lane.command ? `; command: \`${lane.command}\`` : ""}${lane.reason ? ` — ${lane.reason}` : ""}.`).join("\n");
+  const lanePolicy = model.policy.lanes.map((lane) => `- \`${lane.id}\` ${lane.title} (${lane.kind}): ${lane.requirement}, ${lane.status}; triggers: ${list(lane.triggers)}${lane.authorization ? `; authorization: ${lane.authorization}` : ""}${lane.command ? `; command: \`${lane.command}\`` : ""}${lane.max_duration_seconds !== undefined ? `; budget: ${lane.max_duration_seconds}s` : ""}${lane.reason ? ` — ${lane.reason}` : ""}.`).join("\n");
   const ownership = model.owners.map((owner) => `- \`${owner.id}\` ${owner.name}: ${owner.responsibility}.`).join("\n");
   const smokeJourneys = (model.policy.smoke_journey_ids ?? []).map((id) => {
     const structure = model.structures.find((item) => item.id === id);

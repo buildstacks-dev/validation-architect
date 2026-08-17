@@ -230,7 +230,7 @@ Build a probability × cost matrix over journeys and modules. Money paths and ir
 | `release` | required before shipping a candidate | 3–4, plus any release-gating obligation |
 | `scheduled` | recurring, calendar- or cadence-driven | 5 |
 
-The `inner-loop` lane is the one most often left undesigned, and its absence is expensive: if the pre-push command is slow, or nobody names one, developers and agents discover the harness at CI time and start working around it. Name the actual command. Lanes land in `model/policy.yaml` and each family selects one by ID.
+The `inner-loop` lane is the one most often left undesigned, and its absence is expensive: if the pre-push command is slow, or nobody names one, developers and agents discover the harness at CI time and start working around it. Name the actual command. Lanes land in `model/policy.yaml` and each family selects one by ID. Every active test lane also declares its wall-clock budget as `max_duration_seconds` (suggested starting points: ~2 minutes for `inner-loop`, ~10 minutes for `per-commit`; tune to the product, never omit) — **a breached budget is a defect against the harness, filed like any red**, not an inconvenience to wait out, because a slow lane is a lane that gets skipped.
 
 This phase also fixes the **layer-5 obligations**, gated by the Phase-1 tier and deployment shape:
 

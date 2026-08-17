@@ -87,8 +87,8 @@ function validFiles(): ModelFileSet {
         { id: "L6", title: "Outcome acceptance", status: "declared-empty", reason: "No human-judged output" },
       ],
       lanes: [
-        { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- tenant" },
-        { id: "per-commit", title: "Hermetic process", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test" },
+        { id: "inner-loop", title: "Fast local", kind: "test", status: "active", requirement: "blocking", triggers: ["before-push"], command: "pnpm test -- tenant", max_duration_seconds: 120 },
+        { id: "per-commit", title: "Hermetic process", kind: "test", status: "active", requirement: "blocking", triggers: ["per-commit"], command: "pnpm test", max_duration_seconds: 600 },
         { id: "triggered", title: "Triggered evidence", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No triggered obligation" },
         { id: "release", title: "Release evidence", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No release obligation" },
         { id: "scheduled", title: "Scheduled evidence", kind: "evidence", status: "declared-empty", requirement: "blocking", triggers: [], reason: "No scheduled obligation" },
@@ -485,6 +485,30 @@ describe("validation model compiler", () => {
       }),
     };
   };
+
+  it("fails closed when an active test lane declares no wall-clock budget", () => {
+    const files = validFiles();
+    const policy = parse(files["policy.yaml"]) as { lanes: Array<Record<string, unknown>> };
+    const perCommit = policy.lanes.find((lane) => lane.id === "per-commit")!;
+    delete perCommit.max_duration_seconds;
+    const rejected = compileValidationModel({ ...files, "policy.yaml": yaml(policy) });
+    expect(rejected.accepted).toBe(false);
+    const diagnostic = rejected.diagnostics.find((item) => item.code === "MODEL_LANE_BUDGET_MISSING");
+    expect(diagnostic?.concept).toBe("per-commit");
+
+    const malformed = parse(files["policy.yaml"]) as { lanes: Array<Record<string, unknown>> };
+    malformed.lanes.find((lane) => lane.id === "per-commit")!.max_duration_seconds = -5;
+    const invalid = compileValidationModel({ ...files, "policy.yaml": yaml(malformed) });
+    expect(invalid.accepted).toBe(false);
+    expect(invalid.diagnostics.map((item) => item.message).join("\n")).toContain("max_duration_seconds");
+  });
+
+  it("keeps evidence and declared-empty lanes free of the budget requirement and renders declared budgets", () => {
+    const compiled = compileValidationModel(validFiles());
+    // The fixture's evidence lanes declare no budget and the corpus still compiles.
+    expect(compiled.accepted, compiled.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+    expect(compiled.generated_views["owner-briefing.md"]).toContain("budget: 600s");
+  });
 
   it("fails closed when no smoke journey is designated", () => {
     const files = validFiles();

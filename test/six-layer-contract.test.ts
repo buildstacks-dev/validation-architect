@@ -38,6 +38,18 @@ describe("six-layer design/audit contract", () => {
     expect(`${checklist}\n${standalone}\n${auditReadme}`).not.toContain("five declared validation layers");
   });
 
+  it("carries the lane-budget doctrine in both skills (VA-ENF-004)", () => {
+    // The design skill states that a breached budget is a defect against the
+    // harness; the audit checklist compares declared budgets to observed CI
+    // durations. Both halves move with the max_duration_seconds schema field.
+    expect(read("skill/validation-harness-design/SKILL.md")).toContain(
+      "a breached budget is a defect against the harness, filed like any red",
+    );
+    expect(read("skill/validation-harness-audit/references/harness-policy-conformance.md")).toContain(
+      "declared `max_duration_seconds` budget against observed CI durations",
+    );
+  });
+
   it("versions the skills through the package, not standalone VERSION files", () => {
     // Package-version conformance (VA-PKG-001): the skills ship inside the
     // core package and follow its declared METHOD_VERSION. They keep their

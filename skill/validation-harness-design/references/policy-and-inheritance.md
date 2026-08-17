@@ -53,6 +53,7 @@ lanes:
     requirement: blocking
     triggers: [before-push]
     command: pnpm test -- --changed
+    max_duration_seconds: 120
   - id: per-commit
     title: Required deterministic checks
     kind: test
@@ -60,6 +61,7 @@ lanes:
     requirement: blocking
     triggers: [per-commit]
     command: pnpm test
+    max_duration_seconds: 600
   - id: triggered
     title: Separately authorized live evidence
     kind: evidence
@@ -76,7 +78,10 @@ exceptions: []
 structures may carry reasoned component overrides. Unknown gates fail closed.
 All six layers and the five execution lanes are declared; empty entries carry a
 reason. Active test lanes name the real command and active lanes name exact
-triggers. C2–C4 designs keep L5 active. A family references an active lane and
+triggers. Every active test lane declares its wall-clock budget as
+`max_duration_seconds` (VA-ENF-004; `MODEL_LANE_BUDGET_MISSING` otherwise) —
+a breached budget is a defect against the harness, filed like any red.
+Evidence lanes may declare one; declared-empty lanes need none. C2–C4 designs keep L5 active. A family references an active lane and
 layer, then records its oracle, risk, owner, provenance, controls, status, and
 ticket. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact

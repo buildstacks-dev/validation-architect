@@ -99,6 +99,7 @@ function review(): LegacyModelImportInput {
           requirement: "blocking",
           triggers: ["before-push"],
           command: "pnpm test -- --changed",
+          max_duration_seconds: 120,
         },
         {
           id: "per-commit",
@@ -108,6 +109,7 @@ function review(): LegacyModelImportInput {
           requirement: "blocking",
           triggers: ["per-commit"],
           command: "pnpm test",
+          max_duration_seconds: 600,
         },
         {
           id: "triggered",

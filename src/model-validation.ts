@@ -42,6 +42,7 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
     if (lane.status === "declared-empty" && !lane.reason) shapeError("policy.yaml", lane.id, "reason", "Every declared-empty lane needs a plain-language reason.");
     if (lane.status === "active" && lane.triggers.length === 0) shapeError("policy.yaml", lane.id, "triggers", "Every active lane needs at least one exact trigger.");
     if (lane.status === "active" && lane.kind === "test" && !lane.command) shapeError("policy.yaml", lane.id, "command", "Every active test lane needs the actual command users and CI run.");
+    if (lane.status === "active" && lane.kind === "test" && lane.max_duration_seconds === undefined) codedError("MODEL_LANE_BUDGET_MISSING", "policy.yaml", lane.id, `Active test lane ${lane.id} declares no wall-clock budget.`, "Set max_duration_seconds for the lane; a breached budget is a defect against the harness, filed like any red.");
     if (lane.id === "inner-loop" && (lane.status !== "active" || lane.kind !== "test" || !lane.command)) shapeError("policy.yaml", lane.id, "status/kind/command", "The inner-loop must be an active test lane with an actual pre-push command.");
   }
   for (const exception of model.policy.exceptions) {

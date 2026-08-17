@@ -92,6 +92,9 @@ function canonicalFallbackPolicy(
         requirement: "blocking",
         triggers: ["before-push"],
         command: innerLoopCommand,
+        // Canonical starting budgets (the skill's suggested defaults);
+        // tighten-only, reviewable in the imported policy.
+        max_duration_seconds: 120,
       },
       {
         id: "per-commit",
@@ -101,6 +104,7 @@ function canonicalFallbackPolicy(
         requirement: "blocking",
         triggers: ["per-commit"],
         command: innerLoopCommand,
+        max_duration_seconds: 600,
       },
       {
         id: "triggered",
