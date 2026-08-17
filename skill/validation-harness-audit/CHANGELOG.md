@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3
+
+Consumes the smoke-journey designation introduced by design 0.8.3 (VA-ENF-003).
+
+- Layer/lane conformance (§4.1) reads the deterministic `smoke_journey_ids` designation and audits the reality half: the designated journey's family actually runs per commit in CI, stays green, and still names the product's real first-value walk.
+- Versioned with validation-harness-design 0.8.3.
+
 ## 0.8.2
 
 Consumes the typed error-criteria contract introduced by design 0.8.2 (VA-ENF-005).

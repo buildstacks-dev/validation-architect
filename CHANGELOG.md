@@ -3,6 +3,21 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.10 — smoke-journey designation, fail-closed (unreleased)
+
+- VA-ENF-003 (#55): `policy.yaml` gains `smoke_journey_ids` naming at least
+  one `journey` structure as the always-green, must-run-on-merge smoke path.
+  Missing designation is `MODEL_SMOKE_JOURNEY_MISSING`; a non-journey
+  designation or a designated journey with no implementable `per-commit`
+  family is `MODEL_SMOKE_JOURNEY_INVALID`.
+- The owner briefing shows the smoke journey by name. Legacy import carries a
+  reviewed designation into the canonical fallback policy; a reviewed policy
+  carries its own. Method contract 0.8.3 in both skill CHANGELOGs.
+- Tighten-only; breaking for existing corpora (pre-1.0 clean break): every
+  corpus names its smoke journey on recompile. All shipped fixtures migrated.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.9 — contracts require typed error criteria (unreleased)
 
 - VA-ENF-005 (#57): `contract` structures declare `error_criteria` beside

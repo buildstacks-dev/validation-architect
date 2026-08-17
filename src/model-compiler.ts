@@ -316,7 +316,7 @@ export function compileValidationModel(
   const layerRows = rows(parsed, files, diagnostics, "policy.yaml", "layers");
   const laneRows = rows(parsed, files, diagnostics, "policy.yaml", "lanes");
   const exceptionRows = rows(parsed, files, diagnostics, "policy.yaml", "exceptions");
-  rejectUnknownFields(diagnostics, files, "policy.yaml", "policy", parsed["policy.yaml"], ["schema", "default", "inheritance", "layers", "lanes", "exceptions", "coexistence"]);
+  rejectUnknownFields(diagnostics, files, "policy.yaml", "policy", parsed["policy.yaml"], ["schema", "default", "inheritance", "smoke_journey_ids", "layers", "lanes", "exceptions", "coexistence"]);
   const layers = mapRows<ValidationLayer>(layerRows, diagnostics, files, "policy.yaml", (row, id) => {
     rejectUnknownFields(diagnostics, files, "policy.yaml", id, row, ["id", "title", "status", "reason"]);
     const title = text(row, "title"); const status = text(row, "status") as ValidationLayer["status"] | undefined;
@@ -343,7 +343,8 @@ export function compileValidationModel(
     if (coexistenceRow.posture !== "parallel-greenfield" || !isolatedRoot || !protectedPaths?.length || coexistenceRow.incumbent_gates !== "read_only" || coexistenceRow.ci_integration !== "additive_opt_in" || !cutoverRequires?.length) shapeError(diagnostics, files, "policy.yaml", "coexistence", "posture/paths/gates/CI/cutover", "Declare the isolated root, protected paths, read-only incumbent gates, additive opt-in CI, and cutover evidence.");
     else coexistence = { posture: "parallel-greenfield", isolated_root: isolatedRoot, protected_paths: protectedPaths, incumbent_gates: "read_only", ci_integration: "additive_opt_in", cutover_requires: cutoverRequires };
   }
-  const policy: ValidationPolicy = { default: "blocking", inheritance: "tighten-only", layers, lanes, exceptions, ...(coexistence ? { coexistence } : {}) };
+  const smokeJourneyIds = texts(parsed["policy.yaml"], "smoke_journey_ids");
+  const policy: ValidationPolicy = { default: "blocking", inheritance: "tighten-only", ...(smokeJourneyIds ? { smoke_journey_ids: smokeJourneyIds } : {}), layers, lanes, exceptions, ...(coexistence ? { coexistence } : {}) };
   if (parsed["policy.yaml"].default !== "blocking") shapeError(diagnostics, files, "policy.yaml", "policy", "default", "Set default: blocking; unknown gates fail closed.");
   if (parsed["policy.yaml"].inheritance !== "tighten-only") shapeError(diagnostics, files, "policy.yaml", "policy", "inheritance", "Set inheritance: tighten-only; descendants may not loosen requirements.");
   const controls = mapRows<NegativeControl>(rows(parsed, files, diagnostics, "controls.yaml", "controls"), diagnostics, files, "controls.yaml", (row, id) => {

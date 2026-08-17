@@ -1,6 +1,6 @@
 {
   "name": "validation-architect",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "private": false,
   "description": "Provider-neutral validation architecture: deterministic contracts, campaign orchestration, schemas, skills, and CLI.",
   "license": "LicenseRef-FSL-1.1-MIT",

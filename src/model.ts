@@ -122,6 +122,10 @@ export interface CoexistencePolicy {
 export interface ValidationPolicy {
   default: "blocking";
   inheritance: "tighten-only";
+  /** Journey structures designated as the always-green, must-run-on-merge
+   * smoke path; the validator requires at least one, each covered by an
+   * implementable per-commit family. */
+  smoke_journey_ids?: string[];
   layers: ValidationLayer[];
   lanes: ValidationLane[];
   exceptions: PolicyException[];

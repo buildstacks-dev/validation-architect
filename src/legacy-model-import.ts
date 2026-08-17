@@ -33,6 +33,7 @@ function clonePolicy(policy: ValidationPolicy): ValidationPolicy {
   return {
     default: policy.default,
     inheritance: policy.inheritance,
+    ...(policy.smoke_journey_ids ? { smoke_journey_ids: [...policy.smoke_journey_ids] } : {}),
     layers: policy.layers.map((layer) => ({ ...layer })),
     lanes: policy.lanes.map((lane) => ({ ...lane, triggers: [...lane.triggers] })),
     exceptions: policy.exceptions.map((exception) => ({ ...exception })),
@@ -51,6 +52,7 @@ function clonePolicy(policy: ValidationPolicy): ValidationPolicy {
 function canonicalFallbackPolicy(
   families: readonly ValidationFamily[],
   innerLoopCommand: string,
+  smokeJourneyIds?: readonly string[],
 ): ValidationPolicy {
   const activeLayers = new Set(
     families
@@ -69,6 +71,7 @@ function canonicalFallbackPolicy(
   return {
     default: "blocking",
     inheritance: "tighten-only",
+    ...(smokeJourneyIds?.length ? { smoke_journey_ids: [...smokeJourneyIds] } : {}),
     layers: layerTitles.map((title, index) => {
       const id = `L${index + 1}` as ValidationLayerId;
       return activeLayers.has(id)
@@ -152,7 +155,7 @@ export function importLegacyCatalog(
   const normalized = normalizeLegacyManifest(generated.manifest, input);
   const policy = input.policy
     ? clonePolicy(input.policy)
-    : canonicalFallbackPolicy(normalized.families, input.inner_loop_command);
+    : canonicalFallbackPolicy(normalized.families, input.inner_loop_command, input.smoke_journey_ids);
   const files: ModelFileSet = {
     "project.yaml": asYaml({
       schema: MODEL_FILE_SCHEMAS["project.yaml"],

@@ -37,6 +37,7 @@ selected source.
 schema: validation-architect/model/policy/v1
 default: blocking
 inheritance: tighten-only
+smoke_journey_ids: [J-FIRST-VALUE]
 layers:
   - {id: L1, title: Invariant and contract, status: active}
   - {id: L2, title: Hermetic system, status: active}
@@ -80,6 +81,15 @@ layer, then records its oracle, risk, owner, provenance, controls, status, and
 ticket. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact
 path; evidence never excuses an ordinary test-lane family.
+
+The smoke journey is named policy data (VA-ENF-003). `smoke_journey_ids`
+designates at least one `journey` structure as the always-green,
+must-run-on-merge smoke path — the onboarding/first-value walk the walking
+skeleton bootstraps. The compiler rejects a policy with no designation
+(`MODEL_SMOKE_JOURNEY_MISSING`), a designation that is not a journey
+structure, or a designated journey not covered by an implementable family in
+the `per-commit` lane (`MODEL_SMOKE_JOURNEY_INVALID`). The owner briefing
+shows the smoke journey by name.
 
 Contracts carry their error half in the model (VA-ENF-005). A `contract`
 structure declares `error_criteria` alongside `acceptance_criteria` —
