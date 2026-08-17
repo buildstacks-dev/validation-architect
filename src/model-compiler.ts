@@ -17,6 +17,7 @@ import {
   type PolicyException,
   type ProductIdentity,
   type ProductStructure,
+  type SourcingChannel,
   type ValidationFamily,
   type ValidationLayer,
   type ValidationLane,
@@ -316,7 +317,10 @@ export function compileValidationModel(
   const layerRows = rows(parsed, files, diagnostics, "policy.yaml", "layers");
   const laneRows = rows(parsed, files, diagnostics, "policy.yaml", "lanes");
   const exceptionRows = rows(parsed, files, diagnostics, "policy.yaml", "exceptions");
-  rejectUnknownFields(diagnostics, files, "policy.yaml", "policy", parsed["policy.yaml"], ["schema", "default", "inheritance", "smoke_journey_ids", "layers", "lanes", "exceptions", "coexistence"]);
+  // Absent sourcing parses to no channels; the validator names each missing
+  // channel with its own distinct diagnostic rather than a collection error.
+  const sourcingRows = parsed["policy.yaml"].sourcing === undefined ? [] : rows(parsed, files, diagnostics, "policy.yaml", "sourcing");
+  rejectUnknownFields(diagnostics, files, "policy.yaml", "policy", parsed["policy.yaml"], ["schema", "default", "inheritance", "smoke_journey_ids", "layers", "lanes", "sourcing", "exceptions", "coexistence"]);
   const layers = mapRows<ValidationLayer>(layerRows, diagnostics, files, "policy.yaml", (row, id) => {
     rejectUnknownFields(diagnostics, files, "policy.yaml", id, row, ["id", "title", "status", "reason"]);
     const title = text(row, "title"); const status = text(row, "status") as ValidationLayer["status"] | undefined;
@@ -330,6 +334,12 @@ export function compileValidationModel(
     const maxDuration = row.max_duration_seconds;
     if (maxDuration !== undefined && (typeof maxDuration !== "number" || !Number.isInteger(maxDuration) || maxDuration <= 0)) { shapeError(diagnostics, files, "policy.yaml", id, "max_duration_seconds", "Declare the lane wall-clock budget as a positive whole number of seconds."); return undefined; }
     return { id, title, kind: kind as ValidationLane["kind"], status: status as ValidationLane["status"], requirement: requirement as ValidationLane["requirement"], triggers, ...(text(row, "command") ? { command: text(row, "command") as string } : {}), ...(typeof maxDuration === "number" ? { max_duration_seconds: maxDuration } : {}), ...(authorization ? { authorization } : {}), ...(text(row, "reason") ? { reason: text(row, "reason") as string } : {}) };
+  });
+  const sourcing = mapRows<SourcingChannel>(sourcingRows, diagnostics, files, "policy.yaml", (row, id) => {
+    rejectUnknownFields(diagnostics, files, "policy.yaml", id, row, ["id", "status", "owner", "trigger", "reason"]);
+    const status = text(row, "status") as SourcingChannel["status"] | undefined; const owner = text(row, "owner");
+    if (!["active", "declared-empty"].includes(status ?? "") || !owner) { shapeError(diagnostics, files, "policy.yaml", id, "status/owner", "Declare each sourcing channel active or declared-empty with an accountable owner."); return undefined; }
+    return { id: id as SourcingChannel["id"], status: status as SourcingChannel["status"], owner, ...(text(row, "trigger") ? { trigger: text(row, "trigger") as string } : {}), ...(text(row, "reason") ? { reason: text(row, "reason") as string } : {}) };
   });
   const exceptions = mapRows<PolicyException>(exceptionRows, diagnostics, files, "policy.yaml", (row, id) => {
     rejectUnknownFields(diagnostics, files, "policy.yaml", id, row, ["id", "kind", "target", "owner", "reason", "expires", "value"]);
@@ -346,7 +356,7 @@ export function compileValidationModel(
     else coexistence = { posture: "parallel-greenfield", isolated_root: isolatedRoot, protected_paths: protectedPaths, incumbent_gates: "read_only", ci_integration: "additive_opt_in", cutover_requires: cutoverRequires };
   }
   const smokeJourneyIds = texts(parsed["policy.yaml"], "smoke_journey_ids");
-  const policy: ValidationPolicy = { default: "blocking", inheritance: "tighten-only", ...(smokeJourneyIds ? { smoke_journey_ids: smokeJourneyIds } : {}), layers, lanes, exceptions, ...(coexistence ? { coexistence } : {}) };
+  const policy: ValidationPolicy = { default: "blocking", inheritance: "tighten-only", ...(smokeJourneyIds ? { smoke_journey_ids: smokeJourneyIds } : {}), layers, lanes, ...(parsed["policy.yaml"].sourcing !== undefined ? { sourcing } : {}), exceptions, ...(coexistence ? { coexistence } : {}) };
   if (parsed["policy.yaml"].default !== "blocking") shapeError(diagnostics, files, "policy.yaml", "policy", "default", "Set default: blocking; unknown gates fail closed.");
   if (parsed["policy.yaml"].inheritance !== "tighten-only") shapeError(diagnostics, files, "policy.yaml", "policy", "inheritance", "Set inheritance: tighten-only; descendants may not loosen requirements.");
   const controls = mapRows<NegativeControl>(rows(parsed, files, diagnostics, "controls.yaml", "controls"), diagnostics, files, "controls.yaml", (row, id) => {

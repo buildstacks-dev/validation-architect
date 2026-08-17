@@ -1,4 +1,4 @@
-import type { CompiledDesignModel, CompilerDiagnostic, ModelFilename } from "./model.js";
+import { SOURCING_CHANNEL_IDS, type CompiledDesignModel, type CompilerDiagnostic, type ModelFilename } from "./model.js";
 
 interface ModelValidationContext {
   diagnostics: CompilerDiagnostic[];
@@ -51,6 +51,17 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
     if (exception.kind === "provisional" && !exception.value) shapeError("policy.yaml", exception.id, "value", "A provisional exception must state the testable temporary value.");
   }
   if (["C2", "C3", "C4"].includes(model.product.criticality) && layers.get("L5")?.status !== "active") shapeError("policy.yaml", "L5", "status", "C2-C4 products require an active L5 ops-hardening layer with threat and contention obligations.");
+  // Standing case-sourcing channels (VA-ENF-006): the four ongoing sourcing
+  // obligations are policy data, validated exactly like layers and lanes —
+  // all four declared, empties reasoned, owners resolved.
+  const sourcing = new Map((model.policy.sourcing ?? []).map((channel) => [channel.id, channel]));
+  for (const id of SOURCING_CHANNEL_IDS) if (!sourcing.has(id)) codedError("MODEL_SOURCING_CHANNEL_MISSING", "policy.yaml", id, `Required case-sourcing channel ${id} is undeclared.`, `Declare ${id} in the policy sourcing block as active with a trigger or declared-empty with a reason, with an accountable owner.`);
+  for (const channel of model.policy.sourcing ?? []) {
+    if (!(SOURCING_CHANNEL_IDS as readonly string[]).includes(channel.id)) linkError("policy.yaml", channel.id, `${channel.id} is not a recognized case-sourcing channel.`, `Use exactly the four channels: ${SOURCING_CHANNEL_IDS.join(", ")}.`);
+    if (!owners.has(channel.owner)) linkError("policy.yaml", channel.id, `Sourcing channel ${channel.id} cites missing owner ${channel.owner}.`, "Declare the owner in owners.yaml or correct the channel owner.");
+    if (channel.status === "active" && !channel.trigger) shapeError("policy.yaml", channel.id, "trigger", "Every active sourcing channel names what fires it.");
+    if (channel.status === "declared-empty" && !channel.reason) shapeError("policy.yaml", channel.id, "reason", "Every declared-empty sourcing channel needs a plain-language reason.");
+  }
   // Smoke-journey designation (VA-ENF-003): the onboarding/first-value path
   // is named policy data, not bootstrap prose, and it must run per commit.
   const smokeJourneyIds = model.policy.smoke_journey_ids ?? [];

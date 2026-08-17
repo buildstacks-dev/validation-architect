@@ -329,7 +329,7 @@ When layer 6 is active, the backlog's walking skeleton also lands the rubric/sce
 
 ## Ongoing case sourcing (for the life of the product)
 
-Four channels, recorded in the policy file as standing obligations:
+Four channels, recorded in the policy file as standing obligations — literally: `model/policy.yaml` carries a `sourcing` block declaring exactly `acceptance-criteria`, `adversarial-derivation`, `production-incident`, and `substrate-drift`, each active with an owner and trigger or declared-empty with an owner and reason, and the compiler rejects a policy missing any of the four (`references/policy-and-inheritance.md`):
 
 1. **Acceptance criteria** as each feature lands.
 2. **Adversarial derivation** from invariants — the Phase-6 violation-surface walk, re-run against the source as the system evolves. Not a recall exercise.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.5
+
+The four case-sourcing channels become checked policy data (VA-ENF-006, validation-architect 0.4.12).
+
+- `policy.yaml` gains a `sourcing` block declaring exactly `acceptance-criteria`, `adversarial-derivation`, `production-incident`, and `substrate-drift`, validated like layers and lanes: all four declared (`MODEL_SOURCING_CHANNEL_MISSING`), active channels name a trigger, empties carry a reason, owners resolve.
+- SKILL.md's "recorded in the policy file as standing obligations" is now literally true; the owner briefing renders the obligations.
+- Legacy import: a reviewed `sourcing` block flows through; absent one, every channel imports declared-empty for later review.
+- Versioned with validation-harness-audit 0.8.5.
+
 ## 0.8.4
 
 Per-lane wall-clock budgets become checked policy data (VA-ENF-004, validation-architect 0.4.11).

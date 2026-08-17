@@ -26,6 +26,12 @@ export function graphFixture(): {
       default: "blocking",
       inheritance: "tighten-only",
       smoke_journey_ids: ["J-TENANT"],
+      sourcing: [
+        { id: "acceptance-criteria", status: "active", owner: "OWN-TENANCY", trigger: "A ratified acceptance criterion is added or changed" },
+        { id: "adversarial-derivation", status: "active", owner: "OWN-TENANCY", trigger: "A journey, interface, boundary, or contract changes" },
+        { id: "production-incident", status: "declared-empty", owner: "OWN-TENANCY", reason: "The graph fixture has no production deployment" },
+        { id: "substrate-drift", status: "declared-empty", owner: "OWN-TENANCY", reason: "No substrate dependency is tracked" },
+      ],
       layers: [
         { id: "L1", title: "Contract", status: "active" },
         { id: "L2", title: "Hermetic", status: "active" },
