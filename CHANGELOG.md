@@ -3,6 +3,24 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.4.8 — boundary failure modes must be covered or pruned by name (unreleased)
+
+- VA-ENF-001 (#53): families may cite the declared failure modes they exercise
+  as `covers_failure_modes: ["<structure-id>#<mode>"]`; the compiler rejects a
+  **boundary** failure mode with no covering family and no named prune
+  (`MODEL_FAILURE_MODE_UNCOVERED`, located at the boundary's own source line).
+  A pruned family citing the same reference with its reason is the named prune.
+- Dangling references — a missing structure, an undeclared mode, or a
+  malformed `<id>#<mode>` string — reject compilation as broken links.
+- Generated views render the coverage: `planned-trace.md` gains a
+  failure-mode coverage table (covered / pruned / open) and `case-catalog.md`
+  a "Failure modes covered" column, so a fresh reader sees the matrix without
+  YAML access. Method contract 0.8.1 in both skill CHANGELOGs.
+- Tighten-only and breaking for corpora that declare boundaries (pre-1.0 clean
+  break): recompile with coverage links or named prunes.
+- This is a pre-publication candidate correction. No package was published,
+  tagged, or reserved by this change.
+
 ## 0.4.7 — declared negative controls must be implemented (unreleased)
 
 - VA-ENF-002 (#54): the design↔inventory join fails closed when a declared

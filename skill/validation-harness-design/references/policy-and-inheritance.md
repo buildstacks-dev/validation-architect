@@ -81,6 +81,17 @@ ticket. Evidence lanes require an honest
 `complete | incomplete | inconclusive | unobserved` state and bounded artifact
 path; evidence never excuses an ordinary test-lane family.
 
+Failure-mode coverage is closed at compile time (VA-ENF-001). A family cites
+the exact declared modes it exercises as
+`covers_failure_modes: ["<structure-id>#<mode>"]`, verbatim against the
+structure's `failure_modes`. Every **boundary** failure mode must be cited by
+at least one family — an implementable detector covers it; a `pruned` family
+citing the same reference with its reason is the named prune. An uncited
+boundary mode rejects compilation (`MODEL_FAILURE_MODE_UNCOVERED` at the
+boundary's source location), and a citation of an undeclared mode or missing
+structure is a broken link. Modes declared on non-boundary structures render
+in the same generated coverage table but may remain open.
+
 Waivers and provisional values live in `exceptions` with a target, owner,
 reason, and `YYYY-MM-DD` expiry; provisional values also state the temporary
 testable value. An optional `coexistence` block fixes the parallel-greenfield

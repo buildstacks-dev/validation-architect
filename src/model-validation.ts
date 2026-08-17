@@ -5,13 +5,15 @@ interface ModelValidationContext {
   safePath(path: string): boolean;
   shapeError(file: ModelFilename, id: string, field: string, correction: string): void;
   linkError(file: ModelFilename, concept: string, message: string, correction: string): void;
+  codedError(code: string, file: ModelFilename, concept: string, message: string, correction: string): void;
 }
 
 export function validateModel(model: CompiledDesignModel, context: ModelValidationContext): void {
-  const { diagnostics, safePath, shapeError, linkError } = context;
+  const { diagnostics, safePath, shapeError, linkError, codedError } = context;
   const owners = new Set(model.owners.map((item) => item.id));
   const sources = new Set(model.sources.map((item) => item.id));
-  const structures = new Set(model.structures.map((item) => item.id));
+  const structureById = new Map(model.structures.map((item) => [item.id, item]));
+  const structures = new Set(structureById.keys());
   const layers = new Map(model.policy.layers.map((item) => [item.id, item]));
   const lanes = new Map(model.policy.lanes.map((item) => [item.id, item]));
   const controls = new Map(model.controls.map((item) => [item.id, item]));
@@ -79,6 +81,27 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
       for (const path of family.planned_tests ?? []) if (!safePath(path)) linkError("families.yaml", family.id, `${family.id} has unsafe planned test path ${path}.`, "Use repository-relative paths with no traversal.");
       if (family.evidence && !safePath(family.evidence.path)) linkError("families.yaml", family.id, `${family.id} has unsafe evidence path ${family.evidence.path}.`, "Use a repository-relative evidence path with no traversal.");
     } else if (!family.reason || (family.status === "blocked" && !family.blocked_by)) shapeError("families.yaml", family.id, family.status === "blocked" ? "reason/blocked_by" : "reason", "Pruned and blocked families require an explicit reason; blocked families also require blocked_by.");
+    for (const reference of family.covers_failure_modes ?? []) {
+      const separator = reference.indexOf("#");
+      const structureId = separator > 0 ? reference.slice(0, separator) : "";
+      const mode = separator > 0 ? reference.slice(separator + 1) : "";
+      if (!structureId || !mode) { linkError("families.yaml", family.id, `${family.id} has malformed failure-mode reference ${reference}.`, 'Use "<structure-id>#<declared failure mode>" exactly as the structure declares it.'); continue; }
+      const structure = structureById.get(structureId);
+      if (!structure) linkError("families.yaml", family.id, `${family.id} cites failure mode ${reference} on missing structure ${structureId}.`, "Declare the structure in structures.yaml or correct covers_failure_modes.");
+      else if (!(structure.failure_modes ?? []).includes(mode)) linkError("families.yaml", family.id, `${family.id} cites ${reference}, but ${structureId} declares no failure mode "${mode}".`, "Cite a declared failure mode verbatim or add the mode through the reviewed structure workflow.");
+    }
+  }
+  // Failure-mode coverage closure (VA-ENF-001): every declared boundary
+  // failure mode is covered by at least one family or pruned by name. A mode
+  // that is merely listed, tested nowhere, and pruned nowhere is the
+  // compliant-but-hollow hole this rule closes.
+  const coveredModes = new Set(model.families.flatMap((family) => family.covers_failure_modes ?? []));
+  for (const structure of model.structures) {
+    if (structure.kind !== "boundary") continue;
+    for (const mode of structure.failure_modes ?? []) {
+      if (coveredModes.has(`${structure.id}#${mode}`)) continue;
+      codedError("MODEL_FAILURE_MODE_UNCOVERED", "structures.yaml", structure.id, `${structure.id} declares failure mode "${mode}" with no covering family and no named prune.`, `Add covers_failure_modes: ["${structure.id}#${mode}"] to a detector family, or record the deliberate gap as a pruned family citing the same reference with its reason.`);
+    }
   }
   for (const control of model.controls) {
     if (!families.has(control.family_id)) linkError("controls.yaml", control.id, `${control.id} cites missing family ${control.family_id}.`, "Declare the family or correct family_id.");

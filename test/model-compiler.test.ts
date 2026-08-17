@@ -258,8 +258,10 @@ describe("validation model compiler", () => {
     if (!trace) throw new Error("planned trace was not generated");
     const routing = trace
       .split("## Product structure routing\n\n")[1]
-      ?.split("\n\n## Planned family closure")[0];
+      ?.split("\n\n## Failure-mode coverage")[0];
     if (!routing) throw new Error("product structure routing was not generated");
+    // Non-boundary modes stay visible (and may stay open) in the coverage table.
+    expect(trace).toMatch(/## Failure-mode coverage[\s\S]*\| CON-1 \| contract \| Crash-mid-step leaves partial state \| \*\*OPEN\*\* \|/);
 
     expect(routing).toContain(
       "| Structure | Kind | Protected meaning | Acceptance criteria | Failure modes | Changed paths | Provenance | Owner |",
@@ -440,6 +442,132 @@ describe("validation model compiler", () => {
       ]),
     );
     expect(model.families.some((family) => family.id === "CF-INVENTED")).toBe(false);
+  });
+
+  const boundaryFiles = (families: Array<Record<string, unknown>>): ModelFileSet => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model!;
+    return {
+      ...files,
+      "structures.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["structures.yaml"],
+        structures: [
+          ...model.structures,
+          {
+            id: "B-1",
+            kind: "boundary",
+            title: "Store boundary",
+            meaning: "The record store can fail independently of this process",
+            owner: "OWN-1",
+            source_ids: ["SRC-1"],
+            failure_modes: ["timeout", "partial success"],
+          },
+        ],
+      }),
+      "families.yaml": yaml({
+        schema: MODEL_FILE_SCHEMAS["families.yaml"],
+        families: [...model.families.map((family) => ({ ...family })), ...families],
+      }),
+    };
+  };
+
+  it("fails closed when a boundary failure mode has no covering family and no named prune", () => {
+    const rejected = compileValidationModel(boundaryFiles([]));
+    expect(rejected.accepted).toBe(false);
+    const uncovered = rejected.diagnostics.filter((item) => item.code === "MODEL_FAILURE_MODE_UNCOVERED");
+    expect(uncovered.map((item) => item.message).join(" ")).toContain("timeout");
+    expect(uncovered.map((item) => item.message).join(" ")).toContain("partial success");
+    // The diagnostic lands at the boundary's own source location.
+    expect(uncovered[0]?.concept).toBe("B-1");
+    expect(uncovered[0]?.location.file).toBe("validation-design/model/structures.yaml");
+    expect(uncovered[0]?.location.line).toBeGreaterThan(1);
+  });
+
+  it("accepts the same boundary once a family covers its modes, and renders the coverage", () => {
+    const files = boundaryFiles([
+      {
+        id: "CF-B1",
+        title: "Store failure modes",
+        meaning: "Store timeouts and partial writes are detected",
+        structure_ids: ["B-1"],
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+        lane: "per-commit",
+        status: "implementable",
+        layer: "L2",
+        oracle: "state",
+        risk: "E1",
+        control_ids: ["NC-B1"],
+        ticket: "HB-B1",
+        planned_tests: ["tests/store.test.ts"],
+        covers_failure_modes: ["B-1#timeout", "B-1#partial success"],
+      },
+    ]);
+    files["controls.yaml"] = yaml({
+      schema: MODEL_FILE_SCHEMAS["controls.yaml"],
+      controls: [
+        ...(compileValidationModel(validFiles()).model!.controls),
+        { id: "NC-B1", title: "Seeded store fault", family_id: "CF-B1", owner: "OWN-1", expected_failure: "The detector fails when a seeded store fault goes unnoticed" },
+      ],
+    });
+    files["backlog.yaml"] = yaml({
+      schema: MODEL_FILE_SCHEMAS["backlog.yaml"],
+      tickets: [
+        ...(compileValidationModel(validFiles()).model!.tickets),
+        { id: "HB-B1", title: "Land store failure-mode detectors", wave: "0", status: "pending", owner: "OWN-1", executor: "standing coding agent", lane: "per-commit", layer: "L2", acceptance_criteria: ["Store failure-mode detectors and control pass"], family_ids: ["CF-B1"] },
+      ],
+    });
+    const compiled = compileValidationModel(files);
+    expect(compiled.accepted, compiled.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+    expect(compiled.generated_views["case-catalog.md"]).toContain("B-1#timeout");
+    expect(compiled.generated_views["planned-trace.md"]).toMatch(/Failure-mode coverage[\s\S]*B-1[\s\S]*timeout[\s\S]*CF-B1/);
+  });
+
+  it("accepts a named prune as failure-mode coverage", () => {
+    const compiled = compileValidationModel(
+      boundaryFiles([
+        {
+          id: "CF-B1-PRUNE",
+          title: "Store failure modes pruned",
+          meaning: "Store fault detection is deliberately out of scope",
+          structure_ids: ["B-1"],
+          owner: "OWN-1",
+          source_ids: ["SRC-1"],
+          lane: "per-commit",
+          layer: "L2",
+          status: "pruned",
+          reason: "The store is a managed service; its fault behavior is covered by the vendor contract",
+          covers_failure_modes: ["B-1#timeout", "B-1#partial success"],
+        },
+      ]),
+    );
+    expect(compiled.accepted, compiled.diagnostics.map((item) => item.message).join("\n")).toBe(true);
+    expect(compiled.generated_views["planned-trace.md"]).toMatch(/B-1[\s\S]*timeout[\s\S]*CF-B1-PRUNE \(pruned\)/);
+  });
+
+  it("rejects dangling failure-mode references", () => {
+    const dangling = compileValidationModel(
+      boundaryFiles([
+        {
+          id: "CF-B1-PRUNE",
+          title: "Store failure modes pruned",
+          meaning: "Prune with broken references",
+          structure_ids: ["B-1"],
+          owner: "OWN-1",
+          source_ids: ["SRC-1"],
+          lane: "per-commit",
+          layer: "L2",
+          status: "pruned",
+          reason: "Cited modes are wrong on purpose",
+          covers_failure_modes: ["B-1#retry", "B-MISSING#timeout", "no-hash", "B-1#timeout", "B-1#partial success"],
+        },
+      ]),
+    );
+    expect(dangling.accepted).toBe(false);
+    const messages = dangling.diagnostics.map((item) => item.message).join("\n");
+    expect(messages).toContain("B-1#retry");
+    expect(messages).toContain("B-MISSING#timeout");
+    expect(messages).toContain("no-hash");
   });
 
   it("fails closed when a landed family's declared control is implemented by no inventory test", () => {

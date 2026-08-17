@@ -152,6 +152,9 @@ export interface ValidationFamily {
   oracle?: string;
   risk?: string;
   control_ids?: string[];
+  /** Declared failure modes this family covers or prunes, as
+   * "<structure-id>#<mode>" references into the structure's failure_modes. */
+  covers_failure_modes?: string[];
   ticket?: string;
   planned_tests?: string[];
   evidence?: EvidenceDeclaration;
