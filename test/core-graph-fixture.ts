@@ -18,12 +18,14 @@ export function graphFixture(): {
       { id: "SRC-RETRY", kind: "doc", path: "docs/retries.md", locator: "Retry contract" },
     ],
     structures: [
+      { id: "J-TENANT", kind: "journey", title: "First tenant lookup", meaning: "A new tenant completes its first isolated lookup", owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"] },
       { id: "CON-TENANT", kind: "contract", title: "Tenant boundary", meaning: "A lookup never returns another tenant's record", owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"], changed_paths: ["src/tenant/**"], acceptance_criteria: ["Foreign records are rejected"], error_criteria: ["A foreign-tenant lookup returns a typed not-found error without exposing the row"], failure_modes: ["Cross-tenant data is returned"] },
       { id: "INV-RETRY", kind: "invariant", title: "Retry safety", meaning: "A retry never applies the same mutation twice", owner: "OWN-TENANCY", source_ids: ["SRC-RETRY"], changed_paths: ["src/retry/**"], acceptance_criteria: ["Repeated delivery has one effect"], failure_modes: ["Mutation is duplicated"] },
     ],
     policy: {
       default: "blocking",
       inheritance: "tighten-only",
+      smoke_journey_ids: ["J-TENANT"],
       layers: [
         { id: "L1", title: "Contract", status: "active" },
         { id: "L2", title: "Hermetic", status: "active" },
@@ -46,7 +48,7 @@ export function graphFixture(): {
       { id: "NC-RETRY", title: "Double mutation seed", family_id: "CF-RETRY", owner: "OWN-TENANCY", expected_failure: "Detector fails when retry mutates twice" },
     ],
     families: [
-      { id: "CF-TENANT", title: "Tenant detector", meaning: "Reject a foreign tenant row", structure_ids: ["CON-TENANT"], owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"], lane: "per-commit", status: "implementable", layer: "L2", oracle: "state", risk: "E1", control_ids: ["NC-TENANT"], ticket: "HB-TENANT", planned_tests: ["tests/tenant.test.ts"], exclusions: ["Live cloud tenancy"] },
+      { id: "CF-TENANT", title: "Tenant detector", meaning: "Reject a foreign tenant row", structure_ids: ["CON-TENANT", "J-TENANT"], owner: "OWN-TENANCY", source_ids: ["SRC-TENANCY"], lane: "per-commit", status: "implementable", layer: "L2", oracle: "state", risk: "E1", control_ids: ["NC-TENANT"], ticket: "HB-TENANT", planned_tests: ["tests/tenant.test.ts"], exclusions: ["Live cloud tenancy"] },
       { id: "CF-RETRY", title: "Retry detector", meaning: "Prove one durable mutation after a retry", structure_ids: ["INV-RETRY"], owner: "OWN-TENANCY", source_ids: ["SRC-RETRY"], lane: "per-commit", status: "implementable", layer: "L1", oracle: "state", risk: "E1", control_ids: ["NC-RETRY"], ticket: "HB-RETRY", planned_tests: ["tests/retry.test.ts"], exclusions: ["Third-party delivery guarantees"] },
     ],
     tickets: [

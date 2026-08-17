@@ -89,6 +89,9 @@ export interface LegacyModelImportInput {
   structures: ProductStructure[];
   /** Complete reviewed target policy; omit only for the canonical legacy fallback. */
   policy?: ValidationPolicy;
+  /** Reviewed smoke-journey designation applied to the canonical fallback
+   * policy; a reviewed `policy` carries its own `smoke_journey_ids` instead. */
+  smoke_journey_ids?: string[];
   families: Record<string, LegacyFamilyReview>;
   ticket_reviews: Record<string, LegacyTicketReview>;
 }

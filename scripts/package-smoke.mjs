@@ -450,6 +450,14 @@ console.log("surface ok");
     schema: "validation-architect/model/structures/v1",
     structures: [
       {
+        id: "J-1",
+        kind: "journey",
+        title: "First smoke response",
+        meaning: "A new consumer completes its first stable smoke request",
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+      },
+      {
         id: "CON-1",
         kind: "contract",
         title: "Smoke contract",
@@ -466,6 +474,7 @@ console.log("surface ok");
     schema: "validation-architect/model/policy/v1",
     default: "blocking",
     inheritance: "tighten-only",
+    smoke_journey_ids: ["J-1"],
     layers: [
       { id: "L1", title: "Invariant and contract", status: "declared-empty", reason: "Focused L2 fixture" },
       { id: "L2", title: "Hermetic system", status: "active" },
@@ -502,7 +511,7 @@ console.log("surface ok");
         id: "CF-X01-S",
         title: "Smoke happy path",
         meaning: "The stable response is preserved",
-        structure_ids: ["CON-1"],
+        structure_ids: ["CON-1", "J-1"],
         owner: "OWN-1",
         source_ids: ["SRC-1"],
         lane: "per-commit",

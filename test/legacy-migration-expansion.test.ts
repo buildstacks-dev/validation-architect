@@ -60,6 +60,14 @@ function review(): LegacyModelImportInput {
     sources: [{ id: "SRC-1", kind: "doc", path: "docs/PRODUCT.md" }],
     structures: [
       {
+        id: "J-1",
+        kind: "journey",
+        title: "First migrated run",
+        meaning: "A reviewed legacy corpus completes its first canonical compile",
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+      },
+      {
         id: "CON-1",
         kind: "contract",
         title: "Migration contract",
@@ -73,6 +81,7 @@ function review(): LegacyModelImportInput {
     policy: {
       default: "blocking",
       inheritance: "tighten-only",
+      smoke_journey_ids: ["J-1"],
       layers: [
         { id: "L1", title: "Invariant and contract", status: "active" },
         { id: "L2", title: "Hermetic system", status: "active" },
@@ -165,7 +174,7 @@ function review(): LegacyModelImportInput {
       "CF-FAST": {
         title: "Fast detector",
         meaning: "The deterministic refusal remains at L2",
-        structure_ids: ["CON-1"],
+        structure_ids: ["CON-1", "J-1"],
         owner: "OWN-1",
         source_ids: ["SRC-1"],
         control: control("CF-FAST"),

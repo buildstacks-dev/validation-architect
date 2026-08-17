@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.3
+
+The smoke journey becomes named, fail-closed policy data (VA-ENF-003, validation-architect 0.4.10).
+
+- `policy.yaml` gains `smoke_journey_ids`, designating at least one `journey` structure as the always-green, must-run-on-merge first-value path.
+- The compiler rejects a policy with no designation (`MODEL_SMOKE_JOURNEY_MISSING`), a non-journey designation, or a designated journey not covered by an implementable per-commit family (`MODEL_SMOKE_JOURNEY_INVALID`).
+- The walking-skeleton journey test is the designated smoke journey; the owner briefing shows it by name.
+- Legacy import accepts a reviewed `smoke_journey_ids` for the canonical fallback policy.
+- Versioned with validation-harness-audit 0.8.3.
+
 ## 0.8.2
 
 Contracts require typed error criteria (VA-ENF-005, validation-architect 0.4.9).

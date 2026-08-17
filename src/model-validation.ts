@@ -50,6 +50,15 @@ export function validateModel(model: CompiledDesignModel, context: ModelValidati
     if (exception.kind === "provisional" && !exception.value) shapeError("policy.yaml", exception.id, "value", "A provisional exception must state the testable temporary value.");
   }
   if (["C2", "C3", "C4"].includes(model.product.criticality) && layers.get("L5")?.status !== "active") shapeError("policy.yaml", "L5", "status", "C2-C4 products require an active L5 ops-hardening layer with threat and contention obligations.");
+  // Smoke-journey designation (VA-ENF-003): the onboarding/first-value path
+  // is named policy data, not bootstrap prose, and it must run per commit.
+  const smokeJourneyIds = model.policy.smoke_journey_ids ?? [];
+  if (smokeJourneyIds.length === 0) codedError("MODEL_SMOKE_JOURNEY_MISSING", "policy.yaml", "smoke_journey_ids", "No smoke journey is designated; the first-value path has no always-green, must-run-on-merge designation.", "Add smoke_journey_ids naming at least one journey structure covered by an implementable per-commit family.");
+  for (const id of smokeJourneyIds) {
+    const structure = structureById.get(id);
+    if (!structure || structure.kind !== "journey") codedError("MODEL_SMOKE_JOURNEY_INVALID", "policy.yaml", "smoke_journey_ids", `Smoke designation ${id} does not resolve to a journey structure.`, "Designate a journey structure as the smoke journey.");
+    else if (!model.families.some((family) => family.status === "implementable" && family.lane === "per-commit" && family.structure_ids.includes(id))) codedError("MODEL_SMOKE_JOURNEY_INVALID", "policy.yaml", "smoke_journey_ids", `Smoke journey ${id} is not covered by an implementable family in the per-commit lane.`, "Link the smoke journey to at least one implementable per-commit family so it runs on every merge.");
+  }
   if (model.policy.coexistence) for (const path of [model.policy.coexistence.isolated_root, ...model.policy.coexistence.protected_paths]) if (!safePath(path)) linkError("policy.yaml", "coexistence", `Coexistence path ${path} is unsafe.`, "Use bounded repository-relative isolated and protected paths with no traversal.");
 
   if (model.families.length === 0 || model.families.every((family) => family.status !== "implementable")) {

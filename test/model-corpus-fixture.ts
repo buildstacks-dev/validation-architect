@@ -42,6 +42,14 @@ export function writeValidModel(root: string, sourceRevision = "abc123"): void {
     schema: MODEL_FILE_SCHEMAS["structures.yaml"],
     structures: [
       {
+        id: "J-1",
+        kind: "journey",
+        title: "First fixture response",
+        meaning: "A new consumer completes its first stable fixture request",
+        owner: "OWN-1",
+        source_ids: ["SRC-1"],
+      },
+      {
         id: "CON-1",
         kind: "contract",
         title: "Fixture contract",
@@ -58,6 +66,7 @@ export function writeValidModel(root: string, sourceRevision = "abc123"): void {
     schema: MODEL_FILE_SCHEMAS["policy.yaml"],
     default: "blocking",
     inheritance: "tighten-only",
+    smoke_journey_ids: ["J-1"],
     layers: [
       { id: "L1", title: "Invariant and contract", status: "declared-empty", reason: "Focused L2 fixture" },
       { id: "L2", title: "Hermetic system", status: "active" },
@@ -94,7 +103,7 @@ export function writeValidModel(root: string, sourceRevision = "abc123"): void {
         id: "CF-X01-S",
         title: "Fixture happy path",
         meaning: "The stable response is preserved",
-        structure_ids: ["CON-1"],
+        structure_ids: ["CON-1", "J-1"],
         owner: "OWN-1",
         source_ids: ["SRC-1"],
         lane: "per-commit",

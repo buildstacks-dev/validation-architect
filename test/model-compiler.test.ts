@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { describe, expect, it } from "vitest";
 import {
   MODEL_FILES,
@@ -46,6 +46,14 @@ function validFiles(): ModelFileSet {
       schema: MODEL_FILE_SCHEMAS["structures.yaml"],
       structures: [
         {
+          id: "J-1",
+          kind: "journey",
+          title: "First tenant lookup",
+          meaning: "A new org completes its first successful lookup",
+          owner: "OWN-1",
+          source_ids: ["SRC-1"],
+        },
+        {
           id: "CON-1",
           kind: "contract",
           title: "Tenant boundary",
@@ -69,6 +77,7 @@ function validFiles(): ModelFileSet {
       schema: MODEL_FILE_SCHEMAS["policy.yaml"],
       default: "blocking",
       inheritance: "tighten-only",
+      smoke_journey_ids: ["J-1"],
       layers: [
         { id: "L1", title: "Invariant and contract", status: "declared-empty", reason: "No L1 family in this focused fixture" },
         { id: "L2", title: "Hermetic system", status: "active" },
@@ -105,7 +114,7 @@ function validFiles(): ModelFileSet {
           id: "CF-1",
           title: "Tenant isolation",
           meaning: "An org|app lookup rejects foreign rows",
-          structure_ids: ["CON-1"],
+          structure_ids: ["CON-1", "J-1"],
           owner: "OWN-1",
           source_ids: ["SRC-1"],
           lane: "per-commit",
@@ -195,14 +204,14 @@ describe("validation model compiler", () => {
       }),
       "structures.yaml": yaml({
         schema: MODEL_FILE_SCHEMAS["structures.yaml"],
-        structures: model.structures.map((structure) => ({ ...structure, source_ids: sourceIds })),
+        structures: model.structures.map((structure) => ({ ...structure, source_ids: [...sourceIds] })),
       }),
       "families.yaml": yaml({
         schema: MODEL_FILE_SCHEMAS["families.yaml"],
-        families: model.families.map((family) => ({ ...family, source_ids: sourceIds })),
+        families: model.families.map((family) => ({ ...family, source_ids: [...sourceIds] })),
       }),
     });
-    expect(compiled.accepted).toBe(true);
+    expect(compiled.accepted, compiled.diagnostics.map((item) => item.message).join("\n")).toBe(true);
     const trace = compiled.generated_views["planned-trace.md"];
     if (!trace) throw new Error("planned trace was not generated");
     const registry = trace
@@ -228,13 +237,15 @@ describe("validation model compiler", () => {
     const files = validFiles();
     const model = compileValidationModel(files).model;
     if (!model) throw new Error("fixture model did not compile");
-    const contract = model.structures[0];
-    if (!contract) throw new Error("fixture structure missing");
+    const journey = model.structures.find((structure) => structure.id === "J-1");
+    const contract = model.structures.find((structure) => structure.id === "CON-1");
+    if (!journey || !contract) throw new Error("fixture structure missing");
     const compiled = compileValidationModel({
       ...files,
       "structures.yaml": yaml({
         schema: MODEL_FILE_SCHEMAS["structures.yaml"],
         structures: [
+          journey,
           {
             ...contract,
             acceptance_criteria: [
@@ -474,6 +485,56 @@ describe("validation model compiler", () => {
       }),
     };
   };
+
+  it("fails closed when no smoke journey is designated", () => {
+    const files = validFiles();
+    const policy = parse(files["policy.yaml"]) as Record<string, unknown>;
+    delete policy.smoke_journey_ids;
+    const rejected = compileValidationModel({ ...files, "policy.yaml": yaml(policy) });
+    expect(rejected.accepted).toBe(false);
+    expect(rejected.diagnostics.some((item) => item.code === "MODEL_SMOKE_JOURNEY_MISSING")).toBe(true);
+  });
+
+  it("rejects a smoke designation that is not a journey structure", () => {
+    const files = validFiles();
+    const policy = parse(files["policy.yaml"]) as Record<string, unknown>;
+    policy.smoke_journey_ids = ["CON-1"];
+    const rejected = compileValidationModel({ ...files, "policy.yaml": yaml(policy) });
+    expect(rejected.accepted).toBe(false);
+    const diagnostic = rejected.diagnostics.find((item) => item.code === "MODEL_SMOKE_JOURNEY_INVALID");
+    expect(diagnostic?.message).toContain("CON-1");
+  });
+
+  it("rejects a smoke journey whose only linked family sits outside the per-commit lane", () => {
+    const files = validFiles();
+    const model = compileValidationModel(files).model!;
+    const policy = model.policy;
+    const scheduled = policy.lanes.find((lane) => lane.id === "scheduled")!;
+    scheduled.status = "active";
+    scheduled.triggers = ["weekly"];
+    delete scheduled.reason;
+    const family = model.families.find((item) => item.id === "CF-1")!;
+    family.lane = "scheduled";
+    delete family.planned_tests;
+    family.evidence = { state: "complete", path: "artifacts/journey.json" };
+    const ticket = model.tickets.find((item) => item.id === "HB-1")!;
+    ticket.lane = "scheduled";
+    const rejected = compileValidationModel({
+      ...files,
+      "policy.yaml": yaml({ schema: MODEL_FILE_SCHEMAS["policy.yaml"], ...policy }),
+      "families.yaml": yaml({ schema: MODEL_FILE_SCHEMAS["families.yaml"], families: model.families }),
+      "backlog.yaml": yaml({ schema: MODEL_FILE_SCHEMAS["backlog.yaml"], tickets: model.tickets }),
+    });
+    expect(rejected.accepted).toBe(false);
+    const diagnostic = rejected.diagnostics.find((item) => item.code === "MODEL_SMOKE_JOURNEY_INVALID");
+    expect(diagnostic?.message).toContain("per-commit");
+  });
+
+  it("renders the smoke-journey designation in the owner briefing", () => {
+    const compiled = compileValidationModel(validFiles());
+    expect(compiled.accepted).toBe(true);
+    expect(compiled.generated_views["owner-briefing.md"]).toMatch(/Smoke journey[\s\S]*J-1/);
+  });
 
   it("rejects a contract that declares only happy-path criteria", () => {
     const files = validFiles();
@@ -868,9 +929,18 @@ HB-002 LANDED
         criticality_reason: "Synthetic local migration evidence",
       },
       inner_loop_command: "pnpm test -- --changed",
+      smoke_journey_ids: ["J-1"],
       owners: [{ id: "OWN-1", name: "Runtime", responsibility: "Own validation" }],
       sources: [{ id: "SRC-1", kind: "doc", path: "docs/PRODUCT.md", locator: "Tenant rule" }],
       structures: [
+        {
+          id: "J-1",
+          kind: "journey",
+          title: "First tenant lookup",
+          meaning: "A new tenant completes its first isolated lookup",
+          owner: "OWN-1",
+          source_ids: ["SRC-1"],
+        },
         {
           id: "CON-1",
           kind: "contract",
@@ -896,7 +966,7 @@ HB-002 LANDED
         "CF-TEST": {
           title: "Tenant detector",
           meaning: "Cross-tenant data is rejected",
-          structure_ids: ["CON-1"],
+          structure_ids: ["CON-1", "J-1"],
           owner: "OWN-1",
           source_ids: ["SRC-1"],
           control: control("TEST"),
