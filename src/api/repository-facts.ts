@@ -24,6 +24,12 @@ import {
   type RelationshipGraph,
   type TraceFinding,
 } from "../relationship-graph.js";
+import {
+  DEFAULT_SPEC_SUFFIXES,
+  isSpecPath,
+  resolveSpecConventions,
+  type SpecConventions,
+} from "../spec-conventions.js";
 import { parseSpecSource, type SpecFileInfo } from "../trace.js";
 import type { CompilerDiagnostic } from "../model.js";
 import { invalidInput } from "./errors.js";
@@ -31,7 +37,9 @@ import type { RepositoryPort } from "./ports.js";
 import { safeRepositoryPath } from "./validate.js";
 
 export const DESIGN_ROOT = "validation-design";
-export const SPEC_SUFFIXES = [".test.ts", ".test.tsx", ".test.js", ".test.mjs", ".spec.ts"] as const;
+/** The jest-vitest default suffixes; the compiled model's reviewed
+ * `conventions` block (model/project.yaml) is authoritative per repository. */
+export const SPEC_SUFFIXES = DEFAULT_SPEC_SUFFIXES;
 
 export interface RepositoryFactsOptions {
   /** Tests root relative to the repository root; defaults to "tests". */
@@ -82,6 +90,7 @@ function plannedFamiliesByPath(model: CompiledDesignModel): Map<string, PlannedF
 function specConventionFindings(
   specs: readonly SpecFileInfo[],
   planned: ReadonlyMap<string, readonly PlannedFamily[]>,
+  conventions: SpecConventions,
 ): TraceFinding[] {
   const findings: TraceFinding[] = [];
   const add = (spec: SpecFileInfo, code: string, message: string, correction: string): void => {
@@ -96,7 +105,7 @@ function specConventionFindings(
       add(spec, "ORPHAN_TEST", `${spec.path} is not named by any compiled family's planned_tests.`, "Add the exact path through the reviewed model workflow and recompile, or remove the unplanned spec from the configured test root.");
     }
     if (spec.tests === 0) {
-      add(spec, "SPEC_CASE_MISSING", `${spec.path} contains no observed it/test call site.`, "Add an executable test case or remove the empty spec file.");
+      add(spec, "SPEC_CASE_MISSING", `${spec.path} contains no executable test call site under the ${conventions.runner} convention.`, "Add an executable test case or remove the empty spec file.");
     }
   }
   return findings;
@@ -175,19 +184,18 @@ export async function loadRepositoryFacts(
   if (!safeRepositoryPath(testsRoot)) throw invalidInput(`testsRoot rejected: ${testsRoot}`);
   const environment = options.environment ?? "repository-port";
 
+  const conventions = resolveSpecConventions(model.conventions);
   const listedTestPaths = await repo.listFiles([`${testsRoot}/**`]);
-  const specPaths = listedTestPaths
-    .filter((path) => SPEC_SUFFIXES.some((suffix) => path.endsWith(suffix)))
-    .sort();
+  const specPaths = listedTestPaths.filter((path) => isSpecPath(path, conventions)).sort();
   const testsRootPresent = listedTestPaths.length > 0;
   const specSources = new Map<string, string>();
   for (const path of specPaths) {
     const content = await readSafe(repo, path);
     if (content !== null) specSources.set(path, content);
   }
-  const specs = [...specSources.entries()].map(([path, source]) => parseSpecSource(path, source));
+  const specs = [...specSources.entries()].map(([path, source]) => parseSpecSource(path, source, conventions));
   const planned = plannedFamiliesByPath(model);
-  const repositoryFindings = specConventionFindings(specs, planned);
+  const repositoryFindings = specConventionFindings(specs, planned, conventions);
 
   const lanes = new Map(model.policy.lanes.map((item) => [item.id, item]));
   const families = new Map(model.families.map((item) => [item.id, item]));

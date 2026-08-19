@@ -197,6 +197,15 @@ pnpm exec validation-architect plan . --changed src/example.ts
 pnpm exec validation-architect explain CF-001 .
 ```
 
+Spec detection follows the checked model, not a hardcoded language guess:
+`model/project.yaml` may declare a reviewed `conventions` block naming a
+runner preset (`jest-vitest` — the default, `pytest`, `go-test`, `junit`) or
+`runner: custom` with explicit `spec_suffixes`, `test_call_pattern`, and
+`header_comment_styles`. The resolved detection block is recorded in the
+compiled identity; an unknown or ambiguous convention fails closed at compile
+time and never silently falls back to JS/TS. Without the block, detection is
+exactly the historical JS/TS behavior and existing corpora are unaffected.
+
 The deprecated `validation-trace` alias remains only through 0.x as a bounded
 bridge to `validation-architect check`; it is unrelated to campaign hosting.
 

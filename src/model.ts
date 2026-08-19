@@ -1,3 +1,4 @@
+import type { SpecConventions } from "./spec-conventions.js";
 import type { CoreVersionBundle } from "./versions.js";
 
 export const MODEL_DIRECTORY = "model";
@@ -220,6 +221,10 @@ export interface CompiledDesignModel {
   schema: string;
   product: ProductIdentity;
   versions: CoreVersionBundle;
+  /** Reviewed spec-detection conventions from project.yaml, fully resolved.
+   * Absent means the jest-vitest default applies downstream without entering
+   * the compiled identity, so pre-existing corpora are byte-identical. */
+  conventions?: SpecConventions;
   owners: ModelOwner[];
   sources: ModelSource[];
   structures: ProductStructure[];

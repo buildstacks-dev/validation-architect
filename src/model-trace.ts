@@ -5,6 +5,7 @@ import { compileValidationModel } from "./model-compiler.js";
 import { GENERATED_MODEL_VIEWS } from "./model-views.js";
 import { MODEL_FILES, type CompiledDesignModel, type ModelFileSet, type TestInventory, type ValidationEvidenceSet } from "./model.js";
 import { buildRelationshipGraph, type RelationshipGraph } from "./relationship-graph.js";
+import { resolveSpecConventions } from "./spec-conventions.js";
 import { scanSpecs } from "./trace.js";
 
 export interface ModelTraceOptions {
@@ -21,8 +22,6 @@ export interface ModelTraceResult {
   model?: CompiledDesignModel;
   inventory?: TestInventory;
 }
-
-const SPEC_SUFFIXES = [".test.ts", ".test.tsx", ".test.js", ".test.mjs", ".spec.ts"];
 
 function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -53,7 +52,7 @@ export function runModelTrace(targetRoot: string, options: ModelTraceOptions = {
 
   const testsRoot = options.testsRoot ?? "tests";
   const testsPresent = existsSync(join(root, testsRoot));
-  const specs = testsPresent ? scanSpecs(root, testsRoot, SPEC_SUFFIXES) : [];
+  const specs = testsPresent ? scanSpecs(root, testsRoot, resolveSpecConventions(compiled.model.conventions)) : [];
   const lanes = new Map(compiled.model.policy.lanes.map((item) => [item.id, item]));
   const families = new Map(compiled.model.families.map((item) => [item.id, item]));
   const inventory: TestInventory = {
