@@ -48,7 +48,7 @@
   "scripts": {
     "vda": "tsx src/cli.ts",
     "trace": "tsx src/trace-cli.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-dist.mjs core && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit && pnpm run build && tsc -p design/tsconfig.json --noEmit",
     "test": "vitest run",
