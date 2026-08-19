@@ -34,6 +34,9 @@ describe("validation-architect-design CLI", () => {
     expect(help).toContain("--smoke");
     expect(help).toContain("deliver <runId>");
     expect(help).toContain("repos [target-dir ...]");
+    expect(help).toContain("readers <runId>");
+    expect(help).toContain("audit <runId>");
+    expect(help).toContain("fidelity <target-dir>");
     expect(help).toContain("--out");
     expect(help).toContain("[--intake-file <file>]");
     expect(help).toContain("--claude-auth <subscription|api-key>");
@@ -99,5 +102,14 @@ describe("validation-architect-design CLI", () => {
     const codex = collect();
     expect(await main([".", "--profile", "C0", "--codex-auth", "other"], codex.io)).toBe(2);
     expect(codex.err.join("\n")).toContain("--codex-auth");
+  });
+
+  it("validates fidelity scope before provider setup", async () => {
+    const invalid = collect();
+    expect(await main(["fidelity", ".", "--wave", "0"], invalid.io)).toBe(2);
+    expect(invalid.err.join("\n")).toContain("--wave");
+    const conflicting = collect();
+    expect(await main(["fidelity", ".", "--wave", "1", "--tickets", "HB-1"], conflicting.io)).toBe(2);
+    expect(conflicting.err.join("\n")).toContain("not both");
   });
 });

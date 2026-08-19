@@ -6,6 +6,7 @@ import {
   evaluateFleetStatus,
   recordCampaignCompletion,
   recordDeliveryCompletion,
+  recordFidelityCompletion,
   registryEntries,
   registryStatus,
 } from "../src/registry.js";
@@ -51,6 +52,13 @@ describe("public-engine fleet registry", () => {
       deliveredAt: "2026-08-19T02:00:00.000Z",
     });
     expect(registryEntries(path)).toHaveLength(1);
+
+    recordFidelityCompletion(path, context.target, "b".repeat(40), "findings", "2026-08-19T03:00:00.000Z");
+    expect(registryStatus(path, context.target)?.fidelity).toEqual({
+      sourceRevision: "b".repeat(40),
+      verdict: "findings",
+      recordedAt: "2026-08-19T03:00:00.000Z",
+    });
   });
 
   it("never registers fixture completions", () => {

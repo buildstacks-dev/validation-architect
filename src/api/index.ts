@@ -34,6 +34,7 @@ export {
   validateSeatRef,
   validateExecutionIdentity,
 } from "./ports.js";
+export { validateAgainstSchema } from "./json-schema.js";
 
 // Campaign contracts: envelope, checkpoint, provenance, bundle (D2/D7).
 export type {
