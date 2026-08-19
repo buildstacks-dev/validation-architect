@@ -20,6 +20,32 @@
       }
     },
     "versions": { "type": "object" },
+    "conventions": {
+      "type": "object",
+      "description": "Resolved spec-detection conventions from project.yaml; absent means the jest-vitest default applies.",
+      "required": ["runner", "spec_suffixes", "test_call_pattern", "header_comment_styles"],
+      "properties": {
+        "runner": { "type": "string", "minLength": 1 },
+        "spec_suffixes": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "spec_basename_patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["prefix", "suffix"],
+            "properties": {
+              "prefix": { "type": "string", "minLength": 1 },
+              "suffix": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "test_call_pattern": { "type": "string", "minLength": 1 },
+        "header_comment_styles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["slash-line", "slash-block", "hash-line", "dash-line", "docstring"] }
+        }
+      }
+    },
     "owners": { "type": "array", "items": { "type": "object", "required": ["id"] } },
     "sources": { "type": "array", "items": { "type": "object", "required": ["id", "kind"] } },
     "structures": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "meaning"] } },

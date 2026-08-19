@@ -25,6 +25,13 @@ import {
 } from "./model.js";
 import { GENERATED_MODEL_VIEWS, generateModelViews } from "./model-views.js";
 import { validateModel } from "./model-validation.js";
+import {
+  CUSTOM_SPEC_RUNNER,
+  SPEC_HEADER_COMMENT_STYLES,
+  SPEC_RUNNER_PRESETS,
+  type SpecConventions,
+  type SpecHeaderCommentStyle,
+} from "./spec-conventions.js";
 import { CURRENT_CORE_VERSIONS, MODEL_SCHEMA, type CoreVersionBundle } from "./versions.js";
 
 type Row = Record<string, unknown>;
@@ -267,6 +274,101 @@ function linkError(
 }
 
 
+const CUSTOM_CONVENTION_FIELDS = ["spec_suffixes", "test_call_pattern", "header_comment_styles"] as const;
+const MAX_SPEC_SUFFIX_LENGTH = 100;
+const MAX_TEST_CALL_PATTERN_LENGTH = 512;
+
+/**
+ * Spec-detection conventions (issue #88): a reviewed optional block in
+ * project.yaml naming a runner preset or a full custom detection block. The
+ * returned value is fully resolved so the compiled identity records the exact
+ * detection semantics; unknown or ambiguous declarations fail closed — spec
+ * detection never silently falls back to the JS/TS default.
+ */
+function parseSpecConventions(
+  projectRow: Row,
+  files: Partial<Record<ModelFilename, string>>,
+  diagnostics: CompilerDiagnostic[],
+): SpecConventions | undefined {
+  const raw = projectRow.conventions;
+  if (raw === undefined) return undefined;
+  const shape = (field: string, correction: string): void =>
+    shapeError(diagnostics, files, "project.yaml", "conventions", field, correction);
+  const coded = (code: string, message: string, correction: string): void => {
+    diagnostics.push({
+      code,
+      severity: "error",
+      concept: "conventions",
+      location: scalarLocation("project.yaml", files["project.yaml"] ?? ""),
+      message,
+      correction,
+    });
+  };
+  if (!record(raw)) {
+    shape("conventions", "Declare conventions as a mapping: a named runner preset, or runner: custom with an explicit detection block.");
+    return undefined;
+  }
+  rejectUnknownFields(diagnostics, files, "project.yaml", "conventions", raw, ["runner", ...CUSTOM_CONVENTION_FIELDS]);
+  const runner = text(raw, "runner");
+  const presetNames = Object.keys(SPEC_RUNNER_PRESETS).sort();
+  if (!runner || (runner !== CUSTOM_SPEC_RUNNER && !SPEC_RUNNER_PRESETS[runner])) {
+    coded(
+      "MODEL_CONVENTIONS_RUNNER_UNKNOWN",
+      `conventions.runner ${runner ? `"${runner}" is not a recognized preset` : "is missing"}; spec detection never silently falls back to the JS/TS default.`,
+      `Set conventions.runner to one of ${presetNames.join(", ")}, or to ${CUSTOM_SPEC_RUNNER} with explicit ${CUSTOM_CONVENTION_FIELDS.join(", ")}.`,
+    );
+    return undefined;
+  }
+  if (runner !== CUSTOM_SPEC_RUNNER) {
+    const overridden = CUSTOM_CONVENTION_FIELDS.filter((field) => raw[field] !== undefined);
+    if (overridden.length > 0) {
+      coded(
+        "MODEL_CONVENTIONS_AMBIGUOUS",
+        `conventions declares preset ${runner} together with ${overridden.join(", ")}; a preset cannot be partially overridden.`,
+        `Keep runner: ${runner} alone, or set runner: ${CUSTOM_SPEC_RUNNER} and declare the full detection block explicitly.`,
+      );
+      return undefined;
+    }
+    return structuredClone(SPEC_RUNNER_PRESETS[runner]) as SpecConventions;
+  }
+  const suffixes = texts(raw, "spec_suffixes");
+  const pattern = text(raw, "test_call_pattern");
+  const styles = texts(raw, "header_comment_styles");
+  let valid = true;
+  if (!suffixes?.length || suffixes.some((suffix) => suffix.length === 0 || suffix.length > MAX_SPEC_SUFFIX_LENGTH || suffix.includes("\0"))) {
+    shape("spec_suffixes", 'Declare custom spec_suffixes as a non-empty list of short literal path suffixes (e.g. "_check.lua").');
+    valid = false;
+  }
+  if (!pattern || pattern.length > MAX_TEST_CALL_PATTERN_LENGTH) {
+    shape("test_call_pattern", `Declare custom test_call_pattern as a non-empty regular expression of at most ${MAX_TEST_CALL_PATTERN_LENGTH} characters matching one executable test call site per line.`);
+    valid = false;
+  } else {
+    let expression: RegExp | undefined;
+    try {
+      expression = new RegExp(pattern, "gm");
+    } catch (error) {
+      shape("test_call_pattern", `Fix the regular expression: ${(error as Error).message}.`);
+      valid = false;
+    }
+    if (expression && new RegExp(pattern, "m").test("")) {
+      shape("test_call_pattern", "Make test_call_pattern reject the empty string so counted call sites stay meaningful.");
+      valid = false;
+    }
+  }
+  const recognizedStyles = SPEC_HEADER_COMMENT_STYLES as readonly string[];
+  if (!styles?.length || styles.some((style) => !recognizedStyles.includes(style)) || new Set(styles).size !== styles.length) {
+    shape("header_comment_styles", `Declare header_comment_styles as a non-empty duplicate-free list drawn from ${SPEC_HEADER_COMMENT_STYLES.join(", ")}.`);
+    valid = false;
+  }
+  if (!valid || !suffixes || !pattern || !styles) return undefined;
+  return {
+    runner: CUSTOM_SPEC_RUNNER,
+    spec_suffixes: [...suffixes],
+    test_call_pattern: pattern,
+    header_comment_styles: [...styles] as SpecHeaderCommentStyle[],
+  };
+}
+
 export function compileValidationModel(
   files: Partial<Record<ModelFilename, string>>,
   options: CompileModelOptions = {},
@@ -276,7 +378,8 @@ export function compileValidationModel(
   if (!parsed) return { accepted: false, diagnostics, generated_views: {} };
 
   const project = parsed["project.yaml"];
-  rejectUnknownFields(diagnostics, files, "project.yaml", "project", project, ["schema", "product", "versions"]);
+  rejectUnknownFields(diagnostics, files, "project.yaml", "project", project, ["schema", "product", "versions", "conventions"]);
+  const conventions = parseSpecConventions(project, files, diagnostics);
   const productRow = record(project.product) ? project.product : {};
   const versionsRow = record(project.versions) ? project.versions : {};
   rejectUnknownFields(diagnostics, files, "project.yaml", "product", productRow, ["id", "name", "revision", "intended_use", "criticality", "criticality_reason"]);
@@ -389,7 +492,7 @@ export function compileValidationModel(
     rejectUnknownFields(diagnostics, files, file, file, parsed[file], ["schema", key]);
   }
   duplicateDiagnostics([{ file: "owners.yaml", items: owners }, { file: "sources.yaml", items: sources }, { file: "structures.yaml", items: structures }, { file: "policy.yaml", items: layers }, { file: "policy.yaml", items: lanes }, { file: "policy.yaml", items: exceptions }, { file: "controls.yaml", items: controls }, { file: "families.yaml", items: families }, { file: "backlog.yaml", items: tickets }], files, diagnostics);
-  const model: CompiledDesignModel = { schema: MODEL_SCHEMA, product, versions, owners: stable(owners), sources: stable(sources), structures: stable(structures), policy: { ...policy, layers: stable(layers), lanes: stable(lanes), exceptions: stable(exceptions) }, controls: stable(controls), families: stable(families), tickets: stable(tickets) };
+  const model: CompiledDesignModel = { schema: MODEL_SCHEMA, product, versions, ...(conventions ? { conventions } : {}), owners: stable(owners), sources: stable(sources), structures: stable(structures), policy: { ...policy, layers: stable(layers), lanes: stable(lanes), exceptions: stable(exceptions) }, controls: stable(controls), families: stable(families), tickets: stable(tickets) };
   validateModel(model, {
     diagnostics,
     safePath,

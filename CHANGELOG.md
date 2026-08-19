@@ -5,6 +5,21 @@ all three skills (their own CHANGELOGs remain as readable history).
 
 ## 0.4.16 — recurring falsifiability sweep for negative controls (unreleased)
 
+- Spec detection is a per-repo convention (#88): `model/project.yaml` may
+  declare a reviewed `conventions` block naming a runner preset
+  (`jest-vitest`, `pytest`, `go-test`, `junit`) or `runner: custom` with
+  explicit `spec_suffixes`, `test_call_pattern`, and `header_comment_styles`.
+  Both checked-model closure paths (`check()` over RepositoryPort and the CLI
+  trace host) consume the compiled conventions for spec-file recognition,
+  executable call-site counting, and first-comment header styles, so a
+  Python/Go/Java repository reaches full structural closure — orphan
+  detection, `IMPLEMENTATION_PENDING`, `CONTROL_UNIMPLEMENTED` — through
+  configuration alone. The resolved detection block enters the compiled
+  identity; an unknown or ambiguous convention fails closed at compile time
+  (`MODEL_CONVENTIONS_RUNNER_UNKNOWN`, `MODEL_CONVENTIONS_AMBIGUOUS`) and
+  never silently falls back to JS/TS. Absent block = today's exact jest-vitest
+  behavior with a byte-identical compiled identity, so existing corpora are
+  unaffected.
 - Packaging/campaign pre-release hardening (#75–#77): root and design builds
   clean verified output directories and package smoke compares exact isolated
   TypeScript closures; the campaign enforces one absolute wall deadline across

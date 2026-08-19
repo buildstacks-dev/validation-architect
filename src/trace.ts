@@ -12,6 +12,13 @@ import {
   parseManifest,
   tokenMatch,
 } from "./catalog.js";
+import {
+  DEFAULT_SPEC_CONVENTIONS,
+  countTestCallSites,
+  firstSpecHeader,
+  isSpecPath,
+  type SpecConventions,
+} from "./spec-conventions.js";
 
 /**
  * The trace CLI's core (issue #5): deterministic, product-agnostic
@@ -40,7 +47,8 @@ export interface SpecFileInfo {
   tickets: string[];
   /** Whether the file starts with the required comment block. */
   hasHeader: boolean;
-  /** Number of test cases (it/test call sites — a heuristic count). */
+  /** Number of executable test call sites observed under the active
+   * spec-detection convention — a heuristic count. */
   tests: number;
 }
 
@@ -68,8 +76,6 @@ export interface TraceResult {
   manifest?: CaseCatalogManifest;
 }
 
-const DEFAULT_SPEC_SUFFIXES = [".test.ts", ".test.tsx", ".test.js", ".test.mjs", ".spec.ts"];
-
 function walk(root: string): string[] {
   const out: string[] = [];
   const stack = [root];
@@ -85,20 +91,15 @@ function walk(root: string): string[] {
   return out.sort();
 }
 
-function countTests(source: string): number {
-  return [...source.matchAll(/^\s*(?:it|test)(?:\.\w+)?\s*\(/gm)].length;
-}
-
-function firstCommentBlock(source: string): string | undefined {
-  const lineBlock = source.match(/^\s*((?:\/\/[^\n]*(?:\n|$))+)/);
-  if (lineBlock) return lineBlock[1];
-  return source.match(/^\s*(\/\*[\s\S]*?\*\/)/)?.[1];
-}
-
 /** Pure per-file spec parse shared by the filesystem scanner and the
- * RepositoryPort-based public facade. */
-export function parseSpecSource(relativePath: string, source: string): SpecFileInfo {
-  const header = firstCommentBlock(source);
+ * RepositoryPort-based public facade. Call-site counting and header styles
+ * follow the compiled spec-detection convention (default: jest-vitest). */
+export function parseSpecSource(
+  relativePath: string,
+  source: string,
+  conventions: SpecConventions = DEFAULT_SPEC_CONVENTIONS,
+): SpecFileInfo {
+  const header = firstSpecHeader(source, conventions);
   const citations = new Set<string>();
   for (const token of extractCfTokens(header ?? "")) {
     for (const id of expandCellId(token).ids) citations.add(id);
@@ -109,18 +110,19 @@ export function parseSpecSource(relativePath: string, source: string): SpecFileI
     citations: [...citations].sort(),
     tickets,
     hasHeader: header !== undefined,
-    tests: countTests(source),
+    tests: countTestCallSites(source, conventions),
   };
 }
 
 /** Collect spec files and their normalized family citations. */
-export function scanSpecs(targetRoot: string, testsRoot: string, suffixes: string[]): SpecFileInfo[] {
+export function scanSpecs(targetRoot: string, testsRoot: string, conventions: SpecConventions): SpecFileInfo[] {
   const absRoot = join(targetRoot, testsRoot);
   if (!existsSync(absRoot)) return [];
   const specs: SpecFileInfo[] = [];
   for (const file of walk(absRoot)) {
-    if (!suffixes.some((s) => file.endsWith(s))) continue;
-    specs.push(parseSpecSource(relative(targetRoot, file), readFileSync(file, "utf8")));
+    const relativePath = relative(targetRoot, file);
+    if (!isSpecPath(relativePath, conventions)) continue;
+    specs.push(parseSpecSource(relativePath, readFileSync(file, "utf8"), conventions));
   }
   return specs;
 }
@@ -253,8 +255,14 @@ export function runTrace(targetRoot: string, opts: TraceOptions = {}): TraceResu
   if (!existsSync(join(targetRoot, testsRoot))) {
     return fail([`tests root "${testsRoot}" not found under ${targetRoot} (fail-closed: nothing to trace)`]);
   }
-  const suffixes = manifest.conventions?.spec_suffixes ?? DEFAULT_SPEC_SUFFIXES;
-  const specs = scanSpecs(targetRoot, testsRoot, suffixes);
+  // The deprecated legacy path keeps jest-style call sites and headers; only
+  // its suffixes were ever configurable, through the catalog manifest.
+  const suffixes = manifest.conventions?.spec_suffixes;
+  const specs = scanSpecs(
+    targetRoot,
+    testsRoot,
+    suffixes ? { ...DEFAULT_SPEC_CONVENTIONS, spec_suffixes: [...suffixes] } : DEFAULT_SPEC_CONVENTIONS,
+  );
   const analysis = analyzeSpecs(manifest, specs);
   checks.structure = analysis.problems;
   const cov = coverage(manifest, specs, analysis.credits);
