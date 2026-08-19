@@ -28,6 +28,8 @@ describe("validation-architect-design CLI", () => {
     const help = out.join("\n");
     expect(help).toContain("validation-architect-design [target-dir] --profile");
     expect(help).toContain("resume <runId>");
+    expect(help).toContain("list [target-dir]");
+    expect(help).toContain("report <runId>");
     expect(help).toContain("--out");
     expect(help).toContain("[--intake-file <file>]");
   });

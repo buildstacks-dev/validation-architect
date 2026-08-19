@@ -21,6 +21,7 @@ import {
 } from "validation-architect";
 import { LocalRepository } from "./local-repository.js";
 import { LocalCampaignStore } from "./local-store.js";
+import { captureRunContext, listRunContexts, loadRunContext, type RunContext } from "./run-context.js";
 
 const PROFILES: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
 
@@ -40,6 +41,14 @@ const USAGE = `usage:
       version, same source revision, untouched envelope). A settled failed
       run stays failed.
 
+  validation-architect-design list [target-dir] [--state-dir <dir>]
+      List public-checkpoint runs for the target state home. Legacy RunState
+      directories are never discovered.
+
+  validation-architect-design report <runId> [target-dir] [--state-dir <dir>]
+      Render a human-readable report from public checkpoint and immutable
+      run metadata only. No provider is loaded.
+
 exit codes: 0 complete · 1 incomplete/contract failure · 2 usage error`;
 
 interface ParsedArgs {
@@ -56,6 +65,7 @@ const VALUE_FLAGS = new Set([
 const COMMON_FLAGS = ["state-dir", "out", "model-designer", "model-stakeholder", "model-auditor", "model-reader"];
 const START_FLAGS = new Set([...COMMON_FLAGS, "profile", "intake-file", "run-id"]);
 const RESUME_FLAGS = new Set(COMMON_FLAGS);
+const INSPECT_FLAGS = new Set(["state-dir"]);
 
 class UsageError extends Error {}
 
@@ -172,6 +182,34 @@ function reportOutcome(
   return 0;
 }
 
+function checkpointStatus(checkpoint: Awaited<ReturnType<LocalCampaignStore["load"]>>): string {
+  if (checkpoint === null) return "missing-checkpoint";
+  if (checkpoint.pendingTurn) return "interrupted";
+  const last = checkpoint.receipts.at(-1);
+  if (last && (last.status !== "ok" || last.accepted === false)) return "failed";
+  return checkpoint.envelope.terminals.includes(checkpoint.position) ? "complete" : "interrupted";
+}
+
+function renderRunReport(context: RunContext, checkpoint: NonNullable<Awaited<ReturnType<LocalCampaignStore["load"]>>>): string {
+  const artifacts = Object.keys(checkpoint.artifacts).sort();
+  return [
+    `# Validation Architect run ${context.runId}`,
+    "",
+    `- Status: ${checkpointStatus(checkpoint)}`,
+    `- Profile: ${context.profile}`,
+    `- Source revision: ${context.sourceRevision}`,
+    `- Immutable snapshot: ${context.snapshot}`,
+    `- Position: ${checkpoint.position}`,
+    `- Generation: ${checkpoint.generation}`,
+    `- Usage: ${checkpoint.usage.turns} turns; ${checkpoint.usage.inputTokens} input / ${checkpoint.usage.outputTokens} output tokens`,
+    `- Artifacts: ${artifacts.length}`,
+    "",
+    "## Artifact paths",
+    "",
+    ...(artifacts.length > 0 ? artifacts.map((path) => `- ${path}`) : ["(none)"]),
+  ].join("\n");
+}
+
 export interface CliIo {
   stdout: (line: string) => void;
   stderr: (line: string) => void;
@@ -196,11 +234,39 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
     return args.help ? 0 : 2;
   }
 
-  const isResume = args.positional[0] === "resume";
+  const command = ["resume", "list", "report"].includes(args.positional[0] ?? "")
+    ? args.positional[0]
+    : "start";
+  const isResume = command === "resume";
   try {
-    const allowedFlags = isResume ? RESUME_FLAGS : START_FLAGS;
+    const allowedFlags = command === "start" ? START_FLAGS : isResume ? RESUME_FLAGS : INSPECT_FLAGS;
     for (const key of args.flags.keys()) {
-      if (!allowedFlags.has(key)) throw new UsageError(`flag --${key} is not valid for ${isResume ? "resume" : "start"}`);
+      if (!allowedFlags.has(key)) throw new UsageError(`flag --${key} is not valid for ${command}`);
+    }
+    if (command === "list") {
+      if (args.positional.length > 2) throw new UsageError("list accepts at most one target directory");
+      const targetDir = resolve(args.positional[1] ?? ".");
+      const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+      const store = new LocalCampaignStore({ directory: stateDir });
+      for (const context of listRunContexts(stateDir)) {
+        io.stdout(`${context.runId}\t${checkpointStatus(await store.load(context.runId))}\t${context.profile}\t${context.sourceRevision}`);
+      }
+      return 0;
+    }
+    if (command === "report") {
+      const runId = args.positional[1];
+      if (!runId) {
+        io.stderr(USAGE);
+        return 2;
+      }
+      if (args.positional.length > 3) throw new UsageError("report accepts only <runId> and one target directory");
+      const targetDir = resolve(args.positional[2] ?? ".");
+      const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+      const context = loadRunContext(stateDir, runId);
+      const checkpoint = await new LocalCampaignStore({ directory: stateDir }).load(runId);
+      if (!checkpoint) throw new Error(`run ${runId} has metadata but no public checkpoint`);
+      io.stdout(renderRunReport(context, checkpoint));
+      return 0;
     }
     if (isResume) {
       const runId = args.positional[1];
@@ -214,10 +280,11 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       // campaign actually runs; --help and usage errors never touch it.
       const { LocalTurnPort } = await import("./provider-port.js");
       const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+      const context = loadRunContext(stateDir, runId);
       const store = new LocalCampaignStore({ directory: stateDir });
       const outcome = await resume(runId, {
-        repository: new LocalRepository({ root: targetDir }),
-        turns: new LocalTurnPort({ workspace: targetDir, stateDirectory: stateDir, models: models(args.flags) }),
+        repository: new LocalRepository({ root: context.snapshot }),
+        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, models: models(args.flags) }),
         store,
       });
       return reportOutcome(outcome, args.flags.get("out"), io.stdout);
@@ -239,7 +306,13 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
     const { LocalTurnPort } = await import("./provider-port.js");
     const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
     const store = new LocalCampaignStore({ directory: stateDir });
-    const repository = new LocalRepository({ root: targetDir });
+    const context = captureRunContext({
+      runId,
+      target: targetDir,
+      stateDirectory: stateDir,
+      profile: profile as ProfileTier,
+    });
+    const repository = new LocalRepository({ root: context.snapshot });
     const mode = await repository.readFile("validation-design/model/project.yaml") === null ? "greenfield" : "revision";
     const outcome = await design(
       {
@@ -254,7 +327,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       },
       {
         repository,
-        turns: new LocalTurnPort({ workspace: targetDir, stateDirectory: stateDir, models: models(args.flags) }),
+        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, models: models(args.flags) }),
         store,
       },
     );
