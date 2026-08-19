@@ -15,7 +15,9 @@ import { isPublicContractError, PublicContractError } from "../src/api/errors.js
 import { validateTurnRequest, validateTurnResult, type TurnRequest } from "../src/api/ports.js";
 import {
   PUBLISHED_SCHEMA_IDS,
+  canonicalCheckpoint,
   canonicalJson,
+  parseDesignRunCheckpoint,
   schemaAssetFile,
   validateDesignRunCheckpoint,
   validateDesignRunEnvelope,
@@ -51,7 +53,16 @@ function envelope(): CampaignEnvelope {
     ],
     terminals: ["done"],
     outputSchemas: {},
-    limits: { maxTurns: 2, maxWallMs: 60_000, maxTokensPerTurn: 4096 },
+    limits: {
+      maxTurns: 2,
+      maxWallMs: 60_000,
+      maxTokensPerTurn: 4096,
+      maxArtifactFiles: 512,
+      maxArtifactBytes: 1024 * 1024,
+      maxHistoryBytes: 1024 * 1024,
+      maxPromptBytes: 2 * 1024 * 1024,
+      maxIntakeBytes: 128 * 1024,
+    },
   };
 }
 
@@ -104,6 +115,15 @@ describe("published schema identities", () => {
     for (const id of Object.values(PUBLISHED_SCHEMA_IDS)) {
       const asset = JSON.parse(readFileSync(join(root, "schemas", schemaAssetFile(id)), "utf8"));
       expect(asset.$id).toBe(id);
+    }
+  });
+
+  it("publishes every campaign growth limit as a required schema property", () => {
+    const asset = JSON.parse(readFileSync(join(root, "schemas", "design-run.v1.schema.json"), "utf8"));
+    const required = asset.oneOf[0].properties.limits.required as string[];
+    for (const key of ["maxArtifactFiles", "maxArtifactBytes", "maxHistoryBytes", "maxPromptBytes", "maxIntakeBytes"]) {
+      expect(required).toContain(key);
+      expect(asset.oneOf[0].properties.limits.properties[key].minimum).toBe(1);
     }
   });
 
@@ -176,11 +196,21 @@ describe("design-run envelope validation", () => {
     badTerminal.terminals = ["elsewhere"];
     expect(() => validateDesignRunEnvelope(badTerminal)).toThrow(PublicContractError);
   });
+
+  it.each(["maxArtifactFiles", "maxArtifactBytes", "maxHistoryBytes", "maxPromptBytes", "maxIntakeBytes"])(
+    "rejects an envelope missing required growth limit %s",
+    (key) => {
+      const value = envelope();
+      Reflect.deleteProperty(value.limits, key);
+      expect(() => validateDesignRunEnvelope(value)).toThrow(PublicContractError);
+    },
+  );
 });
 
 describe("design-run checkpoint validation", () => {
   it("accepts a complete checkpoint", () => {
     expect(validateDesignRunCheckpoint(checkpoint())).toBeTruthy();
+    expect(parseDesignRunCheckpoint(canonicalCheckpoint(checkpoint()))).toEqual(checkpoint());
   });
 
   it.each([
@@ -213,6 +243,16 @@ describe("design-run checkpoint validation", () => {
     const traversal = checkpoint();
     traversal.artifacts = { "../outside.yaml": "nope" };
     expect(() => validateDesignRunCheckpoint(traversal)).toThrow(PublicContractError);
+
+    const multibyte = checkpoint();
+    multibyte.envelope.limits.maxArtifactBytes = 1;
+    multibyte.artifacts = { "validation-design/note.md": "é" };
+    expect(() => validateDesignRunCheckpoint(multibyte)).toThrow(PublicContractError);
+
+    const intake = checkpoint();
+    intake.envelope.limits.maxIntakeBytes = 1;
+    intake.intake = "é";
+    expect(() => validateDesignRunCheckpoint(intake)).toThrow(PublicContractError);
   });
 
   it("rejects a tampered pending request before it can be replayed", () => {
@@ -239,6 +279,11 @@ describe("design-run checkpoint validation", () => {
     const createdAtDeadline = checkpoint();
     createdAtDeadline.pendingTurn = { idempotencyKey: request.idempotencyKey, request, createdAtEpochMs: 60_001 };
     expect(() => validateDesignRunCheckpoint(createdAtDeadline)).toThrow(PublicContractError);
+
+    const oversizedPrompt = checkpoint();
+    oversizedPrompt.envelope.limits.maxPromptBytes = 1;
+    oversizedPrompt.pendingTurn = { idempotencyKey: request.idempotencyKey, request, createdAtEpochMs: 1 };
+    expect(() => validateDesignRunCheckpoint(oversizedPrompt)).toThrow(PublicContractError);
   });
 
   it("rejects checkpoint identity or position that disagrees with its envelope/history", () => {

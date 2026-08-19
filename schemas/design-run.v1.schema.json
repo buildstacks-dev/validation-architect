@@ -19,11 +19,16 @@
         "outputSchemas": { "type": "object" },
         "limits": {
           "type": "object",
-          "required": ["maxTurns", "maxWallMs", "maxTokensPerTurn"],
+          "required": ["maxTurns", "maxWallMs", "maxTokensPerTurn", "maxArtifactFiles", "maxArtifactBytes", "maxHistoryBytes", "maxPromptBytes", "maxIntakeBytes"],
           "properties": {
             "maxTurns": { "type": "integer", "minimum": 1 },
             "maxWallMs": { "type": "integer", "minimum": 1 },
             "maxTokensPerTurn": { "type": "integer", "minimum": 1 },
+            "maxArtifactFiles": { "type": "integer", "minimum": 1 },
+            "maxArtifactBytes": { "type": "integer", "minimum": 1 },
+            "maxHistoryBytes": { "type": "integer", "minimum": 1 },
+            "maxPromptBytes": { "type": "integer", "minimum": 1 },
+            "maxIntakeBytes": { "type": "integer", "minimum": 1 },
             "maxRelayExchanges": { "type": "integer", "minimum": 1 },
             "maxReaderTurns": { "type": "integer", "minimum": 1 },
             "maxAuditIterations": { "type": "integer", "minimum": 1 },
@@ -53,7 +58,18 @@
             "required": ["idempotencyKey", "seat", "state", "nextState", "status"],
             "properties": {
               "status": { "enum": ["ok", "refused", "limit_exhausted", "error"] },
-              "accepted": { "type": "boolean" }
+              "accepted": { "type": "boolean" },
+              "artifactChanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["path", "sha256"],
+                  "properties": {
+                    "path": { "type": "string", "minLength": 1 },
+                    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                  }
+                }
+              }
             }
           }
         },
