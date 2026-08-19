@@ -297,6 +297,8 @@ try {
     "package/dist/run-context.js",
     "package/dist/run-repository.js",
     "package/dist/fixtures.js",
+    "package/dist/delivery.js",
+    "package/dist/registry.js",
     "package/fixtures/lumen-webapp/docs/PRODUCT.md",
     "package/fixtures/lumen-webapp/rambling.txt",
   ]) {

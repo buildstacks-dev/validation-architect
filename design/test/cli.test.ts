@@ -32,6 +32,8 @@ describe("validation-architect-design CLI", () => {
     expect(help).toContain("report <runId>");
     expect(help).toContain("fixture <name>");
     expect(help).toContain("--smoke");
+    expect(help).toContain("deliver <runId>");
+    expect(help).toContain("repos [target-dir ...]");
     expect(help).toContain("--out");
     expect(help).toContain("[--intake-file <file>]");
     expect(help).toContain("--claude-auth <subscription|api-key>");
