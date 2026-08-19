@@ -299,6 +299,8 @@ try {
     "package/dist/fixtures.js",
     "package/dist/delivery.js",
     "package/dist/registry.js",
+    "package/dist/posthoc.js",
+    "package/dist/fidelity.js",
     "package/fixtures/lumen-webapp/docs/PRODUCT.md",
     "package/fixtures/lumen-webapp/rambling.txt",
   ]) {

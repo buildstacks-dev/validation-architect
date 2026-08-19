@@ -88,6 +88,23 @@ export function recordDeliveryCompletion(
   save(path, registry);
 }
 
+export function recordFidelityCompletion(
+  path: string,
+  target: string,
+  sourceRevision: string,
+  verdict: "clean" | "findings",
+  recordedAt = new Date().toISOString(),
+): void {
+  const registry = load(path);
+  const key = targetKey(target);
+  registry.entries[key] = {
+    ...(registry.entries[key] ?? { target: key }),
+    target: key,
+    fidelity: { sourceRevision, verdict, recordedAt },
+  };
+  save(path, registry);
+}
+
 export function registryEntries(path: string): RegistryEntry[] {
   return Object.values(load(path).entries).sort((left, right) => left.target.localeCompare(right.target));
 }
@@ -100,6 +117,11 @@ function gitStatus(target: string, args: string[]): number {
   return spawnSync("git", args, { cwd: target, stdio: "ignore" }).status ?? 1;
 }
 
+function gitOutput(target: string, args: string[]): string {
+  const result = spawnSync("git", args, { cwd: target, encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
 export function evaluateFleetStatus(entry: RegistryEntry | null, target: string): FleetStatus {
   if (!entry) return "UNKNOWN";
   if (!entry.delivery) return "NEVER_DELIVERED";
@@ -110,6 +132,6 @@ export function evaluateFleetStatus(entry: RegistryEntry | null, target: string)
     return "DESIGN_STALE";
   }
   if (!entry.fidelity) return "FIDELITY_UNKNOWN";
-  if (entry.fidelity.sourceRevision !== entry.delivery.commit) return "FIDELITY_STALE";
+  if (entry.fidelity.sourceRevision !== gitOutput(target, ["rev-parse", "HEAD"])) return "FIDELITY_STALE";
   return entry.fidelity.verdict === "clean" ? "HEALTHY" : "FIDELITY_FINDINGS";
 }
