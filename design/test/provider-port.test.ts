@@ -96,7 +96,11 @@ describe("LocalTurnPort seat mapping", () => {
     const turn = request("designer", { mode: "new" }, "run:stable-key");
     queryMock.mockReturnValueOnce(claudeMessages("sess-idem", "designed"));
     const first = await new LocalTurnPort({ workspace, stateDirectory }).runTurn(turn);
-    const second = await new LocalTurnPort({ workspace, stateDirectory }).runTurn(structuredClone(turn));
+    const restarted = new LocalTurnPort({ workspace, stateDirectory });
+    const settlement = await restarted.reconcileTurn(structuredClone(turn));
+    expect(settlement?.result).toEqual(first);
+    expect(settlement?.settledAtEpochMs).toEqual(expect.any(Number));
+    const second = await restarted.runTurn(structuredClone(turn));
     expect(second).toEqual(first);
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
@@ -144,7 +148,7 @@ describe("LocalTurnPort seat mapping", () => {
     writeFileSync(
       join(ledger, `${sha256(turn.idempotencyKey)}.json`),
       canonicalJson({
-        version: 1,
+        version: 2,
         status: "pending",
         idempotencyKey: turn.idempotencyKey,
         requestDigest: sha256(canonicalJson(turn)),
@@ -174,6 +178,14 @@ describe("LocalTurnPort seat mapping", () => {
     malformed.metadata.turnIndex = 0;
     const result = await new LocalTurnPort({ workspace, stateDirectory }).runTurn(malformed);
     expect(result).toMatchObject({ status: "error", reason: expect.stringContaining("Invalid TurnRequest") });
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("starts no provider work when the request's absolute deadline has arrived", async () => {
+    const expired = request("designer", { mode: "new" }, "run:expired-key");
+    expired.limits = { maxWallMs: 60_000, deadlineAtEpochMs: Date.now() };
+    const result = await new LocalTurnPort({ workspace, stateDirectory }).runTurn(expired);
+    expect(result).toMatchObject({ status: "limit_exhausted", reason: expect.stringContaining("was not started") });
     expect(queryMock).not.toHaveBeenCalled();
   });
 

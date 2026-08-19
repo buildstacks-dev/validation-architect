@@ -23,6 +23,7 @@ import {
   type TurnPort,
   type TurnRequest,
   type TurnResult,
+  type TurnSettlement,
   type TurnUsageReport,
 } from "validation-architect";
 import { TurnLedger } from "./turn-ledger.js";
@@ -381,6 +382,15 @@ export class LocalTurnPort implements TurnPort {
     this.#ledger = new TurnLedger(stateDirectory);
   }
 
+  async reconcileTurn(request: TurnRequest): Promise<TurnSettlement | null> {
+    const requestProblems: string[] = [];
+    validateTurnRequest(request, requestProblems);
+    if (requestProblems.length > 0) {
+      throw new Error(`Invalid TurnRequest: ${requestProblems.join("; ")}`);
+    }
+    return this.#ledger.reconcile(request);
+  }
+
   async runTurn(request: TurnRequest): Promise<TurnResult> {
     const requestProblems: string[] = [];
     validateTurnRequest(request, requestProblems);
@@ -389,14 +399,41 @@ export class LocalTurnPort implements TurnPort {
     }
     let claim;
     try {
-      claim = await this.#ledger.claim(request);
+      const reconciled = await this.#ledger.reconcile(request);
+      if (reconciled) return reconciled.result;
+      const requestedWall = request.limits.maxWallMs ?? 60 * 60_000;
+      const deadlineWall = request.limits.deadlineAtEpochMs === undefined
+        ? Number.POSITIVE_INFINITY
+        : request.limits.deadlineAtEpochMs - Date.now();
+      const effectiveWall = Math.min(requestedWall, deadlineWall);
+      if (effectiveWall <= 0) {
+        return {
+          status: "limit_exhausted",
+          reason: `Provider work was not started because absolute deadline ${request.limits.deadlineAtEpochMs} was reached.`,
+        };
+      }
+      claim = await this.#ledger.claim(request, effectiveWall);
     } catch (error) {
       return { status: "error", reason: (error as Error).message };
     }
-    if (claim.kind === "replay") return claim.result;
+    if (claim.kind === "replay") return claim.settlement.result;
+    if (claim.kind === "ambiguous") return claim.result;
 
     const abortController = new AbortController();
-    const wallMs = request.limits.maxWallMs;
+    const requestedWall = request.limits.maxWallMs ?? 60 * 60_000;
+    const deadlineWall = request.limits.deadlineAtEpochMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : request.limits.deadlineAtEpochMs - Date.now();
+    const effectiveWall = Math.min(requestedWall, deadlineWall);
+    if (effectiveWall <= 0) {
+      const expired: TurnResult = {
+        status: "limit_exhausted",
+        reason: `Provider work was not started because absolute deadline ${request.limits.deadlineAtEpochMs} was reached.`,
+      };
+      this.#ledger.settle(claim, expired);
+      return expired;
+    }
+    const wallMs = Number.isFinite(effectiveWall) ? effectiveWall : undefined;
     const timeout = wallMs === undefined ? undefined : setTimeout(() => abortController.abort(), wallMs);
     let result: TurnResult;
     try {

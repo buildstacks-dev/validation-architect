@@ -135,6 +135,9 @@ describe("crash reconciliation through the campaign engine", () => {
         {
           repository,
           turns: {
+            async reconcileTurn() {
+              return null;
+            },
             async runTurn() {
               throw new Error("process died mid-turn");
             },

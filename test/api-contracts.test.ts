@@ -83,7 +83,7 @@ function turnRequest(): TurnRequest {
     session: { mode: "new" },
     idempotencyKey: "run-1:turn-1",
     prompt: "Design the corpus.",
-    limits: { maxTokens: 4096 },
+    limits: { maxTokens: 4096, maxWallMs: 60_000, deadlineAtEpochMs: 60_001 },
     metadata: { runId: "run-1", phase: "design", turnIndex: 1 },
   };
 }
@@ -144,7 +144,11 @@ describe("turn contracts", () => {
 
   it("scripted turns settle idempotently: a replayed key returns the same result and consumes no extra turn", async () => {
     const port = new ScriptedTurnPort([{ result: okTurn("one", { provider: "p", model: "m", session: "s" }) }]);
+    expect(await port.reconcileTurn(turnRequest())).toBeNull();
     const first = await port.runTurn(turnRequest());
+    const settlement = await port.reconcileTurn(turnRequest());
+    expect(settlement?.result).toEqual(first);
+    expect(settlement?.settledAtEpochMs).toEqual(expect.any(Number));
     const replay = await port.runTurn(turnRequest());
     expect(replay).toEqual(first);
     expect(port.consumed).toBe(1);
@@ -217,11 +221,24 @@ describe("design-run checkpoint validation", () => {
       ...turnRequest(),
       metadata: { runId: "run-1", phase: "step:2", turnIndex: 1 },
     };
-    value.pendingTurn = { idempotencyKey: request.idempotencyKey, request };
+    value.pendingTurn = { idempotencyKey: request.idempotencyKey, request, createdAtEpochMs: 1 };
     expect(validateDesignRunCheckpoint(value)).toBeTruthy();
 
+    if (!value.pendingTurn) throw new Error("expected pending turn");
     value.pendingTurn.idempotencyKey = "different-key";
     expect(() => validateDesignRunCheckpoint(value)).toThrow(PublicContractError);
+
+    const wrongRemainingWall = checkpoint();
+    wrongRemainingWall.pendingTurn = {
+      idempotencyKey: request.idempotencyKey,
+      request: { ...request, limits: { ...request.limits, maxWallMs: 59_999 } },
+      createdAtEpochMs: 1,
+    };
+    expect(() => validateDesignRunCheckpoint(wrongRemainingWall)).toThrow(PublicContractError);
+
+    const createdAtDeadline = checkpoint();
+    createdAtDeadline.pendingTurn = { idempotencyKey: request.idempotencyKey, request, createdAtEpochMs: 60_001 };
+    expect(() => validateDesignRunCheckpoint(createdAtDeadline)).toThrow(PublicContractError);
   });
 
   it("rejects checkpoint identity or position that disagrees with its envelope/history", () => {

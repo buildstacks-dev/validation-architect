@@ -39,7 +39,13 @@
         "schema": { "const": "validation-architect/design-run/v1" },
         "kind": { "const": "checkpoint" },
         "generation": { "type": "integer", "minimum": 0 },
-        "pendingTurn": { "type": "object", "required": ["idempotencyKey", "request"] },
+        "pendingTurn": {
+          "type": "object",
+          "required": ["idempotencyKey", "request", "createdAtEpochMs"],
+          "properties": {
+            "createdAtEpochMs": { "type": "integer", "minimum": 1 }
+          }
+        },
         "receipts": {
           "type": "array",
           "items": {

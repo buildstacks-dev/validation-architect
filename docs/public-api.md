@@ -126,8 +126,10 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   session identities, admitted repository/intake snapshot, and unwritten
   artifacts. `save` names the generation it extends; a stale generation raises
   `stale_generation` instead of overwriting. Before replay, the library
-  reconstructs the exact pending request; the same idempotency key must then
-  reconcile to one settled result without a second spend.
+  reconstructs the exact pending request from its persisted creation time; the
+  same idempotency key must then reconcile to one settled result without a
+  second spend. `TurnPort.reconcileTurn()` is reconciliation-only and may never
+  initiate provider work.
 - **TurnResult** has no success-by-omission: `ok | refused | limit_exhausted |
   error` are all typed outcomes, and a host-supplied `parsed` value is
   re-validated against the requested schema, never trusted by presence.
@@ -159,6 +161,21 @@ Stakeholder are cross-provider persistent sessions; readers and auditors are
 fresh sessions (an auditor may share the designer's model — session
 independence is what the method requires). Identity is verified on every
 requested dimension; a mismatch is the typed `identity_mismatch` failure.
+
+`maxWallMs` is one total campaign allowance, never a fresh per-turn budget.
+The absolute deadline is the checkpoint's `startedAtEpochMs` plus the
+envelope's `maxWallMs`; reaching that exact millisecond is exhausted. A new
+pending request persists its creation time and receives only the smaller of
+the remaining campaign wall and the one-hour provider-turn ceiling. The same
+request carries the absolute deadline so a provider adapter can shorten
+cancellation when replay begins later. Resume replays that exact request rather
+than recalculating it from a new clock reading. Before invoking a provider, and
+again after it returns and before any artifact or transition is accepted, the
+core checks the absolute deadline. Once expired it performs reconciliation
+only: a result durably settled before the deadline may close a prior crash
+window, while an unsettled request starts no new work and a result settled or
+returned at/after the deadline becomes typed `limit_exhausted` without
+advancing the campaign.
 
 Outcomes: `{ status: "complete", bundle }` with the unwritten corpus,
 provenance, profile assessment (`escalationRequired` when findings support a

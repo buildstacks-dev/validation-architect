@@ -13,6 +13,7 @@ import { MODEL_FILES, type CriticalityTier } from "../model.js";
 import { CORE_PACKAGE_VERSION } from "../versions.js";
 import {
   DESIGN_RUN_SCHEMA,
+  MAX_PROVIDER_TURN_WALL_MS,
   PROFILE_TIERS,
   PROVENANCE_SCHEMA,
   type AuditFindingRecord,
@@ -42,7 +43,7 @@ import type {
   TurnRequest,
   TurnResult,
 } from "./ports.js";
-import { validateTurnResult } from "./ports.js";
+import { validateTurnResult, validateTurnSettlement } from "./ports.js";
 import {
   PUBLISHED_SCHEMA_IDS,
   canonicalJson,
@@ -937,13 +938,19 @@ interface EngineContext {
   ports: DesignPorts;
 }
 
-const MAX_PROVIDER_TURN_WALL_MS = 60 * 60_000;
-
-function wallLimitReached(checkpoint: CampaignCheckpoint): boolean {
-  return Date.now() - checkpoint.startedAtEpochMs >= checkpoint.envelope.limits.maxWallMs;
+function campaignDeadline(checkpoint: CampaignCheckpoint): number {
+  return checkpoint.startedAtEpochMs + checkpoint.envelope.limits.maxWallMs;
 }
 
-function requestFor(checkpoint: CampaignCheckpoint, decision: ControlDecision): TurnRequest {
+function wallLimitReached(checkpoint: CampaignCheckpoint, atEpochMs = Date.now()): boolean {
+  return atEpochMs >= campaignDeadline(checkpoint);
+}
+
+function requestFor(
+  checkpoint: CampaignCheckpoint,
+  decision: ControlDecision,
+  createdAtEpochMs: number,
+): TurnRequest {
   const seat = decision.transition.seat;
   const seatSpec = checkpoint.envelope.seats.find((item) => seatKey(item.seat) === seatKey(seat));
   if (!seatSpec) throw invalidCheckpoint(`Transition names undeclared seat ${seatKey(seat)}.`);
@@ -961,7 +968,8 @@ function requestFor(checkpoint: CampaignCheckpoint, decision: ControlDecision): 
     ...(outputSchema ? { outputSchema } : {}),
     limits: {
       maxTokens: checkpoint.envelope.limits.maxTokensPerTurn,
-      maxWallMs: Math.min(checkpoint.envelope.limits.maxWallMs, MAX_PROVIDER_TURN_WALL_MS),
+      maxWallMs: Math.min(campaignDeadline(checkpoint) - createdAtEpochMs, MAX_PROVIDER_TURN_WALL_MS),
+      deadlineAtEpochMs: campaignDeadline(checkpoint),
     },
     // The destination disambiguates graph branches that use the same seat.
     metadata: {
@@ -1091,8 +1099,7 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
   // idempotency key is replayed and must settle without a second spend.
   while (true) {
     if (current.pendingTurn) {
-      const request = current.pendingTurn.request;
-      const outcome = await settleTurn(current, request, context);
+      const outcome = await settleTurn(current, current.pendingTurn, context);
       if (outcome.kind === "incomplete") return outcome.outcome;
       current = outcome.checkpoint;
       continue;
@@ -1127,7 +1134,8 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
       return { status: "complete", bundle: produceBundle(current) };
     }
 
-    if (wallLimitReached(current)) {
+    const createdAtEpochMs = Date.now();
+    if (wallLimitReached(current, createdAtEpochMs)) {
       return incomplete(
         current,
         "limit_exhausted",
@@ -1140,7 +1148,7 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
       return incomplete(current, "limit_exhausted", `Declared bound ${bound} is exhausted; the library never extends its own envelope. A deliberate new campaign with a deeper budget is the only continuation.`);
     }
 
-    const request = requestFor(current, decision);
+    const request = requestFor(current, decision, createdAtEpochMs);
 
     // Save the exact pending request BEFORE invoking the turn (crash window).
     current = await saveNext(ports.store, current, (next) => {
@@ -1150,26 +1158,107 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
       ) {
         next.auditCoreIdentity = artifactIdentity(next.artifacts, true);
       }
-      next.pendingTurn = { idempotencyKey: request.idempotencyKey, request };
+      next.pendingTurn = { idempotencyKey: request.idempotencyKey, request, createdAtEpochMs };
     });
   }
 }
 
 async function settleTurn(
   current: CampaignCheckpoint,
-  request: TurnRequest,
+  pending: NonNullable<CampaignCheckpoint["pendingTurn"]>,
   context: EngineContext,
 ): Promise<{ kind: "ok"; checkpoint: CampaignCheckpoint } | { kind: "incomplete"; outcome: DesignOutcome }> {
   const { ports } = context;
+  const request = pending.request;
   // Re-derive the decided transition deterministically: two transitions out
   // of one state may share a seat (audit:1 -> done vs dispositions), and the
   // controller's decision is a pure function of the checkpoint.
   const decision = decide(current);
-  if (!decision || canonicalJson(requestFor(current, decision)) !== canonicalJson(request)) {
+  if (
+    !decision ||
+    canonicalJson(requestFor(current, decision, pending.createdAtEpochMs)) !== canonicalJson(request)
+  ) {
     throw invalidCheckpoint(`Pending turn does not match the controller's decision at ${current.position}.`);
   }
   const transition = decision.transition;
+  const reconciled = await ports.turns.reconcileTurn(request);
+  if (reconciled !== null) {
+    const settlementProblems: string[] = [];
+    validateTurnSettlement(reconciled, settlementProblems);
+    if (reconciled.settledAtEpochMs > Date.now()) {
+      settlementProblems.push("turnSettlement.settledAtEpochMs may not be in the future");
+    }
+    assertValid("TurnSettlement", settlementProblems);
+    if (reconciled.settledAtEpochMs >= campaignDeadline(current)) {
+      return settleDeadlineFailure(current, request, transition, reconciled.result, context, reconciled.settledAtEpochMs);
+    }
+    return processTurnResult(current, request, decision, reconciled.result, context, false);
+  }
+
+  if (wallLimitReached(current)) {
+    return {
+      kind: "incomplete",
+      outcome: incomplete(
+        current,
+        "limit_exhausted",
+        `Absolute campaign deadline ${campaignDeadline(current)} was reached with pending turn ${request.idempotencyKey} unsettled. Reconciliation performed no provider work; only a result durably settled before the deadline may still be recovered.`,
+      ),
+    };
+  }
+
   const result: TurnResult = await ports.turns.runTurn(request);
+  const shapeProblems: string[] = [];
+  validateTurnResult(result, shapeProblems);
+  assertValid("TurnResult", shapeProblems);
+  if (wallLimitReached(current)) {
+    return settleDeadlineFailure(current, request, transition, result, context, Date.now());
+  }
+  return processTurnResult(current, request, decision, result, context, true);
+}
+
+async function settleDeadlineFailure(
+  current: CampaignCheckpoint,
+  request: TurnRequest,
+  transition: EnvelopeTransition,
+  result: TurnResult,
+  context: EngineContext,
+  observedAtEpochMs: number,
+): Promise<{ kind: "incomplete"; outcome: DesignOutcome }> {
+  const settled = await saveNext(context.ports.store, current, (next) => {
+    delete next.pendingTurn;
+    next.receipts.push({
+      idempotencyKey: request.idempotencyKey,
+      seat: request.seat,
+      state: transition.from,
+      nextState: transition.to,
+      status: "limit_exhausted",
+      usage: result.usage ?? { inputTokens: 0, outputTokens: 0 },
+      ...(result.identity ? { identity: result.identity } : {}),
+    });
+    next.usage.turns += 1;
+    next.usage.inputTokens += result.usage?.inputTokens ?? 0;
+    next.usage.outputTokens += result.usage?.outputTokens ?? 0;
+  });
+  return {
+    kind: "incomplete",
+    outcome: incomplete(
+      settled,
+      "limit_exhausted",
+      `Turn ${request.idempotencyKey} settled at or returned by ${observedAtEpochMs}, at or after the absolute campaign deadline ${campaignDeadline(current)}. Its result and artifacts were rejected and the campaign did not advance.`,
+    ),
+  };
+}
+
+async function processTurnResult(
+  current: CampaignCheckpoint,
+  request: TurnRequest,
+  decision: ControlDecision,
+  result: TurnResult,
+  context: EngineContext,
+  enforceCurrentDeadline: boolean,
+): Promise<{ kind: "ok"; checkpoint: CampaignCheckpoint } | { kind: "incomplete"; outcome: DesignOutcome }> {
+  const { ports } = context;
+  const transition = decision.transition;
   const shapeProblems: string[] = [];
   validateTurnResult(result, shapeProblems);
   assertValid("TurnResult", shapeProblems);
@@ -1183,6 +1272,9 @@ async function settleTurn(
   };
 
   if (result.status !== "ok") {
+    if (enforceCurrentDeadline && wallLimitReached(current)) {
+      return settleDeadlineFailure(current, request, transition, result, context, Date.now());
+    }
     const reason: IncompleteReason =
       result.status === "refused" ? "turn_refused" : result.status === "limit_exhausted" ? "limit_exhausted" : "turn_error";
     const settled = await saveNext(ports.store, current, (next) => {
@@ -1217,6 +1309,9 @@ async function settleTurn(
   }
 
   const invalid = [...problems, ...artifactFailures];
+  if (enforceCurrentDeadline && wallLimitReached(current)) {
+    return settleDeadlineFailure(current, request, transition, result, context, Date.now());
+  }
   const settled = await saveNext(ports.store, current, (next) => {
     delete next.pendingTurn;
     next.receipts.push({
@@ -1260,7 +1355,7 @@ function validatePorts(ports: DesignPorts): void {
   }
   const required: Array<[unknown, string, string[]]> = [
     [ports.repository, "ports.repository", ["revision", "readFile", "listFiles", "changedPaths"]],
-    [ports.turns, "ports.turns", ["runTurn"]],
+    [ports.turns, "ports.turns", ["reconcileTurn", "runTurn"]],
     [ports.store, "ports.store", ["load", "save"]],
   ];
   for (const [port, path, methods] of required) {

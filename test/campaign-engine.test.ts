@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildEnvelope,
   design,
@@ -80,6 +80,165 @@ const request = (runId: string, profile: DesignRequest["profile"], extra: Partia
   intake: "A small fixture product.",
   ...extra,
   admit: extra.admit ?? ((envelope) => envelope),
+});
+
+describe("absolute campaign wall deadline", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("gives a new turn only the remaining campaign minute", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = 1_800_000_000_000;
+    vi.setSystemTime(startedAt);
+    const inner = new InMemoryCampaignStore();
+    const store: CampaignStorePort = {
+      load: (runId) => inner.load(runId),
+      async save(checkpoint, expectedGeneration) {
+        await inner.save(checkpoint, expectedGeneration);
+        if (expectedGeneration === 0) {
+          vi.setSystemTime(startedAt + checkpoint.envelope.limits.maxWallMs - 60_000);
+        }
+      },
+    };
+    const ports = makePorts([
+      {
+        result: (turnRequest) => {
+          expect(turnRequest.limits.maxWallMs).toBe(60_000);
+          return designerComplete();
+        },
+      },
+    ], store);
+
+    const outcome = await design(request("run-one-minute", "C0"), ports);
+    expect(outcome.status).toBe("complete");
+  });
+
+  it.each([
+    ["before", -1, "complete"],
+    ["exactly at", 0, "limit_exhausted"],
+    ["after", 1, "limit_exhausted"],
+  ] as const)("accepts or rejects a provider result %s the absolute deadline", async (_label, offset, expected) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = 1_800_100_000_000;
+    const campaignWall = 30 * 60_000;
+    const deadline = startedAt + campaignWall;
+    vi.setSystemTime(startedAt);
+    const inner = new InMemoryCampaignStore();
+    const store: CampaignStorePort = {
+      load: (runId) => inner.load(runId),
+      async save(checkpoint, expectedGeneration) {
+        await inner.save(checkpoint, expectedGeneration);
+        if (expectedGeneration === 0) vi.setSystemTime(deadline - 10);
+      },
+    };
+    const ports = makePorts([{
+      result: () => {
+        vi.setSystemTime(deadline + offset);
+        return designerComplete();
+      },
+    }], store);
+
+    const outcome = await design(request(`run-deadline-${offset}`, "C0"), ports);
+    if (expected === "complete") {
+      expect(outcome.status).toBe("complete");
+    } else {
+      expect(outcome).toMatchObject({ status: "incomplete", reason: expected });
+      if (outcome.status === "incomplete") {
+        expect(outcome.checkpoint.position).toBe("start");
+        expect(outcome.checkpoint.artifacts).toEqual({});
+        expect(outcome.checkpoint.receipts.at(-1)?.status).toBe("limit_exhausted");
+      }
+    }
+  });
+
+  it("resumes an unsettled pending turn at the deadline without new provider work", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_800_200_000_000);
+    const store = new InMemoryCampaignStore();
+    await expect(design(request("run-expired-pending", "C0"), {
+      repository: new FakeRepositoryPort({ revision: "rev-1", files: {} }),
+      turns: {
+        async reconcileTurn() { return null; },
+        async runTurn() { throw new Error("park after pending save"); },
+      },
+      store,
+    })).rejects.toThrow("park after pending save");
+    const parked = (await store.load("run-expired-pending")) as CampaignCheckpoint;
+    const exactRequest = structuredClone(parked.pendingTurn?.request);
+    vi.setSystemTime(parked.startedAtEpochMs + parked.envelope.limits.maxWallMs);
+    let reconciliations = 0;
+    let providerRuns = 0;
+    const outcome = await resume("run-expired-pending", {
+      repository: new FakeRepositoryPort({ revision: "rev-1", files: {} }),
+      turns: {
+        async reconcileTurn(turnRequest) {
+          reconciliations += 1;
+          expect(turnRequest).toEqual(exactRequest);
+          return null;
+        },
+        async runTurn() {
+          providerRuns += 1;
+          return designerComplete();
+        },
+      },
+      store,
+    });
+
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "limit_exhausted" });
+    expect(reconciliations).toBe(1);
+    expect(providerRuns).toBe(0);
+    if (outcome.status === "incomplete") expect(outcome.checkpoint.pendingTurn?.request).toEqual(exactRequest);
+  });
+
+  it("recovers a pre-deadline durable settlement after the process resumes past the deadline", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_800_300_000_000);
+    const inner = new InMemoryCampaignStore();
+    let saves = 0;
+    const store: CampaignStorePort = {
+      load: (runId) => inner.load(runId),
+      async save(checkpoint, expectedGeneration) {
+        saves += 1;
+        if (saves === 3) throw new Error("crash after provider settlement");
+        await inner.save(checkpoint, expectedGeneration);
+      },
+    };
+    const scripted = new ScriptedTurnPort([{ result: designerComplete() }]);
+    const ports: DesignPorts = {
+      repository: new FakeRepositoryPort({ revision: "rev-1", files: {} }),
+      turns: scripted,
+      store,
+    };
+    await expect(design(request("run-settled-before-deadline", "C0"), ports)).rejects.toThrow("crash after provider settlement");
+    const parked = (await inner.load("run-settled-before-deadline")) as CampaignCheckpoint;
+    vi.setSystemTime(parked.startedAtEpochMs + parked.envelope.limits.maxWallMs + 1);
+
+    const outcome = await resume("run-settled-before-deadline", { ...ports, store: inner });
+    expect(outcome.status).toBe("complete");
+    expect(scripted.consumed).toBe(1);
+  });
+
+  it("applies the same remaining-wall calculation to a tightened admission", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = 1_800_400_000_000;
+    vi.setSystemTime(startedAt);
+    const inner = new InMemoryCampaignStore();
+    const store: CampaignStorePort = {
+      load: (runId) => inner.load(runId),
+      async save(checkpoint, expectedGeneration) {
+        await inner.save(checkpoint, expectedGeneration);
+        if (expectedGeneration === 0) vi.setSystemTime(startedAt + 60_000);
+      },
+    };
+    const ports = makePorts([{
+      result: (turnRequest) => {
+        expect(turnRequest.limits.maxWallMs).toBe(60_000);
+        return designerComplete();
+      },
+    }], store);
+
+    const outcome = await design(request("run-tight-wall", "C0", { limits: { maxWallMs: 120_000 } }), ports);
+    expect(outcome.status).toBe("complete");
+  });
 });
 
 describe("exact profile sequences", () => {
@@ -336,6 +495,7 @@ describe("crash matrix", () => {
   it("crash after the pending save resumes the exact pending idempotency key", async () => {
     const store = new InMemoryCampaignStore();
     const crashingTurns = {
+      async reconcileTurn() { return null; },
       async runTurn(): Promise<TurnResult> {
         throw new Error("simulated crash before the provider answered");
       },
@@ -348,11 +508,13 @@ describe("crash matrix", () => {
     await expect(design(request("run-crash-b", "C0"), first)).rejects.toThrow("simulated crash");
     const parked = await store.load("run-crash-b");
     expect(parked?.pendingTurn?.idempotencyKey).toBe("run-crash-b:turn:1");
+    const exactRequest = structuredClone(parked?.pendingTurn?.request);
 
     const second = makePorts([
       {
         result: (turnRequest) => {
           expect(turnRequest.idempotencyKey).toBe("run-crash-b:turn:1");
+          expect(turnRequest).toEqual(exactRequest);
           return designerComplete();
         },
       },
@@ -382,6 +544,7 @@ describe("crash matrix", () => {
   it("two concurrent resumes advance the campaign exactly once", async () => {
     const store = new InMemoryCampaignStore();
     const crashingTurns = {
+      async reconcileTurn() { return null; },
       async runTurn(): Promise<TurnResult> {
         throw new Error("park the pending turn");
       },
@@ -419,7 +582,7 @@ describe("resume binding", () => {
     await expect(
       design(request(runId, "C0"), {
         repository: new FakeRepositoryPort({ revision: "rev-1", files: {} }),
-        turns: { async runTurn() { throw new Error("park"); } },
+        turns: { async reconcileTurn() { return null; }, async runTurn() { throw new Error("park"); } },
         store,
       }),
     ).rejects.toThrow();
@@ -485,7 +648,7 @@ describe("resume binding", () => {
     const store = new InMemoryCampaignStore();
     await expect(design(request("run-drift", "C0"), {
       repository: new FakeRepositoryPort({ revision: "rev-1", files: { "README.md": "before" } }),
-      turns: { async runTurn() { throw new Error("park"); } },
+      turns: { async reconcileTurn() { return null; }, async runTurn() { throw new Error("park"); } },
       store,
     })).rejects.toThrow("park");
     const ports = makePorts([{ result: designerComplete() }], store, { "README.md": "after" });
@@ -603,7 +766,11 @@ describe("C3/C4 bounded graph", () => {
         result: (turnRequest) => {
           expect(turnRequest.prompt).toContain("REPOSITORY-SENTINEL");
           expect(turnRequest.prompt).toContain("RELAY-SENTINEL");
-          expect(turnRequest.limits).toEqual({ maxTokens: 32_768, maxWallMs: 3_600_000 });
+          expect(turnRequest.limits).toEqual({
+            maxTokens: 32_768,
+            maxWallMs: 3_600_000,
+            deadlineAtEpochMs: expect.any(Number),
+          });
           return ok({ message: "Push harder on negative controls.", approved: false }, STAKEHOLDER_ID);
         },
       },
