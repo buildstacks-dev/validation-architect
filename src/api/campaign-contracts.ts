@@ -169,6 +169,10 @@ export interface CampaignCheckpoint {
   artifacts: Record<string, string>;
   /** Exact request/snapshot facts needed to re-derive every resumed prompt. */
   intake: string;
+  /** Initial admitted intake used to rebuild the immutable envelope identity. */
+  intakeBase: string;
+  /** Fixed append-only source identity and kickoff presence, when watched. */
+  intakeSource?: { sourceId: string; presentAtKickoff: boolean; instanceId: string | null };
   mode: "greenfield" | "revision";
   repository: RepositorySnapshot;
   startedAtEpochMs: number;
@@ -687,6 +691,22 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
     utf8ByteLength(value.intake) > envelope.limits.maxIntakeBytes
   ) {
     problems.push(`${path}.intake exceeds the admitted maxIntakeBytes`);
+  }
+  if (typeof value.intakeBase !== "string") {
+    problems.push(`${path}.intakeBase must be a string`);
+  } else if (typeof value.intake === "string" && !value.intake.startsWith(value.intakeBase)) {
+    problems.push(`${path}.intake must preserve the admitted intakeBase prefix`);
+  }
+  if (value.intakeSource !== undefined) {
+    if (requireRecord(value.intakeSource, `${path}.intakeSource`, problems)) {
+      requireString(value.intakeSource.sourceId, `${path}.intakeSource.sourceId`, problems);
+      if (typeof value.intakeSource.presentAtKickoff !== "boolean") {
+        problems.push(`${path}.intakeSource.presentAtKickoff must be boolean`);
+      }
+      if (value.intakeSource.instanceId !== null && typeof value.intakeSource.instanceId !== "string") {
+        problems.push(`${path}.intakeSource.instanceId must be a string or null`);
+      }
+    }
   }
   requireEnum(value.mode, `${path}.mode`, ["greenfield", "revision"] as const, problems);
   if (requireRecord(value.repository, `${path}.repository`, problems)) {

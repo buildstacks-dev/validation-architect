@@ -44,6 +44,8 @@ export interface LocalTurnPolicyConfig {
   models?: LocalTurnPortModels;
   /** Claude turn ceiling per send (tool-use steps, not campaign turns). */
   maxTurnsPerSend?: number;
+  claudeAuth?: "subscription" | "api-key";
+  codexAuth?: "chatgpt" | "api-key";
 }
 
 export interface LocalTurnPortConfig extends LocalTurnPolicyConfig {
@@ -370,6 +372,7 @@ export class LocalTurnPort implements TurnPort {
   readonly #config: LocalTurnPortConfig;
   readonly #ledger: TurnLedger;
   #codex: Codex | undefined;
+  readonly #claudeEnv: Record<string, string>;
 
   constructor(config: LocalTurnPortConfig) {
     mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
@@ -380,6 +383,17 @@ export class LocalTurnPort implements TurnPort {
     }
     this.#config = { ...config, workspace, stateDirectory };
     this.#ledger = new TurnLedger(stateDirectory);
+    this.#claudeEnv = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    if ((config.claudeAuth ?? "subscription") === "subscription") {
+      delete this.#claudeEnv["ANTHROPIC_API_KEY"];
+    } else if (!this.#claudeEnv["ANTHROPIC_API_KEY"]) {
+      throw new Error("claudeAuth=api-key requires ANTHROPIC_API_KEY");
+    }
+    if ((config.codexAuth ?? "chatgpt") === "api-key" && !process.env["OPENAI_API_KEY"]) {
+      throw new Error("codexAuth=api-key requires OPENAI_API_KEY");
+    }
   }
 
   async reconcileTurn(request: TurnRequest): Promise<TurnSettlement | null> {
@@ -501,6 +515,7 @@ export class LocalTurnPort implements TurnPort {
         ? buildDesignerQueryOptions(this.#config, requested)
         : buildReadOnlyQueryOptions(this.#config, seat);
     options.abortController = abortController;
+    options.env = this.#claudeEnv;
     if (request.outputSchema) options.outputFormat = { type: "json_schema", schema: request.outputSchema };
     const stream = query({ prompt: request.prompt, options });
     let session: string | undefined;
@@ -537,7 +552,9 @@ export class LocalTurnPort implements TurnPort {
   }
 
   async #codexTurn(request: TurnRequest, signal: AbortSignal): Promise<TurnResult> {
-    this.#codex ??= new Codex();
+    this.#codex ??= (this.#config.codexAuth ?? "chatgpt") === "api-key"
+      ? new Codex({ apiKey: process.env["OPENAI_API_KEY"] as string })
+      : new Codex();
     const options = buildStakeholderThreadOptions(this.#config);
     const thread: Thread =
       request.session.mode === "resume"

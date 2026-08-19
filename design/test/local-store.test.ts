@@ -45,6 +45,7 @@ function checkpoint(runId: string, generation: number): CampaignCheckpoint {
     sessions: {},
     artifacts: {},
     intake: "intake",
+    intakeBase: "intake",
     mode: "greenfield",
     repository: { revision: "rev-1", identity: "a".repeat(64), inventory: [], files: [] },
     startedAtEpochMs: 1,

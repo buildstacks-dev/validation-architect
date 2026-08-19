@@ -132,6 +132,12 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   initiate provider work. Accepted designer receipts retain control output and
   content-free artifact path/digest identities; authoritative file content is
   stored once in the current artifact map rather than repeated through history.
+  A repository port may expose one fixed optional intake source. The checkpoint
+  stores its initial admitted content separately from the current value:
+  append-only changes are checkpointed before the next pending turn, while
+  source substitution, add/remove, replacement, or truncation fails before
+  provider work. Resume rebuilds envelope identity from the initial content and
+  replays prompts from the persisted current content.
 - **TurnResult** has no success-by-omission: `ok | refused | limit_exhausted |
   error` are all typed outcomes, and a host-supplied `parsed` value is
   re-validated against the requested schema, never trusted by presence.

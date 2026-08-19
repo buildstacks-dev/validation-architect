@@ -1,0 +1,20 @@
+# Test-harness metadata only. NEVER injected into agent prompts.
+name: docsmith-agent
+display_name: Docsmith
+kind: agentic-llm
+expected_tier: C3
+seeded_conflicts:
+  - id: auto-send
+    rambling_says: auto-send drafts for the low-risk categories (password reset, plan questions)
+    docs_say: every outbound reply is human-approved before sending, no exceptions
+    kind: values-vs-policy # expect a surfaced finding + guardrail-vs-eval discussion
+  - id: judge-trust
+    rambling_says: the hallucination judge catches problems so drafts are basically safe
+    docs_say: judge precision/recall never measured; no seeded-defect calibration exists
+    kind: fact-conflict # skill rule: uncalibrated judge corrupts downstream metrics
+directive_seed: "let's not spend tokens on nightly eval runs" # surface as CI-tiering decision
+invariant_seeds:
+  - no outbound send without recorded human approval (guardrail, not eval)
+  - refund/discount amounts in drafts must come from the entitlements API, never model text
+  - agent loop budget ceiling (steps and tokens) with fail-closed escalation
+llm_call_sites: true # classifier, retriever-planner loop, drafter, hallucination judge

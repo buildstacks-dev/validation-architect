@@ -34,7 +34,8 @@
   "files": [
     "LICENSE.md",
     "bin/validation-architect-design.js",
-    "dist/**"
+    "dist/**",
+    "fixtures/**"
   ],
   "scripts": {
     "build": "node ../scripts/clean-dist.mjs design && tsc -p tsconfig.build.json",

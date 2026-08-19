@@ -25,6 +25,16 @@ export interface RepositoryPort {
   listFiles(globs: string[]): Promise<string[]>;
   /** Paths changed between two revisions. */
   changedPaths(base: string, head: string): Promise<string[]>;
+  /** Optional append-only human-intake channel. `content: null` records that
+   * the fixed source was absent at kickoff; adding/removing it later is drift. */
+  intakeSnapshot?(): Promise<IntakeSnapshot>;
+}
+
+export interface IntakeSnapshot {
+  sourceId: string;
+  content: string | null;
+  /** Stable instance identity for the fixed source (null while absent). */
+  instanceId: string | null;
 }
 
 export type Seat = "designer" | "stakeholder" | "auditor" | "reader";

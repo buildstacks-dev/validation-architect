@@ -8,6 +8,12 @@
  */
 
 export { LocalRepository, type LocalRepositoryOptions } from "./local-repository.js";
+export { RunRepository, type RunRepositoryOptions } from "./run-repository.js";
+export {
+  listPackagedFixtures,
+  materializeFixtureTarget,
+  packagedFixtureDirectory,
+} from "./fixtures.js";
 export { LocalCampaignStore, type LocalCampaignStoreOptions } from "./local-store.js";
 export {
   captureRunContext,

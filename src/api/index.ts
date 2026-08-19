@@ -8,6 +8,7 @@
 // The three injected ports and turn contracts (D2).
 export type {
   RepositoryPort,
+  IntakeSnapshot,
   TurnPort,
   TurnRequest,
   TurnResult,

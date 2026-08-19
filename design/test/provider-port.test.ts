@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canonicalJson, type TurnRequest } from "validation-architect";
 
 // The SDK modules are mocked wholesale: nothing in this suite can reach a
@@ -11,10 +11,12 @@ const queryMock = vi.hoisted(() => vi.fn());
 const codexState = vi.hoisted(() => ({
   startThread: vi.fn(),
   resumeThread: vi.fn(),
+  constructorArgs: [] as unknown[],
 }));
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
 vi.mock("@openai/codex-sdk", () => ({
   Codex: class {
+    constructor(options?: unknown) { codexState.constructorArgs.push(options); }
     startThread = codexState.startThread;
     resumeThread = codexState.resumeThread;
   },
@@ -61,7 +63,9 @@ beforeEach(() => {
   queryMock.mockReset();
   codexState.startThread.mockReset();
   codexState.resumeThread.mockReset();
+  codexState.constructorArgs.length = 0;
 });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("LocalTurnPort seat mapping", () => {
   it("designer new session returns the exact native identity and usage", async () => {
@@ -76,6 +80,7 @@ describe("LocalTurnPort seat mapping", () => {
     });
     expect(queryMock).toHaveBeenCalledTimes(1);
     expect(queryMock.mock.calls[0]?.[0]?.options?.resume).toBeUndefined();
+    expect(queryMock.mock.calls[0]?.[0]?.options?.env?.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
   it("designer resume reports the exact native identity instead of masking rotation", async () => {
@@ -223,6 +228,26 @@ describe("LocalTurnPort seat mapping", () => {
     const result = await port.runTurn(request("designer", { mode: "new" }));
     expect(result).toMatchObject({ status: "error", reason: expect.stringContaining("provider unavailable") });
     expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires explicit API-key credentials and passes only the selected auth", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    expect(() => new LocalTurnPort({ workspace, stateDirectory, claudeAuth: "api-key" })).toThrow(/ANTHROPIC_API_KEY/);
+
+    vi.stubEnv("ANTHROPIC_API_KEY", "anthropic-test");
+    queryMock.mockReturnValueOnce(claudeMessages("sess-api", "designed"));
+    await new LocalTurnPort({ workspace, stateDirectory, claudeAuth: "api-key" })
+      .runTurn(request("designer", { mode: "new" }, "run:api-key"));
+    expect(queryMock.mock.calls[0]?.[0]?.options?.env?.ANTHROPIC_API_KEY).toBe("anthropic-test");
+
+    vi.stubEnv("OPENAI_API_KEY", "");
+    expect(() => new LocalTurnPort({ workspace, stateDirectory, codexAuth: "api-key" })).toThrow(/OPENAI_API_KEY/);
+    vi.stubEnv("OPENAI_API_KEY", "openai-test");
+    const run = vi.fn().mockResolvedValue({ finalResponse: "owner", usage: { input_tokens: 1, output_tokens: 1 } });
+    codexState.startThread.mockReturnValue({ id: "thread-api", run });
+    await new LocalTurnPort({ workspace, stateDirectory, codexAuth: "api-key" })
+      .runTurn(request("stakeholder", { mode: "new" }, "run:codex-api"));
+    expect(codexState.constructorArgs).toContainEqual({ apiKey: "openai-test" });
   });
 
   it("a non-success Claude result subtype is the typed error outcome", async () => {

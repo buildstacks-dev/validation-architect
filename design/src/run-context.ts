@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -29,6 +30,8 @@ export interface RunContext {
   snapshot: string;
   sourceRevision: string;
   profile: ProfileTier;
+  intakeSource: string;
+  fixture?: string;
   createdAt: string;
 }
 
@@ -37,6 +40,8 @@ export interface CaptureRunContextOptions {
   target: string;
   stateDirectory: string;
   profile: ProfileTier;
+  intakeFile?: string;
+  fixture?: string;
 }
 
 function git(cwd: string, args: string[]): string {
@@ -73,10 +78,14 @@ function validateRunContext(value: unknown, path: string): RunContext {
     typeof record["target"] !== "string" ||
     typeof record["snapshot"] !== "string" ||
     typeof record["sourceRevision"] !== "string" ||
+    typeof record["intakeSource"] !== "string" ||
     typeof record["createdAt"] !== "string" ||
     !["C0", "C1", "C2", "C3", "C4"].includes(String(record["profile"]))
   ) {
     throw new Error(`run metadata ${path} has an unsupported shape`);
+  }
+  if (record["fixture"] !== undefined && typeof record["fixture"] !== "string") {
+    throw new Error(`run metadata ${path} has an invalid fixture identity`);
   }
   return record as unknown as RunContext;
 }
@@ -109,6 +118,16 @@ export function captureRunContext(options: CaptureRunContextOptions): RunContext
     throw new Error("target checkout must be clean before immutable capture");
   }
   const sourceRevision = git(target, ["rev-parse", "HEAD"]);
+  const intakeSource = resolve(options.intakeFile ?? join(target, "rambling.txt"));
+  if (options.intakeFile !== undefined && !existsSync(intakeSource)) {
+    throw new Error(`explicit intake file does not exist: ${intakeSource}`);
+  }
+  if (existsSync(intakeSource)) {
+    const entry = lstatSync(intakeSource);
+    if (entry.isSymbolicLink() || !entry.isFile()) {
+      throw new Error(`intake source must be a real regular file: ${intakeSource}`);
+    }
+  }
   const snapshot = join(realState, "workspaces", options.runId, "source");
   if (existsSync(snapshot)) throw new Error(`snapshot path already exists for run ${options.runId}`);
   mkdirSync(dirname(snapshot), { recursive: true, mode: 0o700 });
@@ -129,6 +148,8 @@ export function captureRunContext(options: CaptureRunContextOptions): RunContext
       snapshot: realpathSync.native(snapshot),
       sourceRevision,
       profile: options.profile,
+      intakeSource,
+      ...(options.fixture ? { fixture: options.fixture } : {}),
       createdAt: new Date().toISOString(),
     };
     writeRunContext(realState, context);
