@@ -1158,6 +1158,58 @@ async function saveNext(
   return next;
 }
 
+async function refreshIntake(
+  checkpoint: CampaignCheckpoint,
+  ports: DesignPorts,
+): Promise<{ kind: "ok"; checkpoint: CampaignCheckpoint } | { kind: "incomplete"; outcome: DesignOutcome }> {
+  if (!checkpoint.intakeSource) return { kind: "ok", checkpoint };
+  if (typeof ports.repository.intakeSnapshot !== "function") {
+    throw invalidCheckpoint(`Run ${checkpoint.runId} watches intake source ${checkpoint.intakeSource.sourceId}, but the repository port cannot read it.`);
+  }
+  const snapshot = await ports.repository.intakeSnapshot();
+  if (
+    !isRecord(snapshot) ||
+    typeof snapshot.sourceId !== "string" ||
+    snapshot.sourceId.length === 0 ||
+    (snapshot.content !== null && typeof snapshot.content !== "string") ||
+    (snapshot.instanceId !== null && typeof snapshot.instanceId !== "string") ||
+    ((snapshot.content === null) !== (snapshot.instanceId === null))
+  ) {
+    throw invalidInput("RepositoryPort.intakeSnapshot() returned an invalid snapshot.");
+  }
+  if (snapshot.sourceId !== checkpoint.intakeSource.sourceId) {
+    throw versionMismatch(`Intake source changed from ${checkpoint.intakeSource.sourceId} to ${snapshot.sourceId}; restore it or start a new campaign.`);
+  }
+  const present = snapshot.content !== null;
+  if (present !== checkpoint.intakeSource.presentAtKickoff) {
+    throw versionMismatch(`Intake source ${snapshot.sourceId} was ${checkpoint.intakeSource.presentAtKickoff ? "removed" : "added"} after kickoff; restore it or start a new campaign.`);
+  }
+  if (snapshot.instanceId !== checkpoint.intakeSource.instanceId) {
+    throw versionMismatch(`Intake source ${snapshot.sourceId} was replaced; restore the original file instance or start a new campaign.`);
+  }
+  if (snapshot.content === null || snapshot.content === checkpoint.intake) {
+    return { kind: "ok", checkpoint };
+  }
+  if (snapshot.content.includes("\0") || !snapshot.content.startsWith(checkpoint.intake)) {
+    throw versionMismatch(`Intake source ${snapshot.sourceId} was replaced or truncated; only append-only hot reload is permitted.`);
+  }
+  const bytes = utf8ByteLength(snapshot.content);
+  if (bytes > checkpoint.envelope.limits.maxIntakeBytes) {
+    return {
+      kind: "incomplete",
+      outcome: incomplete(
+        checkpoint,
+        "limit_exhausted",
+        `Appended intake uses ${bytes} UTF-8 bytes, above maxIntakeBytes (${checkpoint.envelope.limits.maxIntakeBytes}); the oversized append was not persisted and no provider turn was started.`,
+      ),
+    };
+  }
+  const refreshed = await saveNext(ports.store, checkpoint, (next) => {
+    next.intake = snapshot.content as string;
+  });
+  return { kind: "ok", checkpoint: refreshed };
+}
+
 async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): Promise<DesignOutcome> {
   const { ports } = context;
   let current = checkpoint;
@@ -1200,6 +1252,10 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
       }
       return { status: "complete", bundle: produceBundle(current) };
     }
+
+    const intakeRefresh = await refreshIntake(current, ports);
+    if (intakeRefresh.kind === "incomplete") return intakeRefresh.outcome;
+    current = intakeRefresh.checkpoint;
 
     const createdAtEpochMs = Date.now();
     if (wallLimitReached(current, createdAtEpochMs)) {
@@ -1507,10 +1563,30 @@ export async function design(request: DesignRequest, ports: DesignPorts): Promis
   }
 
   const repository = await captureRepository(ports.repository);
+  const watchedIntake = typeof ports.repository.intakeSnapshot === "function"
+    ? await ports.repository.intakeSnapshot()
+    : undefined;
+  if (
+    watchedIntake !== undefined &&
+    (
+      !isRecord(watchedIntake) ||
+      typeof watchedIntake.sourceId !== "string" ||
+      watchedIntake.sourceId.length === 0 ||
+      (watchedIntake.content !== null && typeof watchedIntake.content !== "string") ||
+      (watchedIntake.instanceId !== null && typeof watchedIntake.instanceId !== "string") ||
+      ((watchedIntake.content === null) !== (watchedIntake.instanceId === null))
+    )
+  ) {
+    throw invalidInput("RepositoryPort.intakeSnapshot() returned an invalid kickoff snapshot.");
+  }
+  if (watchedIntake !== undefined && request.intake !== undefined) {
+    throw invalidInput("DesignRequest.intake and RepositoryPort.intakeSnapshot() are mutually exclusive intake authorities.");
+  }
+  const admittedIntake = watchedIntake === undefined ? request.intake ?? "" : watchedIntake.content ?? "";
   const mode = request.mode ?? "greenfield";
   const artifacts = mode === "revision" ? revisionArtifacts(repository) : {};
   if (mode === "revision") assertRevisionCorpus(artifacts);
-  const declared = buildEnvelope(request, repository.revision, repository.identity);
+  const declared = buildEnvelope({ ...request, intake: admittedIntake }, repository.revision, repository.identity);
   const answer = await request.admit(structuredClone(declared));
   if (answer === null) {
     throw invalidInput(`Run ${request.runId} was not admitted; zero turns were spent.`, { runId: request.runId });
@@ -1522,7 +1598,7 @@ export async function design(request: DesignRequest, ports: DesignPorts): Promis
       runId: request.runId,
     });
   }
-  const intakeBytes = utf8ByteLength(request.intake ?? "");
+  const intakeBytes = utf8ByteLength(admittedIntake);
   if (intakeBytes > answer.limits.maxIntakeBytes) {
     throw invalidInput(
       `Campaign intake uses ${intakeBytes} UTF-8 bytes, above maxIntakeBytes (${answer.limits.maxIntakeBytes}); zero provider turns were spent.`,
@@ -1542,7 +1618,15 @@ export async function design(request: DesignRequest, ports: DesignPorts): Promis
     receipts: [],
     sessions: {},
     artifacts,
-    intake: request.intake ?? "",
+    intake: admittedIntake,
+    intakeBase: admittedIntake,
+    ...(watchedIntake !== undefined ? {
+      intakeSource: {
+        sourceId: watchedIntake.sourceId,
+        presentAtKickoff: watchedIntake.content !== null,
+        instanceId: watchedIntake.instanceId,
+      },
+    } : {}),
     mode,
     repository,
     startedAtEpochMs: Date.now(),
@@ -1591,7 +1675,7 @@ export async function resume(runId: string, ports: DesignPorts): Promise<DesignO
     {
       runId,
       profile: checkpoint.envelope.profile,
-      intake: checkpoint.intake,
+      intake: checkpoint.intakeBase,
       mode: checkpoint.mode,
       admit: () => null,
     },

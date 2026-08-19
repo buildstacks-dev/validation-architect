@@ -80,6 +80,7 @@ function checkpoint(generation = 1): CampaignCheckpoint {
     sessions: {},
     artifacts: {},
     intake: "fixture intake",
+    intakeBase: "fixture intake",
     mode: "greenfield",
     repository: { revision: "rev-1", identity: "a".repeat(64), inventory: [], files: [] },
     startedAtEpochMs: 1,
@@ -221,6 +222,7 @@ describe("design-run checkpoint validation", () => {
     ["generation", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "generation")],
     ["repository", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "repository")],
     ["startedAtEpochMs", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "startedAtEpochMs")],
+    ["intakeBase", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "intakeBase")],
     ["usage", (value: CampaignCheckpoint) => Reflect.deleteProperty(value, "usage")],
   ])("rejects a checkpoint missing %s", (_field, mutate) => {
     const value = checkpoint();

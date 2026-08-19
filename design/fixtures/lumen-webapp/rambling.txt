@@ -1,0 +1,42 @@
+2026-07-20
+
+Brain dump before the validation design session. Unfiltered, don't treat any
+of this as ratified — it's me thinking out loud.
+
+The thing that keeps me up at night is double payouts. We had a near miss in
+March: the batch worker crashed mid-run and on restart it re-claimed the same
+batch. Stripe idempotency keys saved us, but honestly we found out they saved
+us by reading logs after the fact, not because anything alerted us. If those
+keys ever get generated wrong (someone "refactors" the key format), we
+double-pay silently. That's the one thing that must never ever happen.
+
+Approval friction keeps coming up in customer calls. I keep going back and
+forth on whether we should just auto-approve under $500 — the $200 threshold
+generates so many trivial approvals that managers rubber-stamp them anyway,
+which defeats the purpose. Not decided, just something I keep chewing on.
+
+Receipts — we store everything for 7 years which feels heavy. For the small
+tenants, probably fine to purge receipts after 90 days? Storage isn't
+expensive but the privacy exposure of holding years of receipt images bothers
+me. Anyway.
+
+One more thing: tenant isolation. We've never had a leak but we've also never
+seriously tried to break it. Every list endpoint filters by tenant_id and I
+just have to trust that no one forgets the WHERE clause. That trust makes me
+uncomfortable.
+
+skip the load testing stuff for now, we're nowhere near the scale where it
+matters.
+
+2026-07-24
+
+Talked to our biggest tenant's finance lead. Her horror story from her last
+company: an employee edited an expense AFTER manager approval (raised the
+amount) and it paid out at the edited amount. Our state machine should make
+that impossible — submitted expenses can't be edited — but "should" is doing
+a lot of work in that sentence. I want that provably impossible, not
+accidentally true.
+
+Also thinking about the rejected → draft rework loop. If a manager rejects
+with a comment and the employee resubmits, does the manager see what changed?
+I actually don't know what we do today. Feels like an audit gap.

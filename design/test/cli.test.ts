@@ -30,8 +30,12 @@ describe("validation-architect-design CLI", () => {
     expect(help).toContain("resume <runId>");
     expect(help).toContain("list [target-dir]");
     expect(help).toContain("report <runId>");
+    expect(help).toContain("fixture <name>");
+    expect(help).toContain("--smoke");
     expect(help).toContain("--out");
     expect(help).toContain("[--intake-file <file>]");
+    expect(help).toContain("--claude-auth <subscription|api-key>");
+    expect(help).toContain("--codex-auth <chatgpt|api-key>");
   });
 
   it("exits 2 with usage when invoked without arguments", async () => {
@@ -59,6 +63,15 @@ describe("validation-architect-design CLI", () => {
     expect(await main(["resume"], io)).toBe(2);
   });
 
+  it("requires a fixture name and a profile outside smoke mode", async () => {
+    const missing = collect();
+    expect(await main(["fixture"], missing.io)).toBe(2);
+    expect(missing.err.join("\n")).toContain("fixture requires");
+    const profile = collect();
+    expect(await main(["fixture", "lumen-webapp"], profile.io)).toBe(2);
+    expect(profile.err.join("\n")).toContain("--profile");
+  });
+
   it("rejects a flag without a value", async () => {
     const { io, err } = collect();
     expect(await main([".", "--profile"], io)).toBe(2);
@@ -75,5 +88,14 @@ describe("validation-architect-design CLI", () => {
     const { io, err } = collect();
     expect(await main(["resume", "run-1", "--profile", "C0"], io)).toBe(2);
     expect(err.join("\n")).toContain("--profile is not valid for resume");
+  });
+
+  it("rejects invalid auth modes before campaign setup", async () => {
+    const claude = collect();
+    expect(await main([".", "--profile", "C0", "--claude-auth", "other"], claude.io)).toBe(2);
+    expect(claude.err.join("\n")).toContain("--claude-auth");
+    const codex = collect();
+    expect(await main([".", "--profile", "C0", "--codex-auth", "other"], codex.io)).toBe(2);
+    expect(codex.err.join("\n")).toContain("--codex-auth");
   });
 });

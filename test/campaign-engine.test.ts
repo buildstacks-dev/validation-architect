@@ -18,7 +18,7 @@ import {
 } from "../src/api/campaign-contracts.js";
 import { FakeRepositoryPort, InMemoryCampaignStore, ScriptedTurnPort, type ScriptedTurn } from "../src/api/conformance.js";
 import { isPublicContractError } from "../src/api/errors.js";
-import type { ExecutionIdentity, TurnResult } from "../src/api/ports.js";
+import type { ExecutionIdentity, RepositoryPort, TurnResult } from "../src/api/ports.js";
 import { writeValidModel } from "./model-corpus-fixture.js";
 
 /**
@@ -86,6 +86,105 @@ const request = (runId: string, profile: DesignRequest["profile"], extra: Partia
   intake: "A small fixture product.",
   ...extra,
   admit: extra.admit ?? ((envelope) => envelope),
+});
+
+function watchedRepository(
+  readIntake: () => string | null,
+  readInstance: () => string | null = () => readIntake() === null ? null : "instance-1",
+): RepositoryPort {
+  const base = new FakeRepositoryPort({ revision: "rev-1", files: {} });
+  return {
+    revision: () => base.revision(),
+    readFile: (path) => base.readFile(path),
+    listFiles: (globs) => base.listFiles(globs),
+    changedPaths: (before, after) => base.changedPaths(before, after),
+    intakeSnapshot: async () => ({
+      sourceId: "fixed:rambling.txt",
+      content: readIntake(),
+      instanceId: readInstance(),
+    }),
+  };
+}
+
+describe("append-only intake hot reload", () => {
+  it("persists an append before constructing the next pending request", async () => {
+    let intake: string | null = "base values\n";
+    const turns = new ScriptedTurnPort([
+      {
+        result: (turnRequest) => {
+          expect(turnRequest.prompt).toContain("base values");
+          intake = "base values\nappended constraint\n";
+          return ok({ marker: "CONTINUE", files: [] }, DESIGNER_ID);
+        },
+      },
+      {
+        result: (turnRequest) => {
+          expect(turnRequest.prompt).toContain("appended constraint");
+          return { status: "refused", reason: "stop after reload" };
+        },
+      },
+    ]);
+    const store = new InMemoryCampaignStore();
+    const watchedRequest = request("run-intake-reload", "C2");
+    Reflect.deleteProperty(watchedRequest, "intake");
+    const outcome = await design(watchedRequest, {
+      repository: watchedRepository(() => intake),
+      turns,
+      store,
+    });
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "turn_refused" });
+    if (outcome.status === "incomplete") {
+      expect(outcome.checkpoint.intakeBase).toBe("base values\n");
+      expect(outcome.checkpoint.intake).toBe("base values\nappended constraint\n");
+      expect(outcome.checkpoint.intakeSource).toEqual({
+        sourceId: "fixed:rambling.txt",
+        presentAtKickoff: true,
+        instanceId: "instance-1",
+      });
+    }
+  });
+
+  it.each([
+    ["truncated", "base values\n", "replacement\n"],
+    ["added", null, "added later\n"],
+    ["removed", "base values\n", null],
+  ] as const)("fails before a second provider turn when intake is %s", async (_label, initial, changed) => {
+    let intake: string | null = initial;
+    const turns = new ScriptedTurnPort([{
+      result: () => {
+        intake = changed;
+        return ok({ marker: "CONTINUE", files: [] }, DESIGNER_ID);
+      },
+    }]);
+    const watchedRequest = request(`run-intake-${_label}`, "C2");
+    Reflect.deleteProperty(watchedRequest, "intake");
+    await expect(design(watchedRequest, {
+      repository: watchedRepository(() => intake),
+      turns,
+      store: new InMemoryCampaignStore(),
+    })).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "version_mismatch"));
+    expect(turns.consumed).toBe(1);
+  });
+
+  it("rejects a replaced file instance even when its content preserves the prefix", async () => {
+    let intake = "base\n";
+    let instance = "instance-1";
+    const turns = new ScriptedTurnPort([{
+      result: () => {
+        intake = "base\nappend-looking bytes\n";
+        instance = "instance-2";
+        return ok({ marker: "CONTINUE", files: [] }, DESIGNER_ID);
+      },
+    }]);
+    const watchedRequest = request("run-intake-replaced", "C2");
+    Reflect.deleteProperty(watchedRequest, "intake");
+    await expect(design(watchedRequest, {
+      repository: watchedRepository(() => intake, () => instance),
+      turns,
+      store: new InMemoryCampaignStore(),
+    })).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "version_mismatch"));
+    expect(turns.consumed).toBe(1);
+  });
 });
 
 describe("absolute campaign wall deadline", () => {

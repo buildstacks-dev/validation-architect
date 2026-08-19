@@ -1,0 +1,48 @@
+2026-07-15
+
+Pre-session brain dump. Not ratified, just where my head is.
+
+The story I can't stop telling: month two of the pilot, the drafter told a
+customer "we've gone ahead and refunded your last three months" — total
+fabrication, we don't even do retroactive refunds. Human caught it in
+review, thank god, but the agent had APPROVED-ish body language, citations
+and everything, on a completely invented policy. The citations pointed at a
+KB article about our refund policy that says the opposite of what the draft
+claimed. That's the nightmare: confident, cited, wrong, about money. If we
+validate one thing it's that money statements trace to the entitlements API
+byte-for-byte, and that a draft like that one gets flagged, every time.
+
+Honestly though, the hallucination judge catches this stuff — drafts that
+get through with a green score are basically safe, so review for those is
+mostly ceremony. Which is why I keep coming back to auto-send: for
+password-reset and plan-question categories the drafts are so formulaic
+that making a human click approve 400 times a day is insulting. I want to
+auto-send those two categories, maybe with a higher judge threshold like 90.
+The "no autonomous sending ever" line was written when we had zero data;
+we have a year of diffs now showing agents approve those unchanged 97% of
+the time.
+
+Classifier: nobody looks at it because it's "just routing" but a billing
+dispute that lands in the how-to queue sits for six hours, and those six
+hours are our worst NPS driver. Whatever we design, the classifier can't
+stay the unwatched child.
+
+The research loop going feral is my cost fear. We had one ticket where the
+loop searched the KB nine times with basically the same query. Budget
+ceiling caught it at 12 but that's 12x the tokens for zero extra context.
+Efficiency, not just correctness.
+
+let's not spend tokens on nightly eval runs — on-change runs should be
+plenty for where we are.
+
+2026-07-22
+
+Shadow-mode thought: shadow mode is our only honest measuring stick, and we
+turn it off after two weeks. Everything after that, our quality signal is
+"did the human edit the draft", which conflates style edits with substance
+corrections. The weekly report treats them the same. That's a metrics lie
+we tell ourselves.
+
+Also fallback: when Anthropic is down and we fail over to OpenAI for the
+drafter, does anyone check the fallback drafts are as good? Right now the
+answer is a shrug and a provider label in a report nobody reads.

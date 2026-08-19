@@ -294,6 +294,11 @@ try {
     "package/dist/index.js",
     "package/dist/index.d.ts",
     "package/dist/provider-port.js",
+    "package/dist/run-context.js",
+    "package/dist/run-repository.js",
+    "package/dist/fixtures.js",
+    "package/fixtures/lumen-webapp/docs/PRODUCT.md",
+    "package/fixtures/lumen-webapp/rambling.txt",
   ]) {
     if (!designListed.includes(required)) throw new Error(`design package is missing ${required}`);
   }

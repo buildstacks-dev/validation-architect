@@ -39,7 +39,7 @@
     },
     {
       "type": "object",
-      "required": ["schema", "kind", "runId", "generation", "packageVersion", "sourceRevision", "envelope", "position", "receipts", "sessions", "artifacts", "intake", "mode", "repository", "startedAtEpochMs", "usage"],
+      "required": ["schema", "kind", "runId", "generation", "packageVersion", "sourceRevision", "envelope", "position", "receipts", "sessions", "artifacts", "intake", "intakeBase", "mode", "repository", "startedAtEpochMs", "usage"],
       "properties": {
         "schema": { "const": "validation-architect/design-run/v1" },
         "kind": { "const": "checkpoint" },
@@ -76,6 +76,16 @@
         "sessions": { "type": "object" },
         "artifacts": { "type": "object" },
         "intake": { "type": "string" },
+        "intakeBase": { "type": "string" },
+        "intakeSource": {
+          "type": "object",
+          "required": ["sourceId", "presentAtKickoff", "instanceId"],
+          "properties": {
+            "sourceId": { "type": "string", "minLength": 1 },
+            "presentAtKickoff": { "type": "boolean" },
+            "instanceId": { "type": ["string", "null"] }
+          }
+        },
         "mode": { "enum": ["greenfield", "revision"] },
         "repository": {
           "type": "object",

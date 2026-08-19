@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
@@ -19,9 +19,10 @@ import {
   type DesignOutcome,
   type ProfileTier,
 } from "validation-architect";
-import { LocalRepository } from "./local-repository.js";
 import { LocalCampaignStore } from "./local-store.js";
 import { captureRunContext, listRunContexts, loadRunContext, type RunContext } from "./run-context.js";
+import { RunRepository } from "./run-repository.js";
+import { materializeFixtureTarget, packagedFixtureDirectory } from "./fixtures.js";
 
 const PROFILES: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
 
@@ -29,6 +30,7 @@ const USAGE = `usage:
   validation-architect-design [target-dir] --profile <C0|C1|C2|C3|C4> [--intake-file <file>]
       [--run-id <id>] [--state-dir <dir>] [--out <dir>]
       [--model-designer <m>] [--model-stakeholder <m>] [--model-auditor <m>] [--model-reader <m>]
+      [--claude-auth <subscription|api-key>] [--codex-auth <chatgpt|api-key>]
       Start a design campaign against <target-dir> (default "."). Optional
       intake augments repository docs; when absent, intent derives
       from the admitted repository snapshot. State defaults outside the target
@@ -37,9 +39,15 @@ const USAGE = `usage:
 
   validation-architect-design resume <runId> [target-dir] [--state-dir <dir>] [--out <dir>]
       [--model-designer <m>] [--model-stakeholder <m>] [--model-auditor <m>] [--model-reader <m>]
+      [--claude-auth <subscription|api-key>] [--codex-auth <chatgpt|api-key>]
       Resume an INTERRUPTED campaign from its checkpoint (same package
       version, same source revision, untouched envelope). A settled failed
       run stays failed.
+
+  validation-architect-design fixture <name> [--profile <C0|C1|C2|C3|C4>] [--smoke]
+      [--run-id <id>] [--state-dir <dir>] [--out <dir>]
+      Run a packaged synthetic fixture through the same public engine. --smoke
+      defaults to C3 and tightens admission to one turn, ending by limit.
 
   validation-architect-design list [target-dir] [--state-dir <dir>]
       List public-checkpoint runs for the target state home. Legacy RunState
@@ -57,13 +65,18 @@ interface ParsedArgs {
   help: boolean;
 }
 
-const BOOLEAN_FLAGS = new Set(["help"]);
+const BOOLEAN_FLAGS = new Set(["help", "smoke"]);
 const VALUE_FLAGS = new Set([
   "profile", "intake-file", "run-id", "state-dir", "out",
   "model-designer", "model-stakeholder", "model-auditor", "model-reader",
+  "claude-auth", "codex-auth",
 ]);
-const COMMON_FLAGS = ["state-dir", "out", "model-designer", "model-stakeholder", "model-auditor", "model-reader"];
+const COMMON_FLAGS = [
+  "state-dir", "out", "model-designer", "model-stakeholder", "model-auditor", "model-reader",
+  "claude-auth", "codex-auth",
+];
 const START_FLAGS = new Set([...COMMON_FLAGS, "profile", "intake-file", "run-id"]);
+const FIXTURE_FLAGS = new Set([...START_FLAGS, "smoke"]);
 const RESUME_FLAGS = new Set(COMMON_FLAGS);
 const INSPECT_FLAGS = new Set(["state-dir"]);
 
@@ -104,6 +117,22 @@ function models(flags: Map<string, string>): Record<string, string> {
     if (value) overrides[seat] = value;
   }
   return overrides;
+}
+
+function turnConfiguration(flags: Map<string, string>): {
+  models: Record<string, string>;
+  claudeAuth: "subscription" | "api-key";
+  codexAuth: "chatgpt" | "api-key";
+} {
+  const claudeAuth = flags.get("claude-auth") ?? "subscription";
+  const codexAuth = flags.get("codex-auth") ?? "chatgpt";
+  if (claudeAuth !== "subscription" && claudeAuth !== "api-key") {
+    throw new UsageError("--claude-auth must be subscription or api-key");
+  }
+  if (codexAuth !== "chatgpt" && codexAuth !== "api-key") {
+    throw new UsageError("--codex-auth must be chatgpt or api-key");
+  }
+  return { models: models(flags), claudeAuth, codexAuth };
 }
 
 export function defaultStateDirectory(targetDir: string): string {
@@ -234,12 +263,18 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
     return args.help ? 0 : 2;
   }
 
-  const command = ["resume", "list", "report"].includes(args.positional[0] ?? "")
+  const command = ["resume", "fixture", "list", "report"].includes(args.positional[0] ?? "")
     ? args.positional[0]
     : "start";
   const isResume = command === "resume";
   try {
-    const allowedFlags = command === "start" ? START_FLAGS : isResume ? RESUME_FLAGS : INSPECT_FLAGS;
+    const allowedFlags = command === "start"
+      ? START_FLAGS
+      : command === "fixture"
+        ? FIXTURE_FLAGS
+        : isResume
+          ? RESUME_FLAGS
+          : INSPECT_FLAGS;
     for (const key of args.flags.keys()) {
       if (!allowedFlags.has(key)) throw new UsageError(`flag --${key} is not valid for ${command}`);
     }
@@ -276,6 +311,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       }
       if (args.positional.length > 3) throw new UsageError("resume accepts only <runId> and one target directory");
       const targetDir = resolve(args.positional[2] ?? ".");
+      const turnConfig = turnConfiguration(args.flags);
       // The provider port (and with it the SDK modules) loads only when a
       // campaign actually runs; --help and usage errors never touch it.
       const { LocalTurnPort } = await import("./provider-port.js");
@@ -283,43 +319,55 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       const context = loadRunContext(stateDir, runId);
       const store = new LocalCampaignStore({ directory: stateDir });
       const outcome = await resume(runId, {
-        repository: new LocalRepository({ root: context.snapshot }),
-        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, models: models(args.flags) }),
+        repository: new RunRepository({ root: context.snapshot, intakeSource: context.intakeSource }),
+        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, ...turnConfig }),
         store,
       });
       return reportOutcome(outcome, args.flags.get("out"), io.stdout);
     }
 
-    const targetDir = resolve(args.positional[0] ?? ".");
-    if (args.positional.length > 1) throw new UsageError("start accepts at most one target directory");
-    const profile = args.flags.get("profile");
+    const fixtureName = command === "fixture" ? args.positional[1] : undefined;
+    if (command === "fixture" && (!fixtureName || args.positional.length > 2)) {
+      throw new UsageError("fixture requires exactly one packaged fixture name");
+    }
+    if (command === "start" && args.positional.length > 1) throw new UsageError("start accepts at most one target directory");
+    const stateTarget = command === "fixture"
+      ? packagedFixtureDirectory(fixtureName as string)
+      : resolve(args.positional[0] ?? ".");
+    const smoke = args.flags.get("smoke") === "true";
+    const profile = args.flags.get("profile") ?? (smoke ? "C3" : undefined);
     if (!profile || !(PROFILES as readonly string[]).includes(profile)) {
       io.stderr(`validation-architect-design: --profile must be one of ${PROFILES.join(", ")}`);
       return 2;
     }
+    const turnConfig = turnConfiguration(args.flags);
     const intakeFile = args.flags.get("intake-file");
-    const intake = intakeFile ? readFileSync(resolve(intakeFile), "utf8") : undefined;
     const runId =
       args.flags.get("run-id") ?? `design-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`;
     io.stderr(`[validation-architect-design] run id: ${runId}`);
     // Lazy provider-port import: after every usage gate, before the campaign.
     const { LocalTurnPort } = await import("./provider-port.js");
-    const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+    const stateDir = stateDirectory(args.flags, stateTarget, io.stderr);
+    const targetDir = command === "fixture"
+      ? materializeFixtureTarget(fixtureName as string, stateDir, runId)
+      : stateTarget;
     const store = new LocalCampaignStore({ directory: stateDir });
     const context = captureRunContext({
       runId,
       target: targetDir,
       stateDirectory: stateDir,
       profile: profile as ProfileTier,
+      ...(intakeFile ? { intakeFile: resolve(intakeFile) } : {}),
+      ...(fixtureName ? { fixture: fixtureName } : {}),
     });
-    const repository = new LocalRepository({ root: context.snapshot });
+    const repository = new RunRepository({ root: context.snapshot, intakeSource: context.intakeSource });
     const mode = await repository.readFile("validation-design/model/project.yaml") === null ? "greenfield" : "revision";
     const outcome = await design(
       {
         runId,
         profile: profile as ProfileTier,
-        ...(intake !== undefined ? { intake } : {}),
         mode,
+        ...(smoke ? { limits: { maxTurns: 1, maxWallMs: 45 * 60_000 } } : {}),
         admit: (envelope) => {
           io.stderr(`[validation-architect-design] admitted ${envelope.profile} envelope: ${envelope.limits.maxTurns} turns, ${envelope.limits.maxWallMs}ms wall`);
           return envelope;
@@ -327,7 +375,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       },
       {
         repository,
-        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, models: models(args.flags) }),
+        turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, ...turnConfig }),
         store,
       },
     );
