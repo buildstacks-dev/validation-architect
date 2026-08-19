@@ -5,6 +5,20 @@ all three skills (their own CHANGELOGs remain as readable history).
 
 ## 0.4.16 — recurring falsifiability sweep for negative controls (unreleased)
 
+- Packaging/campaign pre-release hardening (#75–#77): root and design builds
+  clean verified output directories and package smoke compares exact isolated
+  TypeScript closures; the campaign enforces one absolute wall deadline across
+  in-flight/replayed settlement; artifacts, structured history, prompts, and
+  intake have deterministic tighten-only UTF-8 bounds with compact prompt and
+  receipt projections.
+- Campaign consolidation (#78): `validation-architect-design` is the sole live
+  composition over public `design()` / `resume()`, `CampaignCheckpoint` is the
+  only transition state, and design `TurnLedger` / `LocalTurnPort` are the only
+  settlement/provider/confinement implementations. Immutable capture,
+  append-only intake, fixtures/smoke, reports, post-hoc readers/audit,
+  idempotent delivery, fidelity, and fail-closed fleet status live in the
+  design package. The superseded root host/state/adapters/tests and duplicate
+  fixtures are removed with no unreleased-state compatibility path.
 - VA-ENF-008 (#60): ships the scheduled-lane standing-obligation template —
   `enablement/sweep/control-sweep.mjs` (with typed declarations) plus the
   `enablement/ci/control-sweep.yml` workflow. Per landed negative control the

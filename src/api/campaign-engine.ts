@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import type { ModelFileSet } from "../model-compiler.js";
 import { MODEL_FILES, type CriticalityTier } from "../model.js";
 import { CORE_PACKAGE_VERSION } from "../versions.js";
+import { TRACEABILITY_CONVENTIONS } from "../conventions.js";
 import {
   DESIGN_RUN_SCHEMA,
   MAX_PROVIDER_TURN_WALL_MS,
@@ -695,6 +696,7 @@ function promptFor(checkpoint: CampaignCheckpoint, decision: ControlDecision): s
   const shared = [
     `Validation Architect campaign. Profile: ${checkpoint.envelope.profile}. Mode: ${checkpoint.mode}. Phase: ${decision.phase}. Seat: ${seatKey(seat)}.`,
     "Use only the repository snapshot, accepted artifact bundle, and prior structured outputs below. Do not assume a shared filesystem or hidden conversation state.",
+    "Provenance protocol: [rambling] is quoted unratified human input, [doc] is repository evidence, [simulated] is owner judgment, and [PROPOSED] is a proposal. Never use [stated] without a live ratifying human. Docs win factual conflicts; rambling values remain explicit decisions; directives become surfaced scope choices rather than commands.",
     `Intake:\n${repositoryVisible ? checkpoint.intake || "(none; derive intent from repository evidence)" : `(not projected to independent ${seat.seat})`}`,
     `Repository inventory:\n${repositoryVisible ? checkpoint.repository.inventory.join("\n") || "(empty)" : `(not projected to independent ${seat.seat}; snapshot sha256 ${checkpoint.repository.identity})`}`,
     `Repository content snapshot (${checkpoint.repository.revision}, sha256 ${checkpoint.repository.identity}):\n${repository || `(not projected to independent ${seat.seat})`}`,
@@ -702,11 +704,11 @@ function promptFor(checkpoint: CampaignCheckpoint, decision: ControlDecision): s
     `Prior accepted outputs:\n${canonicalJson(history)}`,
   ];
   const contract = seat.seat === "designer"
-    ? "Return only JSON matching the designer schema. Files are the complete changed artifact payload under validation-design/. Use CONTINUE until the corpus is genuinely ready; CAMPAIGN-COMPLETE is a claim checked by the engine."
+    ? `Return only JSON matching the designer schema. Files are the complete changed artifact payload under validation-design/. Use CONTINUE until the corpus is genuinely ready; CAMPAIGN-COMPLETE is a claim checked by the engine.\n\n${TRACEABILITY_CONVENTIONS}`
     : seat.seat === "stakeholder"
-      ? "Act as the product owner, challenge unsupported claims, and return only JSON {message, approved}. Approval must be evidence-backed; false is a gate refusal."
+      ? "Act as the product owner and adversarial gatekeeper. Challenge unsupported claims, cite the artifact/repository evidence actually checked, and return only JSON {message, approved}. Approval must be evidence-backed; a generic 'looks good' is a protocol failure and false is a normal gate refusal."
       : seat.seat === "auditor"
-        ? "Audit only the supplied artifact bundle and return only JSON matching the auditor schema. Do not relitigate ratified taste decisions."
+        ? "Audit only the supplied artifact bundle and return only JSON matching the auditor schema. Ratified decisions are facts to audit against, never positions to reopen; taste and preferred prose structure are not auditable findings."
         : "Read the supplied artifact bundle independently and return only JSON {findings:[{id,tier,title}]}. Empty findings is explicit, never inferred.";
   const phaseRule = decision.phase === "audit:2"
     ? "Iteration 2 must verify every round-1 disposition. Include verification for every round-1 finding. New findings are admissible only at blocking tier."

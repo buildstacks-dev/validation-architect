@@ -1,8 +1,6 @@
 import type { TraceResult } from "./trace.js";
 import type { ExplainedImpactPlan } from "./impact.js";
 import type { RelationshipGraph } from "./relationship-graph.js";
-import type { AuditState, RunState } from "./types.js";
-import type { WorkspaceCompilation } from "./workspace-compiler.js";
 import {
   createValidationResult,
   type ResultCaseRecord,
@@ -128,61 +126,6 @@ export function impactPlanToValidationResult(plan: ExplainedImpactPlan, context:
     cases: plan.family_ids.map((id) => ({ id, status: "pass", summary: `Selected family ${id}`, evidence_ids: context.evidence.map((item) => item.id) })),
     namespace: "validation-architect.impact",
     detail: plan,
-  });
-}
-
-export function compilerToValidationResult(compilation: WorkspaceCompilation, context: ResultMappingContext): ValidationResultV1 {
-  const cases: ResultCaseRecord[] = compilation.diagnostics.map((diagnostic, index) => ({
-    id: `COMPILER-${index + 1}`,
-    status: diagnostic.severity === "error" ? "fail" : "pass",
-    summary: `${diagnostic.concept}: ${diagnostic.message}`,
-    evidence_ids: context.evidence.map((item) => item.id),
-  }));
-  return mappedResult(context, {
-    completeness: "complete",
-    verdict: compilation.accepted ? "pass" : "fail",
-    ...(compilation.accepted ? {} : { reason: "traceability_broken" as const }),
-    summary: compilation.accepted ? `Model ${compilation.identity} compiled cleanly.` : "The checked validation model is invalid or its projections are stale.",
-    next_action: compilation.accepted ? "Use only projections bound to this model identity." : "Apply every source-located compiler correction and regenerate projections.",
-    cases,
-    namespace: "validation-architect.compiler",
-    detail: compilation,
-  });
-}
-
-export function campaignToValidationResult(state: RunState, context: ResultMappingContext): ValidationResultV1 {
-  const complete = state.status === "completed";
-  const reason: ResultReason | undefined = complete ? undefined : state.status === "failed" ? "harness_failure" : "evidence_incomplete";
-  return mappedResult(context, {
-    completeness: complete ? "complete" : "incomplete",
-    verdict: complete ? "pass" : "inconclusive",
-    ...(reason ? { reason } : {}),
-    summary: complete ? `Campaign ${state.runId} completed its design gates.` : `Campaign ${state.runId} is ${state.status}.`,
-    next_action: complete ? "Use the ratification package; do not treat campaign completion as product-test success." : state.statusReason ?? "Resume or inspect the interrupted campaign.",
-    cases: [],
-    namespace: "validation-architect.campaign",
-    detail: state,
-  });
-}
-
-export function auditToValidationResult(audit: AuditState, context: ResultMappingContext): ValidationResultV1 {
-  const clean = audit.phase === "done" && audit.verdict === "clean";
-  const unfinished = audit.phase !== "done" || !audit.verdict;
-  const cases: ResultCaseRecord[] = audit.findings.map((finding) => ({
-    id: finding.id,
-    status: audit.dispositions[finding.id]?.kind === "fixed" ? "pass" : unfinished ? "inconclusive" : "fail",
-    summary: finding.title,
-    evidence_ids: context.evidence.map((item) => item.id),
-  }));
-  return mappedResult(context, {
-    completeness: unfinished ? "incomplete" : "complete",
-    verdict: clean ? "pass" : unfinished ? "inconclusive" : "fail",
-    ...(clean ? {} : { reason: unfinished ? "evidence_incomplete" as const : "traceability_broken" as const }),
-    summary: clean ? "Independent design audit is clean." : unfinished ? "Independent design audit is incomplete." : `Independent design audit ended ${audit.verdict}.`,
-    next_action: clean ? "Retain the audit identity; this is not a product-test verdict." : "Resolve or explicitly arbitrate every graded audit finding.",
-    cases,
-    namespace: "validation-architect.audit",
-    detail: audit,
   });
 }
 

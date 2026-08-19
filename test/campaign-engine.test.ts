@@ -482,7 +482,16 @@ describe("campaign growth bounds", () => {
 describe("exact profile sequences", () => {
   it("C0 spends exactly one designer turn, records the audit omission, and refuses a fifth wheel", async () => {
     const ports = makePorts([
-      { expect: { seat: "designer", sessionMode: "new" }, result: designerComplete() },
+      {
+        expect: { seat: "designer", sessionMode: "new" },
+        result: (turnRequest) => {
+          expect(turnRequest.prompt).toContain("The checked YAML model is authority");
+          expect(turnRequest.prompt).toContain("validation-architect check");
+          expect(turnRequest.prompt).toContain("Never use [stated]");
+          expect(turnRequest.prompt).toContain("Docs win factual conflicts");
+          return designerComplete();
+        },
+      },
       { result: cleanAudit() }, // seeded extra turn that must never be consumed
     ]);
     const outcome = await design(request("run-c0", "C0"), ports);
@@ -498,7 +507,14 @@ describe("exact profile sequences", () => {
   it("C1 is designer then one fresh same-model auditor (session independence only), exactly two turns", async () => {
     const ports = makePorts([
       { expect: { seat: "designer", sessionMode: "new" }, result: designerComplete() },
-      { expect: { seat: "auditor", sessionMode: "new" }, result: cleanAudit() },
+      {
+        expect: { seat: "auditor", sessionMode: "new" },
+        result: (turnRequest) => {
+          expect(turnRequest.prompt).toContain("taste and preferred prose structure are not auditable findings");
+          expect(turnRequest.prompt).toContain("never positions to reopen");
+          return cleanAudit();
+        },
+      },
     ]);
     const outcome = await design(request("run-c1", "C1"), ports);
     expect(outcome.status).toBe("complete");
@@ -1035,6 +1051,7 @@ describe("C3/C4 bounded graph", () => {
           expect(turnRequest.prompt).toContain("RELAY-SENTINEL");
           expect(turnRequest.prompt.match(/RELAY-SENTINEL/g)).toHaveLength(1);
           expect(turnRequest.prompt).toContain(createHash("sha256").update("RELAY-SENTINEL").digest("hex"));
+          expect(turnRequest.prompt).toContain("generic 'looks good' is a protocol failure");
           expect(turnRequest.limits).toEqual({
             maxTokens: 32_768,
             maxWallMs: 3_600_000,

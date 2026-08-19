@@ -1,18 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { FidelityRunResult } from "../src/fidelity.js";
-import { fidelityToValidationResult } from "../src/fidelity-result-adapter.js";
 import {
-  auditToValidationResult,
-  campaignToValidationResult,
-  compilerToValidationResult,
   higherLaneToValidationResult,
   traceToValidationResult,
   type ResultMappingContext,
 } from "../src/result-adapters.js";
 import type { TraceResult } from "../src/trace.js";
-import type { AuditState, RunState } from "../src/types.js";
 import {
   canonicalValidationResult,
   canonicalValidationResultYaml,
@@ -34,7 +28,6 @@ import {
   type ValidationResultV1,
 } from "../src/validation-result.js";
 import { CURRENT_CORE_VERSIONS, RESULT_SCHEMA } from "../src/versions.js";
-import type { WorkspaceCompilation } from "../src/workspace-compiler.js";
 
 const evidence = evidenceReference("EV-1", "result", "evidence/result.json", "exact evidence");
 
@@ -190,23 +183,11 @@ function mappingContext(environment = "local"): ResultMappingContext {
 }
 
 describe("stable-result domain mappings", () => {
-  it("maps compiler, trace, campaign, audit, fidelity, and higher lanes without losing native detail", () => {
-    const compilation = { accepted: false, diagnostics: [{ code: "MODEL_LINK_BROKEN", severity: "error", concept: "CF-1", location: { file: "validation-design/model/families.yaml", line: 3, column: 3 }, message: "broken", correction: "repair link" }], generated_views: {}, source_fingerprint: "source", surface_fingerprint: "surface", report_path: "validation-design/compiler-report.json" } as WorkspaceCompilation;
-    expect(readResultExtension<WorkspaceCompilation>(compilerToValidationResult(compilation, mappingContext()), "validation-architect.compiler")).toEqual(compilation);
-
+  it("maps trace and higher-lane outcomes without losing native detail", () => {
     const trace: TraceResult = { ok: false, reds: ["forward: missing"], checks: { agreement: [], forward: ["missing"], backward: [], statusHonesty: [], structure: [] }, specs: [], report: "trace report" };
     const traceResult = traceToValidationResult(trace, mappingContext());
     expect(traceResult).toMatchObject({ verdict: "fail", reason: "traceability_broken" });
     expect(readResultExtension<TraceResult>(traceResult, "validation-architect.trace")?.reds).toEqual(trace.reds);
-
-    const campaign = { runId: "run-1", status: "aborted", statusReason: "budget stopped", exchanges: 3 } as unknown as RunState;
-    expect(readResultExtension<Record<string, unknown>>(campaignToValidationResult(campaign, mappingContext()), "validation-architect.campaign")).toMatchObject({ status: "aborted", exchanges: 3 });
-
-    const audit: AuditState = { iteration: 1, phase: "done", windowExchanges: 0, findings: [{ id: "AUD-101", tier: "blocking", title: "Broken control", iteration: 1 }], dispositions: {}, verdict: "reservations" };
-    expect(readResultExtension<AuditState>(auditToValidationResult(audit, mappingContext()), "validation-architect.audit")).toEqual(audit);
-
-    const fidelity: FidelityRunResult = { status: "protocol-violation", reds: [], findings: [], violations: ["bad format"], report: "bad" };
-    expect(readResultExtension<FidelityRunResult>(fidelityToValidationResult(fidelity, mappingContext()), "validation-architect.fidelity")).toEqual(fidelity);
 
     const higher = { status: "not-run" as const, summary: "Authorization absent.", next_action: "Request per-run approval.", detail: { native: "STOPPED" } };
     expect(readResultExtension(higherLaneToValidationResult(higher, mappingContext()), "validation-architect.higher-lane")).toEqual(higher.detail);

@@ -61,8 +61,8 @@ const USAGE = `usage:
       defaults to C3 and tightens admission to one turn, ending by limit.
 
   validation-architect-design list [target-dir] [--state-dir <dir>]
-      List public-checkpoint runs for the target state home. Legacy RunState
-      directories are never discovered.
+      List public-checkpoint runs for the target state home. Historical
+      repository-local run directories are never discovered.
 
   validation-architect-design report <runId> [target-dir] [--state-dir <dir>]
       Render a human-readable report from public checkpoint and immutable
