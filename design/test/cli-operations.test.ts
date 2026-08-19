@@ -54,5 +54,9 @@ describe("public-checkpoint CLI inspection", () => {
     expect(reported.out.join("\n")).toContain("# Validation Architect run inspect-run");
     expect(reported.out.join("\n")).toContain(`Source revision: ${context.sourceRevision}`);
     expect(reported.out.join("\n")).toContain("Status: failed");
+
+    const unknown = collect();
+    expect(await main(["repos", target, "--state-dir", stateDirectory], unknown.io)).toBe(0);
+    expect(unknown.out.join("\n")).toContain(`${target}\tUNKNOWN\t-`);
   });
 });

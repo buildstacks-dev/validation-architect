@@ -14,6 +14,16 @@ export {
   materializeFixtureTarget,
   packagedFixtureDirectory,
 } from "./fixtures.js";
+export { deliverRun, type DeliveryResult } from "./delivery.js";
+export {
+  recordCampaignCompletion,
+  recordDeliveryCompletion,
+  evaluateFleetStatus,
+  registryEntries,
+  registryStatus,
+  type RegistryEntry,
+  type FleetStatus,
+} from "./registry.js";
 export { LocalCampaignStore, type LocalCampaignStoreOptions } from "./local-store.js";
 export {
   captureRunContext,

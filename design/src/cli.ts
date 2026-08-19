@@ -23,6 +23,14 @@ import { LocalCampaignStore } from "./local-store.js";
 import { captureRunContext, listRunContexts, loadRunContext, type RunContext } from "./run-context.js";
 import { RunRepository } from "./run-repository.js";
 import { materializeFixtureTarget, packagedFixtureDirectory } from "./fixtures.js";
+import { deliverRun } from "./delivery.js";
+import {
+  recordCampaignCompletion,
+  recordDeliveryCompletion,
+  evaluateFleetStatus,
+  registryEntries,
+  registryStatus,
+} from "./registry.js";
 
 const PROFILES: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
 
@@ -56,6 +64,14 @@ const USAGE = `usage:
   validation-architect-design report <runId> [target-dir] [--state-dir <dir>]
       Render a human-readable report from public checkpoint and immutable
       run metadata only. No provider is loaded.
+
+  validation-architect-design deliver <runId> [target-dir] [--state-dir <dir>]
+      Idempotently land a completed public checkpoint on its captured base in
+      validation-design/<runId>, without touching the user checkout.
+
+  validation-architect-design repos [target-dir ...] [--state-dir <dir>]
+      Show the offline fleet registry. A target absent from the registry is
+      UNKNOWN, never healthy by default.
 
 exit codes: 0 complete · 1 incomplete/contract failure · 2 usage error`;
 
@@ -147,6 +163,14 @@ function stateDirectory(flags: Map<string, string>, targetDir: string, stderr: (
   const directory = resolve(explicit ?? defaultStateDirectory(targetDir));
   stderr(`[validation-architect-design] state directory: ${directory}${explicit ? "" : " (default)"}`);
   return directory;
+}
+
+function registryPath(flags: Map<string, string>): string {
+  const explicit = flags.get("state-dir");
+  const stateHome = process.env["XDG_STATE_HOME"] || join(homedir(), ".local", "state");
+  return explicit
+    ? join(resolve(explicit), "registry.json")
+    : join(stateHome, "validation-architect", "registry.json");
 }
 
 function bundleTarget(outputRoot: string, path: string): string {
@@ -263,7 +287,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
     return args.help ? 0 : 2;
   }
 
-  const command = ["resume", "fixture", "list", "report"].includes(args.positional[0] ?? "")
+  const command = ["resume", "fixture", "list", "report", "deliver", "repos"].includes(args.positional[0] ?? "")
     ? args.positional[0]
     : "start";
   const isResume = command === "resume";
@@ -288,6 +312,21 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       }
       return 0;
     }
+    if (command === "repos") {
+      const registry = registryPath(args.flags);
+      const requested = args.positional.slice(1).map((target) => resolve(target));
+      if (requested.length === 0) {
+        for (const entry of registryEntries(registry)) {
+          io.stdout(`${entry.target}\t${evaluateFleetStatus(entry, entry.target)}\t${entry.campaign?.runId ?? "-"}`);
+        }
+      } else {
+        for (const target of requested) {
+          const entry = registryStatus(registry, target);
+          io.stdout(`${target}\t${evaluateFleetStatus(entry, target)}\t${entry?.campaign?.runId ?? "-"}`);
+        }
+      }
+      return 0;
+    }
     if (command === "report") {
       const runId = args.positional[1];
       if (!runId) {
@@ -301,6 +340,23 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
       const checkpoint = await new LocalCampaignStore({ directory: stateDir }).load(runId);
       if (!checkpoint) throw new Error(`run ${runId} has metadata but no public checkpoint`);
       io.stdout(renderRunReport(context, checkpoint));
+      return 0;
+    }
+    if (command === "deliver") {
+      const runId = args.positional[1];
+      if (!runId) {
+        io.stderr(USAGE);
+        return 2;
+      }
+      if (args.positional.length > 3) throw new UsageError("deliver accepts only <runId> and one target directory");
+      const targetDir = resolve(args.positional[2] ?? ".");
+      const stateDir = stateDirectory(args.flags, targetDir, io.stderr);
+      const context = loadRunContext(stateDir, runId);
+      const checkpoint = await new LocalCampaignStore({ directory: stateDir }).load(runId);
+      if (!checkpoint) throw new Error(`run ${runId} has metadata but no public checkpoint`);
+      const delivery = deliverRun(context, checkpoint);
+      recordDeliveryCompletion(registryPath(args.flags), context, delivery);
+      io.stdout(`delivered ${runId} to ${delivery.branch} at ${delivery.commit}`);
       return 0;
     }
     if (isResume) {
@@ -323,6 +379,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
         turns: new LocalTurnPort({ workspace: context.snapshot, stateDirectory: stateDir, ...turnConfig }),
         store,
       });
+      if (outcome.status === "complete") recordCampaignCompletion(registryPath(args.flags), context);
       return reportOutcome(outcome, args.flags.get("out"), io.stdout);
     }
 
@@ -379,6 +436,7 @@ export async function main(argv: string[], io: CliIo = defaultIo): Promise<numbe
         store,
       },
     );
+    if (outcome.status === "complete") recordCampaignCompletion(registryPath(args.flags), context);
     return reportOutcome(outcome, args.flags.get("out"), io.stdout);
   } catch (error) {
     if (error instanceof UsageError) {
