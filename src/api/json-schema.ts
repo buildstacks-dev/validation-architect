@@ -2,7 +2,8 @@
  * Minimal structural JSON-schema-subset validator used to validate structured
  * turn output against a TurnRequest's `outputSchema`. Supports the subset the
  * campaign engine emits: type, const, enum, required, properties,
- * additionalProperties (boolean), items, minItems, minLength, minimum.
+ * additionalProperties (boolean), items, minItems, maxItems, minLength,
+ * maxLength, minimum.
  * Hand-rolled because the core package's only runtime dependency is `yaml`.
  */
 
@@ -46,6 +47,9 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
     if (typeof schema.minItems === "number" && value.length < schema.minItems) {
       problems.push(`${path} must have at least ${schema.minItems} item(s)`);
     }
+    if (typeof schema.maxItems === "number" && value.length > schema.maxItems) {
+      problems.push(`${path} must have at most ${schema.maxItems} item(s)`);
+    }
     if (isRecord(schema.items)) {
       value.forEach((item, index) => validateAgainstSchema(item, schema.items as JsonSchema, `${path}[${index}]`, problems));
     }
@@ -53,6 +57,9 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
     if (typeof value !== "string") problems.push(`${path} must be a string`);
     else if (typeof schema.minLength === "number" && value.length < schema.minLength) {
       problems.push(`${path} must have length >= ${schema.minLength}`);
+    }
+    else if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
+      problems.push(`${path} must have length <= ${schema.maxLength}`);
     }
   } else if (type === "number" || type === "integer") {
     if (typeof value !== "number" || (type === "integer" && !Number.isInteger(value))) {

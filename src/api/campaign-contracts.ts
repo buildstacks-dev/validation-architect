@@ -85,6 +85,11 @@ export interface CampaignEnvelope {
     maxTurns: number;
     maxWallMs: number;
     maxTokensPerTurn: number;
+    maxArtifactFiles: number;
+    maxArtifactBytes: number;
+    maxHistoryBytes: number;
+    maxPromptBytes: number;
+    maxIntakeBytes: number;
     maxRelayExchanges?: number;
     maxReaderTurns?: number;
     maxAuditIterations?: number;
@@ -108,6 +113,31 @@ export interface TurnReceipt {
   /** Library-validated structured output (never the host's `parsed` as-is);
    * persisted so a resumed process replays identical control decisions. */
   output?: unknown;
+  /** Content-free identities of artifact writes accepted from this turn. */
+  artifactChanges?: Array<{ path: string; sha256: string }>;
+}
+
+export function utf8ByteLength(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+export function artifactMetrics(artifacts: Record<string, string>): { files: number; bytes: number } {
+  return {
+    files: Object.keys(artifacts).length,
+    bytes: Object.values(artifacts).reduce((sum, content) => sum + utf8ByteLength(content), 0),
+  };
+}
+
+/** Bytes retained for authority-bearing structured outputs, excluding fixed
+ * receipt metadata and artifact content already held once in `artifacts`. */
+export function structuredHistoryBytes(receipts: TurnReceipt[]): number {
+  return receipts.reduce((sum, receipt) => {
+    if (receipt.output === undefined && receipt.artifactChanges === undefined) return sum;
+    return sum + utf8ByteLength(JSON.stringify({
+      ...(receipt.output !== undefined ? { output: receipt.output } : {}),
+      ...(receipt.artifactChanges !== undefined ? { artifactChanges: receipt.artifactChanges } : {}),
+    }));
+  }, 0);
 }
 
 export interface RepositorySnapshot {
@@ -331,6 +361,9 @@ export function validateEnvelope(value: unknown, problems: string[], path = "env
   const maxTurnsValid = requireInteger(value.limits.maxTurns, `${path}.limits.maxTurns`, problems, 1);
   requireInteger(value.limits.maxWallMs, `${path}.limits.maxWallMs`, problems, 1);
   requireInteger(value.limits.maxTokensPerTurn, `${path}.limits.maxTokensPerTurn`, problems, 1);
+  for (const key of ["maxArtifactFiles", "maxArtifactBytes", "maxHistoryBytes", "maxPromptBytes", "maxIntakeBytes"]) {
+    requireInteger(value.limits[key], `${path}.limits.${key}`, problems, 1);
+  }
   for (const key of ["maxRelayExchanges", "maxReaderTurns", "maxAuditIterations", "maxStakeholderExchangesPerAuditWindow"]) {
     if (value.limits[key] !== undefined) requireInteger(value.limits[key], `${path}.limits.${key}`, problems, 1);
   }
@@ -432,6 +465,26 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
         problems.push(`${rPath} must identify exactly one admitted transition`);
       }
       if (receipt.identity !== undefined) validateExecutionIdentity(receipt.identity, `${rPath}.identity`, problems);
+      if (receipt.artifactChanges !== undefined) {
+        if (receipt.status !== "ok" || receipt.accepted !== true) {
+          problems.push(`${rPath}.artifactChanges is valid only for an accepted ok result`);
+        }
+        if (requireArray(receipt.artifactChanges, `${rPath}.artifactChanges`, problems)) {
+          const changedPaths = new Set<string>();
+          receipt.artifactChanges.forEach((change, changeIndex) => {
+            const changePath = `${rPath}.artifactChanges[${changeIndex}]`;
+            if (!requireRecord(change, changePath, problems)) return;
+            if (requireSafePath(change.path, `${changePath}.path`, problems)) {
+              if (!change.path.startsWith("validation-design/")) problems.push(`${changePath}.path must be beneath validation-design/`);
+              if (changedPaths.has(change.path)) problems.push(`${changePath}.path duplicates ${change.path}`);
+              changedPaths.add(change.path);
+            }
+            if (typeof change.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(change.sha256)) {
+              problems.push(`${changePath}.sha256 must be a lowercase sha256 digest`);
+            }
+          });
+        }
+      }
       if (statusValid && receipt.status === "ok") {
         if (!isRecord(receipt.identity)) problems.push(`${rPath}.identity is required for an accepted turn`);
         if (typeof receipt.accepted !== "boolean") problems.push(`${rPath}.accepted is required for an ok provider result`);
@@ -591,6 +644,15 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
             }
           }
         }
+        if (
+          typeof request.prompt === "string" &&
+          envelope &&
+          isRecord(envelope.limits) &&
+          typeof envelope.limits.maxPromptBytes === "number" &&
+          utf8ByteLength(request.prompt) > envelope.limits.maxPromptBytes
+        ) {
+          problems.push(`${path}.pendingTurn.request.prompt exceeds the admitted maxPromptBytes`);
+        }
       } else {
         problems.push(`${path}.pendingTurn.request must be the exact pending TurnRequest`);
       }
@@ -604,8 +666,28 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
       if (!key.startsWith("validation-design/")) problems.push(`${path}.artifacts[${key}] must be beneath validation-design/`);
       if (typeof value.artifacts[key] !== "string") problems.push(`${path}.artifacts[${key}] must be file content`);
     }
+    if (envelope && isRecord(envelope.limits)) {
+      const artifactRecord = Object.fromEntries(
+        Object.entries(value.artifacts).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+      );
+      const metrics = artifactMetrics(artifactRecord);
+      if (typeof envelope.limits.maxArtifactFiles === "number" && metrics.files > envelope.limits.maxArtifactFiles) {
+        problems.push(`${path}.artifacts exceed the admitted maxArtifactFiles`);
+      }
+      if (typeof envelope.limits.maxArtifactBytes === "number" && metrics.bytes > envelope.limits.maxArtifactBytes) {
+        problems.push(`${path}.artifacts exceed the admitted maxArtifactBytes`);
+      }
+    }
   }
   if (typeof value.intake !== "string") problems.push(`${path}.intake must be a string`);
+  else if (
+    envelope &&
+    isRecord(envelope.limits) &&
+    typeof envelope.limits.maxIntakeBytes === "number" &&
+    utf8ByteLength(value.intake) > envelope.limits.maxIntakeBytes
+  ) {
+    problems.push(`${path}.intake exceeds the admitted maxIntakeBytes`);
+  }
   requireEnum(value.mode, `${path}.mode`, ["greenfield", "revision"] as const, problems);
   if (requireRecord(value.repository, `${path}.repository`, problems)) {
     const repository = value.repository;
@@ -663,6 +745,15 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
   }
   if (envelope && isRecord(envelope.limits) && typeof envelope.limits.maxTurns === "number" && Array.isArray(value.receipts) && value.receipts.length > envelope.limits.maxTurns) {
     problems.push(`${path}.receipts exceed the admitted maxTurns`);
+  }
+  if (
+    envelope &&
+    isRecord(envelope.limits) &&
+    typeof envelope.limits.maxHistoryBytes === "number" &&
+    Array.isArray(value.receipts) &&
+    structuredHistoryBytes(value.receipts.filter(isRecord) as unknown as TurnReceipt[]) > envelope.limits.maxHistoryBytes
+  ) {
+    problems.push(`${path}.receipts exceed the admitted maxHistoryBytes`);
   }
 }
 

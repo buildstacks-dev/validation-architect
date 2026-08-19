@@ -129,7 +129,9 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
   reconstructs the exact pending request from its persisted creation time; the
   same idempotency key must then reconcile to one settled result without a
   second spend. `TurnPort.reconcileTurn()` is reconciliation-only and may never
-  initiate provider work.
+  initiate provider work. Accepted designer receipts retain control output and
+  content-free artifact path/digest identities; authoritative file content is
+  stored once in the current artifact map rather than repeated through history.
 - **TurnResult** has no success-by-omission: `ok | refused | limit_exhausted |
   error` are all typed outcomes, and a host-supplied `parsed` value is
   re-validated against the requested schema, never trusted by presence.
@@ -176,6 +178,28 @@ only: a result durably settled before the deadline may close a prior crash
 window, while an unsettled request starts no new work and a result settled or
 returned at/after the deadline becomes typed `limit_exhausted` without
 advancing the campaign.
+
+Every profile also admits deterministic growth limits: 512 current artifact
+files, 1 MiB of cumulative current artifact content (UTF-8 bytes), 1 MiB of
+authority-bearing structured receipt history, a 2 MiB constructed prompt, and
+128 KiB of intake. Hosts may tighten each limit and may never enlarge one.
+Greenfield and revision corpora use the same artifact limits; an oversized
+revision is rejected before provider spend. Artifact writes are validated as a
+merged set before acceptance, exact byte boundaries are allowed, and current
+authority is never truncated to fit.
+
+Prompt construction includes the current artifact authority, repository text
+only for the designer/owner seats, and the latest phase-relevant structured
+output per seat. Independent readers and the first auditor see artifact
+authority without product-source prose or historical conversation. Historical
+artifact writes appear as path/digest identities, not repeated content, and the
+prompt byte limit is checked before a pending request or provider call.
+
+Total provider input tokens are deliberately not an admitted envelope bound:
+the only provider-neutral value is the validated usage receipt, which arrives
+after spend, and the core does not guess with a provider-specific estimator.
+Actual input/output usage remains fully accumulated in the checkpoint; the
+pre-dispatch prompt-byte bound is the deterministic input-growth control.
 
 Outcomes: `{ status: "complete", bundle }` with the unwritten corpus,
 provenance, profile assessment (`escalationRequired` when findings support a

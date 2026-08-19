@@ -29,6 +29,9 @@ import {
   type PublicAuditVerdict,
   type RepositorySnapshot,
   type TurnReceipt,
+  artifactMetrics,
+  structuredHistoryBytes,
+  utf8ByteLength,
   validateDesignBundle,
 } from "./campaign-contracts.js";
 import { identityMismatch, invalidCheckpoint, invalidInput, versionMismatch } from "./errors.js";
@@ -95,6 +98,17 @@ const REPOSITORY_CONTEXT_GLOBS = [
 const MAX_REPOSITORY_INVENTORY_FILES = 20_000;
 const MAX_REPOSITORY_CONTEXT_FILES = 512;
 const MAX_REPOSITORY_CONTEXT_BYTES = 384 * 1024;
+const DEFAULT_GROWTH_LIMITS = {
+  maxArtifactFiles: 512,
+  maxArtifactBytes: 1024 * 1024,
+  maxHistoryBytes: 1024 * 1024,
+  maxPromptBytes: 2 * 1024 * 1024,
+  maxIntakeBytes: 128 * 1024,
+} as const;
+const MAX_STRUCTURED_ITEMS = 512;
+const MAX_STRUCTURED_TEXT = 64 * 1024;
+const MAX_STRUCTURED_TITLE = 4096;
+const MAX_STRUCTURED_ID = 256;
 
 function repositorySnapshotIdentity(snapshot: Pick<RepositorySnapshot, "inventory" | "files">): string {
   return sha256(canonicalJson(snapshot));
@@ -179,7 +193,10 @@ const FILE_SCHEMA: JsonSchema = {
   type: "object",
   required: ["path", "content"],
   additionalProperties: false,
-  properties: { path: { type: "string", minLength: 1 }, content: { type: "string" } },
+  properties: {
+    path: { type: "string", minLength: 1, maxLength: 4096 },
+    content: { type: "string", maxLength: DEFAULT_GROWTH_LIMITS.maxArtifactBytes },
+  },
 };
 
 export const DESIGNER_OUTPUT_SCHEMA: JsonSchema = {
@@ -188,23 +205,27 @@ export const DESIGNER_OUTPUT_SCHEMA: JsonSchema = {
   additionalProperties: false,
   properties: {
     marker: { enum: ["CONTINUE", "CAMPAIGN-COMPLETE", "AWAITING-HUMAN"] },
-    files: { type: "array", items: FILE_SCHEMA },
+    files: { type: "array", maxItems: DEFAULT_GROWTH_LIMITS.maxArtifactFiles, items: FILE_SCHEMA },
     escalation: {
       type: "object",
       required: ["minimumProfile", "reason"],
       additionalProperties: false,
-      properties: { minimumProfile: { enum: [...PROFILE_TIERS] }, reason: { type: "string", minLength: 1 } },
+      properties: {
+        minimumProfile: { enum: [...PROFILE_TIERS] },
+        reason: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_TEXT },
+      },
     },
     dispositions: {
       type: "array",
+      maxItems: MAX_STRUCTURED_ITEMS,
       items: {
         type: "object",
         required: ["findingId", "kind", "note"],
         additionalProperties: false,
         properties: {
-          findingId: { type: "string", minLength: 1 },
+          findingId: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_ID },
           kind: { enum: ["fixed", "disputed", "deferred"] },
-          note: { type: "string" },
+          note: { type: "string", maxLength: MAX_STRUCTURED_TEXT },
         },
       },
     },
@@ -215,7 +236,10 @@ export const STAKEHOLDER_OUTPUT_SCHEMA: JsonSchema = {
   type: "object",
   required: ["message", "approved"],
   additionalProperties: false,
-  properties: { message: { type: "string", minLength: 1 }, approved: { type: "boolean" } },
+  properties: {
+    message: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_TEXT },
+    approved: { type: "boolean" },
+  },
 };
 
 export const AUDITOR_OUTPUT_SCHEMA: JsonSchema = {
@@ -226,25 +250,27 @@ export const AUDITOR_OUTPUT_SCHEMA: JsonSchema = {
     verdict: { enum: ["clean", "clean-with-reservations", "clean-with-disputes", "reservations"] },
     findings: {
       type: "array",
+      maxItems: MAX_STRUCTURED_ITEMS,
       items: {
         type: "object",
         required: ["id", "tier", "title"],
         additionalProperties: false,
         properties: {
-          id: { type: "string", minLength: 1 },
+          id: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_ID },
           tier: { enum: ["blocking", "significant", "minor"] },
-          title: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_TITLE },
         },
       },
     },
     verification: {
       type: "array",
+      maxItems: MAX_STRUCTURED_ITEMS,
       items: {
         type: "object",
         required: ["findingId", "status"],
         additionalProperties: false,
         properties: {
-          findingId: { type: "string", minLength: 1 },
+          findingId: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_ID },
           status: { enum: ["fixed", "not-fixed", "disputed"] },
         },
       },
@@ -259,14 +285,15 @@ export const READER_OUTPUT_SCHEMA: JsonSchema = {
   properties: {
     findings: {
       type: "array",
+      maxItems: MAX_STRUCTURED_ITEMS,
       items: {
         type: "object",
         required: ["id", "tier", "title"],
         additionalProperties: false,
         properties: {
-          id: { type: "string", minLength: 1 },
+          id: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_ID },
           tier: { enum: ["blocking", "significant", "minor"] },
-          title: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1, maxLength: MAX_STRUCTURED_TITLE },
         },
       },
     },
@@ -300,7 +327,7 @@ function profileShape(profile: ProfileTier): Pick<CampaignEnvelope, "shape" | "s
         states: ["start", "done"],
         transitions: [t("start", "done", DESIGNER)],
         terminals: ["done"],
-        limits: { maxTurns: 1, maxWallMs: 30 * 60_000, maxTokensPerTurn: 32_768 },
+        limits: { maxTurns: 1, maxWallMs: 30 * 60_000, maxTokensPerTurn: 32_768, ...DEFAULT_GROWTH_LIMITS },
       };
     case "C1":
       return {
@@ -309,7 +336,7 @@ function profileShape(profile: ProfileTier): Pick<CampaignEnvelope, "shape" | "s
         states: ["start", "designed", "done"],
         transitions: [t("start", "designed", DESIGNER), t("designed", "done", AUDITOR_1)],
         terminals: ["done"],
-        limits: { maxTurns: 2, maxWallMs: 60 * 60_000, maxTokensPerTurn: 32_768, maxAuditIterations: 1 },
+        limits: { maxTurns: 2, maxWallMs: 60 * 60_000, maxTokensPerTurn: 32_768, maxAuditIterations: 1, ...DEFAULT_GROWTH_LIMITS },
       };
     case "C2":
       return {
@@ -323,7 +350,7 @@ function profileShape(profile: ProfileTier): Pick<CampaignEnvelope, "shape" | "s
           t("revised", "done", AUDITOR_1),
         ],
         terminals: ["done"],
-        limits: { maxTurns: 4, maxWallMs: 2 * 60 * 60_000, maxTokensPerTurn: 32_768, maxAuditIterations: 1 },
+        limits: { maxTurns: 4, maxWallMs: 2 * 60 * 60_000, maxTokensPerTurn: 32_768, maxAuditIterations: 1, ...DEFAULT_GROWTH_LIMITS },
       };
     default: {
       const readerSeats = READERS.map((reader, index) => freshSeat(reader, READERS.slice(0, index)));
@@ -381,6 +408,7 @@ function profileShape(profile: ProfileTier): Pick<CampaignEnvelope, "shape" | "s
           maxReaderTurns: 9,
           maxAuditIterations: 2,
           maxStakeholderExchangesPerAuditWindow: 12,
+          ...DEFAULT_GROWTH_LIMITS,
         },
       };
     }
@@ -636,34 +664,40 @@ function exhaustedBound(checkpoint: CampaignCheckpoint, decision: ControlDecisio
 
 // ── prompts ──────────────────────────────────────────────────────────────────
 
+function promptHistory(checkpoint: CampaignCheckpoint, decision: ControlDecision): TurnReceipt[] {
+  const target = decision.transition.seat;
+  if (target.seat === "reader" || (target.seat === "auditor" && target.instance === "auditor:1")) {
+    return [];
+  }
+  const accepted = okReceipts(checkpoint);
+  const lastIndex = new Map<string, number>();
+  accepted.forEach((receipt, index) => lastIndex.set(seatKey(receipt.seat), index));
+  return accepted.filter((receipt, index) => lastIndex.get(seatKey(receipt.seat)) === index);
+}
+
 function promptFor(checkpoint: CampaignCheckpoint, decision: ControlDecision): string {
   const seat = decision.transition.seat;
-  const repository = checkpoint.repository.files
+  const repositoryVisible = seat.seat === "designer" || seat.seat === "stakeholder";
+  const repository = (repositoryVisible ? checkpoint.repository.files : [])
     .map((file) => `--- ${file.path} ---\n${file.content}`)
     .join("\n");
   const artifacts = Object.entries(checkpoint.artifacts)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([path, content]) => `--- ${path} ---\n${content}`)
     .join("\n");
-  const history = okReceipts(checkpoint).map((receipt) => ({
+  const history = promptHistory(checkpoint, decision).map((receipt) => ({
     state: receipt.state,
     nextState: receipt.nextState,
     seat: receipt.seat,
-    output: isRecord(receipt.output) && Array.isArray(receipt.output.files)
-      ? {
-          ...receipt.output,
-          files: receipt.output.files.flatMap((file) => isRecord(file) && typeof file.path === "string" && typeof file.content === "string"
-            ? [{ path: file.path, sha256: sha256(file.content) }]
-            : []),
-        }
-      : receipt.output,
+    output: receipt.output,
+    artifactChanges: receipt.artifactChanges ?? [],
   }));
   const shared = [
     `Validation Architect campaign. Profile: ${checkpoint.envelope.profile}. Mode: ${checkpoint.mode}. Phase: ${decision.phase}. Seat: ${seatKey(seat)}.`,
     "Use only the repository snapshot, accepted artifact bundle, and prior structured outputs below. Do not assume a shared filesystem or hidden conversation state.",
-    `Intake:\n${checkpoint.intake || "(none; derive intent from repository evidence)"}`,
-    `Repository inventory:\n${checkpoint.repository.inventory.join("\n") || "(empty)"}`,
-    `Repository content snapshot (${checkpoint.repository.revision}, sha256 ${checkpoint.repository.identity}):\n${repository || "(no selected text files)"}`,
+    `Intake:\n${repositoryVisible ? checkpoint.intake || "(none; derive intent from repository evidence)" : `(not projected to independent ${seat.seat})`}`,
+    `Repository inventory:\n${repositoryVisible ? checkpoint.repository.inventory.join("\n") || "(empty)" : `(not projected to independent ${seat.seat}; snapshot sha256 ${checkpoint.repository.identity})`}`,
+    `Repository content snapshot (${checkpoint.repository.revision}, sha256 ${checkpoint.repository.identity}):\n${repository || `(not projected to independent ${seat.seat})`}`,
     `Accepted artifact bundle:\n${artifacts || "(empty)"}`,
     `Prior accepted outputs:\n${canonicalJson(history)}`,
   ];
@@ -754,6 +788,18 @@ function structuredOutput(text: string, schema: JsonSchema | undefined): { outpu
   return problems.length > 0 ? { problems } : { output: parsed, problems: [] };
 }
 
+function durableOutput(output: unknown): unknown {
+  if (!isRecord(output) || !Array.isArray(output.files)) return output;
+  const { files: _files, ...controlOutput } = output;
+  return controlOutput;
+}
+
+function acceptedArtifactChanges(files: Array<{ path: string; content: string }>): Array<{ path: string; sha256: string }> {
+  return files
+    .map((file) => ({ path: file.path, sha256: sha256(file.content) }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
 // ── artifact checks ──────────────────────────────────────────────────────────
 
 const DESIGN_PREFIX = "validation-design/";
@@ -765,7 +811,26 @@ function artifactIdentity(artifacts: Record<string, string>, excludeRatification
     .sort(([a], [b]) => a.localeCompare(b))));
 }
 
-function artifactProblems(files: Array<{ path: string; content: string }>, merged: Record<string, string>): string[] {
+function artifactLimitProblems(
+  artifacts: Record<string, string>,
+  limits: Pick<CampaignEnvelope["limits"], "maxArtifactFiles" | "maxArtifactBytes">,
+): string[] {
+  const metrics = artifactMetrics(artifacts);
+  const problems: string[] = [];
+  if (metrics.files > limits.maxArtifactFiles) {
+    problems.push(`artifact file count ${metrics.files} exceeds maxArtifactFiles (${limits.maxArtifactFiles})`);
+  }
+  if (metrics.bytes > limits.maxArtifactBytes) {
+    problems.push(`artifact content uses ${metrics.bytes} UTF-8 bytes, above maxArtifactBytes (${limits.maxArtifactBytes})`);
+  }
+  return problems;
+}
+
+function artifactProblems(
+  files: Array<{ path: string; content: string }>,
+  merged: Record<string, string>,
+  limits: CampaignEnvelope["limits"],
+): string[] {
   const problems: string[] = [];
   const seen = new Set<string>();
   for (const file of files) {
@@ -775,6 +840,8 @@ function artifactProblems(files: Array<{ path: string; content: string }>, merge
     if (seen.has(file.path)) problems.push(`artifact path ${file.path} appears more than once in one turn`);
     seen.add(file.path);
   }
+  if (problems.length > 0) return problems;
+  problems.push(...artifactLimitProblems(merged, limits));
   if (problems.length > 0) return problems;
   const modelFiles: Partial<ModelFileSet> = {};
   for (const file of MODEL_FILES) {
@@ -1149,6 +1216,14 @@ async function runLoop(checkpoint: CampaignCheckpoint, context: EngineContext): 
     }
 
     const request = requestFor(current, decision, createdAtEpochMs);
+    const promptBytes = utf8ByteLength(request.prompt);
+    if (promptBytes > current.envelope.limits.maxPromptBytes) {
+      return incomplete(
+        current,
+        "limit_exhausted",
+        `Constructed prompt uses ${promptBytes} UTF-8 bytes, above maxPromptBytes (${current.envelope.limits.maxPromptBytes}); no provider turn was started and authority-bearing content was not truncated.`,
+      );
+    }
 
     // Save the exact pending request BEFORE invoking the turn (crash window).
     current = await saveNext(ports.store, current, (next) => {
@@ -1224,6 +1299,24 @@ async function settleDeadlineFailure(
   context: EngineContext,
   observedAtEpochMs: number,
 ): Promise<{ kind: "incomplete"; outcome: DesignOutcome }> {
+  return settleLimitFailure(
+    current,
+    request,
+    transition,
+    result,
+    context,
+    `Turn ${request.idempotencyKey} settled at or returned by ${observedAtEpochMs}, at or after the absolute campaign deadline ${campaignDeadline(current)}. Its result and artifacts were rejected and the campaign did not advance.`,
+  );
+}
+
+async function settleLimitFailure(
+  current: CampaignCheckpoint,
+  request: TurnRequest,
+  transition: EnvelopeTransition,
+  result: TurnResult,
+  context: EngineContext,
+  nextAction: string,
+): Promise<{ kind: "incomplete"; outcome: DesignOutcome }> {
   const settled = await saveNext(context.ports.store, current, (next) => {
     delete next.pendingTurn;
     next.receipts.push({
@@ -1241,11 +1334,7 @@ async function settleDeadlineFailure(
   });
   return {
     kind: "incomplete",
-    outcome: incomplete(
-      settled,
-      "limit_exhausted",
-      `Turn ${request.idempotencyKey} settled at or returned by ${observedAtEpochMs}, at or after the absolute campaign deadline ${campaignDeadline(current)}. Its result and artifacts were rejected and the campaign did not advance.`,
-    ),
+    outcome: incomplete(settled, "limit_exhausted", nextAction),
   };
 }
 
@@ -1302,7 +1391,7 @@ async function processTurnResult(
   const mergedArtifacts = { ...current.artifacts };
   if (problems.length === 0 && files.length > 0) {
     for (const file of files) mergedArtifacts[file.path] = file.content;
-    artifactFailures = artifactProblems(files, mergedArtifacts);
+    artifactFailures = artifactProblems(files, mergedArtifacts, current.envelope.limits);
   }
   if (problems.length === 0 && artifactFailures.length === 0) {
     artifactFailures.push(...phaseProblems(current, decision, output, files, mergedArtifacts));
@@ -1312,16 +1401,30 @@ async function processTurnResult(
   if (enforceCurrentDeadline && wallLimitReached(current)) {
     return settleDeadlineFailure(current, request, transition, result, context, Date.now());
   }
+  const persistedOutput = durableOutput(output);
+  const receipt: TurnReceipt = {
+    ...baseReceipt,
+    status: "ok",
+    identity: result.identity,
+    textDigest: sha256(result.text),
+    accepted: invalid.length === 0,
+    ...(persistedOutput !== undefined ? { output: persistedOutput } : {}),
+    ...(invalid.length === 0 && files.length > 0 ? { artifactChanges: acceptedArtifactChanges(files) } : {}),
+  };
+  const nextHistoryBytes = structuredHistoryBytes([...current.receipts, receipt]);
+  if (nextHistoryBytes > current.envelope.limits.maxHistoryBytes) {
+    return settleLimitFailure(
+      current,
+      request,
+      transition,
+      result,
+      context,
+      `Accepted structured history would use ${nextHistoryBytes} UTF-8 bytes, above maxHistoryBytes (${current.envelope.limits.maxHistoryBytes}). The turn was recorded as limit_exhausted without accepting its output or artifacts.`,
+    );
+  }
   const settled = await saveNext(ports.store, current, (next) => {
     delete next.pendingTurn;
-    next.receipts.push({
-      ...baseReceipt,
-      status: "ok",
-      identity: result.identity,
-      textDigest: sha256(result.text),
-      accepted: invalid.length === 0,
-      ...(output !== undefined ? { output } : {}),
-    });
+    next.receipts.push(receipt);
     next.usage.turns += 1;
     next.usage.inputTokens += result.usage?.inputTokens ?? 0;
     next.usage.outputTokens += result.usage?.outputTokens ?? 0;
@@ -1413,6 +1516,19 @@ export async function design(request: DesignRequest, ports: DesignPorts): Promis
     throw invalidInput(`Run ${request.runId} was not admitted; zero turns were spent.`, { runId: request.runId });
   }
   assertAdmittedEnvelope(declared, answer);
+  const initialArtifactProblems = artifactLimitProblems(artifacts, answer.limits);
+  if (initialArtifactProblems.length > 0) {
+    throw invalidInput(`Initial ${mode} corpus exceeds admitted artifact limits: ${initialArtifactProblems.join("; ")}.`, {
+      runId: request.runId,
+    });
+  }
+  const intakeBytes = utf8ByteLength(request.intake ?? "");
+  if (intakeBytes > answer.limits.maxIntakeBytes) {
+    throw invalidInput(
+      `Campaign intake uses ${intakeBytes} UTF-8 bytes, above maxIntakeBytes (${answer.limits.maxIntakeBytes}); zero provider turns were spent.`,
+      { runId: request.runId, bytes: intakeBytes },
+    );
+  }
 
   const initial: CampaignCheckpoint = {
     schema: DESIGN_RUN_SCHEMA,

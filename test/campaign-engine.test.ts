@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -9,7 +10,12 @@ import {
   type DesignPorts,
   type DesignRequest,
 } from "../src/api/campaign-engine.js";
-import type { CampaignCheckpoint, CampaignStorePort } from "../src/api/campaign-contracts.js";
+import {
+  structuredHistoryBytes,
+  type CampaignCheckpoint,
+  type CampaignStorePort,
+  type TurnReceipt,
+} from "../src/api/campaign-contracts.js";
 import { FakeRepositoryPort, InMemoryCampaignStore, ScriptedTurnPort, type ScriptedTurn } from "../src/api/conformance.js";
 import { isPublicContractError } from "../src/api/errors.js";
 import type { ExecutionIdentity, TurnResult } from "../src/api/ports.js";
@@ -241,6 +247,139 @@ describe("absolute campaign wall deadline", () => {
   });
 });
 
+describe("campaign growth bounds", () => {
+  it("accepts an exact UTF-8 artifact boundary", async () => {
+    const ports = makePorts([
+      { result: ok({ marker: "CONTINUE", files: [{ path: "validation-design/note.md", content: "é" }] }, DESIGNER_ID) },
+      { result: { status: "refused", reason: "stop after boundary assertion" } },
+    ]);
+    const outcome = await design(request("run-artifact-exact", "C2", {
+      limits: { maxArtifactBytes: 2 },
+    }), ports);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "turn_refused" });
+    if (outcome.status === "incomplete") {
+      expect(outcome.checkpoint.artifacts).toEqual({ "validation-design/note.md": "é" });
+      expect(outcome.checkpoint.receipts[0]?.output).toEqual({ marker: "CONTINUE" });
+      expect(outcome.checkpoint.receipts[0]?.artifactChanges).toEqual([{
+        path: "validation-design/note.md",
+        sha256: createHash("sha256").update("é").digest("hex"),
+      }]);
+    }
+  });
+
+  it.each([
+    ["bytes", { maxArtifactBytes: 5, maxArtifactFiles: 10 }],
+    ["files", { maxArtifactBytes: 100, maxArtifactFiles: 1 }],
+  ] as const)("prevents individually valid writes from accumulating beyond artifact %s", async (_label, limits) => {
+    const ports = makePorts([
+      { result: ok({ marker: "CONTINUE", files: [{ path: "validation-design/a.md", content: "123" }] }, DESIGNER_ID) },
+      { result: ok({ message: "continue", approved: false }, STAKEHOLDER_ID) },
+      { result: ok({ marker: "CONTINUE", files: [{ path: "validation-design/b.md", content: "456" }] }, DESIGNER_ID) },
+    ]);
+    const outcome = await design(request(`run-artifact-accumulate-${_label}`, "C3", { limits }), ports);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "invalid_artifact" });
+    if (outcome.status === "incomplete") {
+      expect(outcome.checkpoint.artifacts).toEqual({ "validation-design/a.md": "123" });
+      expect(outcome.nextAction).toContain(_label === "bytes" ? "maxArtifactBytes" : "maxArtifactFiles");
+    }
+  });
+
+  it("accepts an exact prompt byte boundary and refuses one byte over before dispatch", async () => {
+    let promptBytes = 0;
+    const probe = makePorts([{
+      result: (turnRequest) => {
+        promptBytes = Buffer.byteLength(turnRequest.prompt, "utf8");
+        return designerComplete();
+      },
+    }]);
+    expect((await design(request("run-prompt-probe", "C0", { intake: "prompt-é" }), probe)).status).toBe("complete");
+
+    const exact = makePorts([{ result: designerComplete() }]);
+    expect((await design(request("run-prompt-exact", "C0", {
+      intake: "prompt-é",
+      limits: { maxPromptBytes: promptBytes },
+    }), exact)).status).toBe("complete");
+
+    const oneOver = makePorts([{ result: designerComplete() }]);
+    const outcome = await design(request("run-prompt-overx", "C0", {
+      intake: "prompt-é",
+      limits: { maxPromptBytes: promptBytes - 1 },
+    }), oneOver);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "limit_exhausted" });
+    expect(oneOver.scripted.consumed).toBe(0);
+  });
+
+  it("bounds compact structured history at exact and one-over admission", async () => {
+    const turn = ok({ marker: "CONTINUE", files: [] }, DESIGNER_ID);
+    const probe = makePorts([
+      { result: turn },
+      { result: { status: "refused", reason: "stop" } },
+    ]);
+    const probed = await design(request("run-history-probe", "C2"), probe);
+    if (probed.status !== "incomplete") throw new Error("expected probe to stop");
+    const first = probed.checkpoint.receipts[0] as TurnReceipt;
+    const exactBytes = structuredHistoryBytes([first]);
+
+    const exact = makePorts([{ result: turn }, { result: { status: "refused", reason: "stop" } }]);
+    const exactOutcome = await design(request("run-history-exact", "C2", { limits: { maxHistoryBytes: exactBytes } }), exact);
+    expect(exactOutcome).toMatchObject({ status: "incomplete", reason: "turn_refused" });
+
+    const oneOver = makePorts([{ result: turn }]);
+    const overOutcome = await design(request("run-history-overx", "C2", { limits: { maxHistoryBytes: exactBytes - 1 } }), oneOver);
+    expect(overOutcome).toMatchObject({ status: "incomplete", reason: "limit_exhausted" });
+    if (overOutcome.status === "incomplete") expect(overOutcome.checkpoint.artifacts).toEqual({});
+  });
+
+  it("applies an exact multibyte intake bound and rejects one byte over before checkpoint or spend", async () => {
+    const exact = makePorts([{ result: designerComplete() }]);
+    expect((await design(request("run-intake-exact", "C0", {
+      intake: "é",
+      limits: { maxIntakeBytes: 2 },
+    }), exact)).status).toBe("complete");
+
+    const store = new InMemoryCampaignStore();
+    const oneOver = makePorts([{ result: designerComplete() }], store);
+    await expect(design(request("run-intake-over", "C0", {
+      intake: "é",
+      limits: { maxIntakeBytes: 1 },
+    }), oneOver)).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
+    expect(oneOver.scripted.consumed).toBe(0);
+    expect(await store.load("run-intake-over")).toBeNull();
+  });
+
+  it("rejects an oversized revision corpus before provider spend", async () => {
+    const files = Object.fromEntries(corpusFiles().map((file) => [file.path, file.content]));
+    const store = new InMemoryCampaignStore();
+    const ports = makePorts([{ result: designerComplete() }], store, files);
+    await expect(design(request("run-revision-oversized", "C0", {
+      mode: "revision",
+      limits: { maxArtifactBytes: 1 },
+    }), ports)).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
+    expect(ports.scripted.consumed).toBe(0);
+    expect(await store.load("run-revision-oversized")).toBeNull();
+  });
+
+  it("bounds authority-bearing structured prose", async () => {
+    const ports = makePorts([
+      { result: ok({ marker: "CONTINUE", files: [] }, DESIGNER_ID) },
+      { result: ok({ message: "x".repeat(64 * 1024 + 1), approved: false }, STAKEHOLDER_ID) },
+    ]);
+    const outcome = await design(request("run-structured-prose", "C2"), ports);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "invalid_artifact" });
+  });
+
+  it("never permits admission to enlarge a growth bound", async () => {
+    const ports = makePorts([{ result: designerComplete() }]);
+    await expect(design(request("run-growth-enlarge", "C0", {
+      admit: (envelope) => ({
+        ...envelope,
+        limits: { ...envelope.limits, maxArtifactBytes: envelope.limits.maxArtifactBytes + 1 },
+      }),
+    }), ports)).rejects.toSatisfy((error: unknown) => isPublicContractError(error, "invalid_input"));
+    expect(ports.scripted.consumed).toBe(0);
+  });
+});
+
 describe("exact profile sequences", () => {
   it("C0 spends exactly one designer turn, records the audit omission, and refuses a fifth wheel", async () => {
     const ports = makePorts([
@@ -344,6 +483,21 @@ describe("identity and independence", () => {
 });
 
 describe("typed failures without recovery", () => {
+  it("rejects one artifact byte over the admitted cumulative allowance before accepting it", async () => {
+    const ports = makePorts([{
+      result: ok({
+        marker: "CONTINUE",
+        files: [{ path: "validation-design/note.md", content: "é" }],
+      }, DESIGNER_ID),
+    }]);
+    const outcome = await design(request("run-artifact-one-over", "C2", {
+      limits: { maxArtifactBytes: 1 },
+    }), ports);
+    expect(outcome).toMatchObject({ status: "incomplete", reason: "invalid_artifact" });
+    expect(ports.scripted.consumed).toBe(1);
+    if (outcome.status === "incomplete") expect(outcome.checkpoint.artifacts).toEqual({});
+  });
+
   it("a refused turn is the incomplete outcome; resume returns the same failure without another spend", async () => {
     const store = new InMemoryCampaignStore();
     const ports = makePorts([
@@ -747,6 +901,11 @@ describe("C3/C4 bounded graph", () => {
       maxAuditIterations: 2,
       maxStakeholderExchangesPerAuditWindow: 12,
       maxTokensPerTurn: 32_768,
+      maxArtifactFiles: 512,
+      maxArtifactBytes: 1024 * 1024,
+      maxHistoryBytes: 1024 * 1024,
+      maxPromptBytes: 2 * 1024 * 1024,
+      maxIntakeBytes: 128 * 1024,
     });
     // Every non-terminal state has a priced outgoing transition.
     for (const state of envelope.states.filter((item) => !envelope.terminals.includes(item))) {
@@ -759,6 +918,15 @@ describe("C3/C4 bounded graph", () => {
 
   it("relays repository facts and accepted artifacts through the bounded reader/audit protocol", async () => {
     const sentinel = { path: "validation-design/relay-note.md", content: "RELAY-SENTINEL" };
+    const readers = readerProtocol("full", "resume");
+    readers[0] = {
+      expect: { seat: "reader", instance: "reader:operator", sessionMode: "new" },
+      result: (turnRequest) => {
+        expect(turnRequest.prompt).not.toContain("REPOSITORY-SENTINEL");
+        expect(turnRequest.prompt).toContain("RELAY-SENTINEL");
+        return readerResult("full-r1-op");
+      },
+    };
     const ports = makePorts([
       { expect: { seat: "designer", sessionMode: "new" }, result: ok({ marker: "CONTINUE", files: [...corpusFiles(), sentinel] }, DESIGNER_ID) },
       {
@@ -766,6 +934,8 @@ describe("C3/C4 bounded graph", () => {
         result: (turnRequest) => {
           expect(turnRequest.prompt).toContain("REPOSITORY-SENTINEL");
           expect(turnRequest.prompt).toContain("RELAY-SENTINEL");
+          expect(turnRequest.prompt.match(/RELAY-SENTINEL/g)).toHaveLength(1);
+          expect(turnRequest.prompt).toContain(createHash("sha256").update("RELAY-SENTINEL").digest("hex"));
           expect(turnRequest.limits).toEqual({
             maxTokens: 32_768,
             maxWallMs: 3_600_000,
@@ -775,7 +945,7 @@ describe("C3/C4 bounded graph", () => {
         },
       },
       { expect: { seat: "designer", sessionMode: "resume" }, result: designerComplete() },
-      ...readerProtocol("full", "resume"),
+      ...readers,
       { expect: { seat: "auditor", instance: "auditor:1", sessionMode: "new" }, result: cleanAudit() },
       { expect: { seat: "designer", sessionMode: "resume" }, result: ratificationTurn("# Audit\n\nVerdict: clean.\n") },
       { expect: { seat: "stakeholder", sessionMode: "resume" }, result: ok({ message: "Final audit record confirmed.", approved: true }, STAKEHOLDER_ID) },
