@@ -32,12 +32,26 @@ describe("package distribution contract", () => {
       "skill/implement-harness-ticket/**",
     ]);
     expect(pkg.files).not.toEqual(expect.arrayContaining(["src/**", "test/**", "fixtures/**"]));
+    expect(pkg.scripts?.build).toBe("node scripts/clean-dist.mjs core && tsc -p tsconfig.build.json");
     expect(pkg.scripts?.prepack).toContain("build");
     expect(pkg.scripts?.["test:package"]).toContain("package-smoke");
     expect(pkg.dependencies).toEqual({ yaml: "^2.8.0" });
     const install = readFileSync(resolve(root, "enablement", "INSTALL.md"), "utf8");
     expect(install).toContain(`validation-architect@${pkg.version}`);
     expect(install).not.toContain("{{PACKAGE_VERSION}}");
+  });
+
+  it("cleans both exact ignored output directories before compiling", () => {
+    const designPkg = JSON.parse(readFileSync(resolve(root, "design/package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(designPkg.scripts?.build).toBe("node ../scripts/clean-dist.mjs design && tsc -p tsconfig.build.json");
+
+    const cleaner = readFileSync(resolve(root, "scripts/clean-dist.mjs"), "utf8");
+    expect(cleaner).toContain('core: { root: repositoryRoot, name: "validation-architect" }');
+    expect(cleaner).toContain('design: { root: join(repositoryRoot, "design"), name: "validation-architect-design" }');
+    expect(cleaner).toContain("entry.isSymbolicLink() || !entry.isDirectory()");
+    expect(cleaner).not.toMatch(/process\.argv\[2\].*(?:resolve|rmSync)/);
   });
 
   /**

@@ -18,6 +18,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -28,18 +29,21 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync(join(tmpdir(), "validation-architect-package-smoke-"));
 const packageManager = process.env.PNPM_BINARY || "pnpm";
+const packageManagerPath = packageManager.includes("/")
+  ? `${dirname(resolve(packageManager))}:${process.env.PATH ?? ""}`
+  : process.env.PATH;
 
 function run(command, args, cwd, env = {}) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, PATH: packageManagerPath, ...env },
   });
   if (result.status !== 0) {
     throw new Error(
@@ -62,33 +66,133 @@ const TRACE_WARNING =
 const LEGACY_BRIDGE_ACTIVE = "validation-trace legacy manifest bridge active";
 const CHECKED_MODEL_SELECTED = "validation-trace checked-model authority selected";
 
-try {
-  // ── build + pack both packages ─────────────────────────────────────────────
-  const packDir = join(scratch, "pack");
-  mkdirSync(packDir);
-  run(packageManager, ["run", "build"], repoRoot);
-  run(packageManager, ["-C", "design", "run", "build"], repoRoot);
-  run(packageManager, ["pack", "--config.ignore-scripts=true", "--pack-destination", packDir], repoRoot);
-  run(
-    packageManager,
-    ["-C", "design", "pack", "--config.ignore-scripts=true", "--pack-destination", packDir],
-    repoRoot,
-  );
-  const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
-  const coreTarballName = tarballs.find((name) => name.startsWith("validation-architect-0"));
-  const designTarballName = tarballs.find((name) => name.startsWith("validation-architect-design-"));
-  if (!coreTarballName || !designTarballName || tarballs.length !== 2) {
+function fileTree(root) {
+  const files = new Map();
+  const visit = (directory, prefix = "") => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      const path = join(directory, entry.name);
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) throw new Error(`build output contains symlink ${relativePath}`);
+      if (entry.isDirectory()) visit(path, relativePath);
+      else if (entry.isFile()) files.set(relativePath, readFileSync(path));
+      else throw new Error(`build output contains non-file entry ${relativePath}`);
+    }
+  };
+  visit(root);
+  return files;
+}
+
+function assertSameTree(actualRoot, expectedRoot, label) {
+  const actual = fileTree(actualRoot);
+  const expected = fileTree(expectedRoot);
+  if (JSON.stringify([...actual.keys()]) !== JSON.stringify([...expected.keys()])) {
+    throw new Error(`${label} output paths differ from a clean isolated TypeScript build\nactual: ${[...actual.keys()].join(", ")}\nexpected: ${[...expected.keys()].join(", ")}`);
+  }
+  for (const [path, content] of expected) {
+    if (!actual.get(path)?.equals(content)) throw new Error(`${label} output differs from the clean build at ${path}`);
+  }
+  return expected;
+}
+
+function packBoth(destination) {
+  mkdirSync(destination);
+  run(packageManager, ["pack", "--pack-destination", destination], repoRoot);
+  run(packageManager, ["-C", "design", "pack", "--pack-destination", destination], repoRoot);
+  const tarballs = readdirSync(destination).filter((name) => name.endsWith(".tgz"));
+  const core = tarballs.find((name) => name.startsWith("validation-architect-0"));
+  const design = tarballs.find((name) => name.startsWith("validation-architect-design-"));
+  if (!core || !design || tarballs.length !== 2) {
     throw new Error(`expected exactly the two package tarballs, found: ${tarballs.join(", ")}`);
   }
-  const coreTarball = join(packDir, coreTarballName);
-  const designTarball = join(packDir, designTarballName);
+  return { core: join(destination, core), design: join(destination, design) };
+}
+
+const digest = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+function installedPackageDirectories() {
+  const packages = new Map();
+  const virtualStore = join(repoRoot, "node_modules", ".pnpm");
+  for (const entry of readdirSync(virtualStore).sort()) {
+    const modules = join(virtualStore, entry, "node_modules");
+    if (!existsSync(modules)) continue;
+    for (const first of readdirSync(modules).sort()) {
+      if (first === ".bin") continue;
+      const firstPath = join(modules, first);
+      const candidates = first.startsWith("@") && existsSync(firstPath)
+        ? readdirSync(firstPath).sort().map((second) => join(firstPath, second))
+        : [firstPath];
+      for (const candidate of candidates) {
+        const manifestPath = join(candidate, "package.json");
+        if (!existsSync(manifestPath)) continue;
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (typeof manifest.name !== "string" || typeof manifest.version !== "string") continue;
+        const key = `${manifest.name}@${manifest.version}`;
+        if (!packages.has(key)) packages.set(key, { name: manifest.name, version: manifest.version, path: candidate });
+      }
+    }
+  }
+  return [...packages.values()];
+}
+
+try {
+  // ── build + pack both packages ─────────────────────────────────────────────
+  const referenceCore = join(scratch, "reference-core");
+  const referenceDesign = join(scratch, "reference-design");
+  const seeded = [
+    join(repoRoot, "dist", "src", "stale-provider.js"),
+    join(repoRoot, "dist", "test", "stale-test.js"),
+    join(repoRoot, "design", "dist", "stale-design.js"),
+  ];
+  for (const path of seeded) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "stale ignored build residue\n");
+  }
+
+  run(packageManager, ["exec", "tsc", "-p", "tsconfig.build.json", "--outDir", referenceCore], repoRoot);
+  run(packageManager, ["run", "build"], repoRoot);
+  for (const path of seeded.slice(0, 2)) {
+    if (existsSync(path)) throw new Error(`ordinary core build left stale output ${path}`);
+  }
+  const expectedCoreDist = assertSameTree(join(repoRoot, "dist"), referenceCore, "core");
+
+  // The design package resolves its exact workspace dependency through the
+  // freshly built core declarations, just as the ordinary workspace build
+  // and release-candidate path do.
+  run(packageManager, ["exec", "tsc", "-p", "tsconfig.build.json", "--outDir", referenceDesign], join(repoRoot, "design"));
+  run(packageManager, ["-C", "design", "run", "build"], repoRoot);
+  for (const path of seeded.slice(2)) {
+    if (existsSync(path)) throw new Error(`ordinary build left stale output ${path}`);
+  }
+  const expectedDesignDist = assertSameTree(join(repoRoot, "design", "dist"), referenceDesign, "design");
+
+  const cleanTarballs = packBoth(join(scratch, "pack-clean"));
+  for (const path of seeded) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "different stale residue before prepack\n");
+  }
+  const residueTarballs = packBoth(join(scratch, "pack-after-residue"));
+  for (const path of seeded) {
+    if (existsSync(path)) throw new Error(`prepack left stale output ${path}`);
+  }
+  if (digest(cleanTarballs.core) !== digest(residueTarballs.core)) {
+    throw new Error("core tarball digest depends on prior ignored build residue");
+  }
+  if (digest(cleanTarballs.design) !== digest(residueTarballs.design)) {
+    throw new Error("design tarball digest depends on prior ignored build residue");
+  }
+  const coreTarball = residueTarballs.core;
+  const designTarball = residueTarballs.design;
 
   // ── core tarball listing ───────────────────────────────────────────────────
   const listed = execFileSync("tar", ["-tzf", coreTarball], { encoding: "utf8" }).trim().split("\n");
-  for (const forbidden of [/^package\/test\//, /^package\/fixtures\//, /^package\/src\//, /rambling\.txt$/, /\/VERSION$/]) {
+  for (const forbidden of [/^package\/test\//, /^package\/fixtures\//, /^package\/src\//, /^package\/dist\/(?:src|test)\//, /rambling\.txt$/, /\/VERSION$/]) {
     if (listed.some((path) => forbidden.test(path))) {
       throw new Error(`core package contains forbidden content matching ${forbidden}`);
     }
+  }
+  const packedCoreDist = listed.filter((path) => path.startsWith("package/dist/")).map((path) => path.slice("package/dist/".length)).sort();
+  if (JSON.stringify(packedCoreDist) !== JSON.stringify([...expectedCoreDist.keys()].sort())) {
+    throw new Error("core tarball dist paths differ from the clean TypeScript build closure");
   }
   const requiredCoreFiles = [
     "package/LICENSE.md",
@@ -179,6 +283,10 @@ try {
 
   // ── design tarball listing + exact-version manifest ────────────────────────
   const designListed = execFileSync("tar", ["-tzf", designTarball], { encoding: "utf8" }).trim().split("\n");
+  const packedDesignDist = designListed.filter((path) => path.startsWith("package/dist/")).map((path) => path.slice("package/dist/".length)).sort();
+  if (JSON.stringify(packedDesignDist) !== JSON.stringify([...expectedDesignDist.keys()].sort())) {
+    throw new Error("design tarball dist paths differ from the clean TypeScript build closure");
+  }
   for (const required of [
     "package/LICENSE.md",
     "package/bin/validation-architect-design.js",
@@ -666,6 +774,18 @@ console.log("pending public root import ok");
   }
 
   // ── install the DESIGN tarball alongside, core dep → core tarball ──────────
+  const installed = installedPackageDirectories();
+  const versionsByName = new Map();
+  for (const item of installed) {
+    if (!versionsByName.has(item.name)) versionsByName.set(item.name, new Set());
+    versionsByName.get(item.name).add(item.version);
+  }
+  const providerPeers = {};
+  for (const name of ["@anthropic-ai/sdk", "@modelcontextprotocol/sdk", "zod"]) {
+    const matches = installed.filter((item) => item.name === name);
+    if (matches.length !== 1) throw new Error(`expected one installed ${name}, found ${matches.length}`);
+    providerPeers[name] = `file:${matches[0].path}`;
+  }
   writeFileSync(
     join(consumer, "package.json"),
     `${JSON.stringify(
@@ -674,43 +794,41 @@ console.log("pending public root import ok");
         devDependencies: {
           "validation-architect": `file:${coreTarball}`,
           "validation-architect-design": `file:${designTarball}`,
+          ...providerPeers,
         },
       },
       null,
       2,
     )}\n`,
   );
-  // Offline resolution must land on versions already in the pnpm store, so
-  // pin every unambiguous transitive version the ROOT workspace resolved
-  // (skipping names the root store holds at multiple versions, e.g. the
-  // platform-variant @openai/codex releases).
-  const storeVersions = new Map();
-  for (const entry of readdirSync(join(repoRoot, "node_modules", ".pnpm"))) {
-    if (entry.startsWith(".") || entry === "node_modules") continue;
-    const base = entry.split("_")[0];
-    const at = base.lastIndexOf("@");
-    if (at <= 0) continue;
-    const name = base.slice(0, at).replaceAll("+", "/");
-    const version = base.slice(at + 1);
-    if (!/^\d/.test(version)) continue;
-    if (!storeVersions.has(name)) storeVersions.set(name, new Set());
-    storeVersions.get(name).add(version);
+  // The smoke must be offline on an empty host cache. Route every installed
+  // package in the provider closure to the exact local package directory.
+  // Single-version names can use a name-wide override; multi-version names
+  // (notably @openai/codex platform variants) use exact selectors.
+  const overrideEntries = new Map(installed
+    .filter((item) => item.name !== "yaml" && item.name !== "validation-architect")
+    .map((item) => {
+      const selector = versionsByName.get(item.name).size === 1 ? item.name : `${item.name}@${item.version}`;
+      return [selector, `file:${item.path}`];
+    }));
+  // npm aliases resolve by dependency key, not by the target package's name.
+  // Bind those keys too so platform packages never consult a registry.
+  for (const item of installed) {
+    const manifest = JSON.parse(readFileSync(join(item.path, "package.json"), "utf8"));
+    for (const [alias, specifier] of Object.entries({ ...manifest.dependencies, ...manifest.optionalDependencies })) {
+      const match = /^npm:(.+)@(\d[^ ]*)$/.exec(specifier);
+      if (!match) continue;
+      const target = installed.find((candidate) => candidate.name === match[1] && candidate.version === match[2]);
+      if (target) overrideEntries.set(alias, `file:${target.path}`);
+    }
   }
-  const byNumericDesc = (a, b) => b.localeCompare(a, "en", { numeric: true });
-  const pins = [...storeVersions.entries()]
-    .flatMap(([name, versions]) => {
-      if (name === "yaml" || name === "validation-architect") return [];
-      // Platform-variant version schemes (e.g. @openai/codex@0.146.0-darwin-arm64)
-      // must keep their exact per-variant resolution: never pin those names.
-      const list = [...versions];
-      if (list.some((version) => version.includes("-"))) return [];
-      return [[name, list.sort(byNumericDesc)[0]]];
-    })
-    .map(([name, version]) => `  "${name}": "${version}"`)
+  const localOverrides = [...overrideEntries]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([selector, path]) => `  ${JSON.stringify(selector)}: ${JSON.stringify(path)}`)
     .join("\n");
   writeFileSync(
     join(consumer, "pnpm-workspace.yaml"),
-    `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n  "validation-architect": file:${coreTarball}\n${pins}\n`,
+    `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n  "validation-architect": file:${coreTarball}\n${localOverrides}\n`,
   );
   // The overrides changed relative to the first install's lockfile; this is
   // still offline, just not frozen.
@@ -724,7 +842,7 @@ console.log("pending public root import ok");
   if (designUsage.status !== 2) throw new Error("bare validation-architect-design must exit 2");
 
   console.log(
-    `package smoke passed: ${coreTarballName} (${listed.length} entries) + ${designTarballName} (${designListed.length} entries)`,
+    `package smoke passed: ${basename(coreTarball)} (${listed.length} entries) + ${basename(designTarball)} (${designListed.length} entries)`,
   );
 } finally {
   if (existsSync(scratch)) rmSync(scratch, { recursive: true, force: true });
