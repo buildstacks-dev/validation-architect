@@ -7,7 +7,6 @@ import { compileValidationModel } from "../src/model-compiler.js";
 import { GENERATED_MODEL_VIEWS } from "../src/model-views.js";
 import { MODEL_FILE_SCHEMAS, type ModelFileSet } from "../src/model.js";
 import { runModelTrace } from "../src/model-trace.js";
-import { modelToFidelityManifest, runFidelityAudit } from "../src/fidelity.js";
 import { graphFixture } from "./core-graph-fixture.js";
 
 const yaml = (value: unknown): string => stringify(value, { lineWidth: 0 });
@@ -80,19 +79,4 @@ describe("checked-model Validation Trace host adapter", () => {
     expect(shim).not.toContain("runModelTrace");
   });
 
-  it("projects current model facts for fidelity scope and refuses trace-red before a provider call", async () => {
-    const manifest = modelToFidelityManifest(graphFixture().model);
-    expect(manifest).toMatchObject({
-      schema: "validation-architect/fidelity-scope-adapter/v1",
-      families: expect.arrayContaining([expect.objectContaining({ id: "CF-TENANT", ticket: "HB-TENANT", status: "implementable" })]),
-      tickets: expect.arrayContaining([expect.objectContaining({ id: "HB-TENANT", status: "landed" })]),
-    });
-    const target = createTarget("tests");
-    writeFileSync(join(target, "validation-design", "planned-trace.md"), "# stale\n");
-    let providerCalls = 0;
-    const result = await runFidelityAudit({ run: async () => { providerCalls++; return "unreachable"; } }, target);
-    expect(result.status).toBe("refused-closure");
-    expect(result.reds.join(" ")).toMatch(/differs semantically|stale/i);
-    expect(providerCalls).toBe(0);
-  });
 });

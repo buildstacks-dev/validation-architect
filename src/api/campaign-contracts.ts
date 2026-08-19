@@ -6,7 +6,6 @@
  */
 
 import type { CriticalityTier } from "../model.js";
-import type { AuditTier } from "../types.js";
 import { validateAgainstSchema } from "./json-schema.js";
 import {
   INDEPENDENCE_DIMENSIONS,
@@ -39,6 +38,7 @@ export const PROVENANCE_SCHEMA = "validation-architect/provenance/v1";
 export const MAX_PROVIDER_TURN_WALL_MS = 60 * 60_000;
 
 export type ProfileTier = CriticalityTier;
+export type AuditTier = "blocking" | "significant" | "minor";
 export const PROFILE_TIERS: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
 
 /** One declared seat instance with its session lifecycle and independence. */

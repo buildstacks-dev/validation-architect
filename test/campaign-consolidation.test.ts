@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -39,5 +39,58 @@ describe("campaign consolidation capability record", () => {
     expect(record).toContain("`CampaignCheckpoint` is the only campaign transition state");
     expect(record).toContain("no legacy compatibility path");
     expect(record).toContain("preserved untouched on this machine");
+  });
+
+  it("keeps the superseded host, state, adapters, tests, and duplicate fixtures deleted", () => {
+    const removed = [
+      "src/cli.ts",
+      "src/orchestrator.ts",
+      "src/designer.ts",
+      "src/stakeholder.ts",
+      "src/readers.ts",
+      "src/auditor.ts",
+      "src/types.ts",
+      "src/run-state-version.ts",
+      "src/markers.ts",
+      "src/prompts.ts",
+      "src/target.ts",
+      "src/registry.ts",
+      "src/fidelity.ts",
+      "test/orchestrator.test.ts",
+      "test/cli-acceptance.test.ts",
+      "test/version-compatibility.test.ts",
+      "fixtures",
+    ];
+    for (const path of removed) expect(existsSync(resolve(root, path)), path).toBe(false);
+  });
+
+  it("keeps provider SDKs and live imports outside the core package", () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    expect(pkg.scripts?.vda).toBeUndefined();
+    expect(pkg.dependencies).toEqual({ yaml: "^2.8.0" });
+    expect(pkg.devDependencies).not.toHaveProperty("@anthropic-ai/claude-agent-sdk");
+    expect(pkg.devDependencies).not.toHaveProperty("@openai/codex-sdk");
+
+    const sourceFiles = (directory: string): string[] => readdirSync(directory).flatMap((entry) => {
+      const path = resolve(directory, entry);
+      return statSync(path).isDirectory() ? sourceFiles(path) : path.endsWith(".ts") ? [path] : [];
+    });
+    const coreSource = sourceFiles(resolve(root, "src")).map((path) => readFileSync(path, "utf8")).join("\n");
+    expect(coreSource).not.toContain("@anthropic-ai/claude-agent-sdk");
+    expect(coreSource).not.toContain("@openai/codex-sdk");
+  });
+
+  it("documents only the consolidated campaign command and state", () => {
+    for (const path of ["README.md", "AGENTS.md"]) {
+      const text = readFileSync(resolve(root, path), "utf8");
+      expect(text, path).toContain("validation-architect-design");
+      expect(text, path).not.toContain("pnpm vda");
+      expect(text, path).not.toContain("RunState");
+      expect(text, path).not.toContain("src/orchestrator.ts");
+    }
   });
 });

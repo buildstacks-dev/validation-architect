@@ -12,7 +12,6 @@ import { compileValidationModel } from "../src/model-compiler.js";
 import { assertSeparateDomains, joinTestInventory } from "../src/model-inventory.js";
 import { importLegacyCatalog } from "../src/legacy-model-import.js";
 import { GENERATED_MODEL_VIEWS } from "../src/model-views.js";
-import { createReaderBundle, removeReaderBundle } from "../src/reader-bundle.js";
 import { CURRENT_CORE_VERSIONS } from "../src/versions.js";
 import { compileWorkspaceModel } from "../src/workspace-compiler.js";
 
@@ -1021,32 +1020,6 @@ describe("validation model compiler", () => {
       regenerated.generated_views["case-catalog.md"],
     );
     expect(compileWorkspaceModel(workspace, { regenerate: false }).accepted).toBe(true);
-  });
-
-  it("gives fresh readers only generated artifacts bound to one identity", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "vda-reader-bundle-"));
-    const modelDir = join(workspace, "validation-design", "model");
-    mkdirSync(modelDir, { recursive: true });
-    const files = validFiles();
-    for (const file of MODEL_FILES) writeFileSync(join(modelDir, file), files[file]);
-    writeFileSync(join(workspace, "validation-design", "system-map.md"), "authored and intentionally hidden\n");
-    const compiled = compileWorkspaceModel(workspace, { regenerate: true });
-    const bundle = createReaderBundle(workspace);
-    try {
-      expect(readdirSync(bundle.root).sort()).toEqual([...bundle.files].sort());
-      expect(readdirSync(bundle.root)).not.toContain("system-map.md");
-      expect(readdirSync(bundle.root)).not.toContain("model");
-      expect(JSON.parse(readFileSync(join(bundle.root, "bundle-identity.json"), "utf8"))).toMatchObject({
-        schema: "validation-architect/reader-bundle/v1",
-        model_identity: compiled.identity,
-      });
-      expect(JSON.parse(readFileSync(join(bundle.root, "compiler-report.json"), "utf8"))).toMatchObject({
-        accepted: true,
-        model_identity: compiled.identity,
-      });
-    } finally {
-      removeReaderBundle(bundle);
-    }
   });
 
   it("imports legacy status and non-test evidence only through an explicit reviewed mapping", () => {

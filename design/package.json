@@ -2,7 +2,7 @@
   "name": "validation-architect-design",
   "version": "0.4.16",
   "private": false,
-  "description": "Provider-bound local composition for validation-architect design campaigns: read-only fs/git repository adapter, atomic file-backed campaign store, one concrete TurnPort over the Claude Agent SDK and Codex SDK, and the validation-architect-design CLI.",
+  "description": "Sole provider-bound composition for validation-architect campaigns: immutable capture, one settlement/confinement port, delivery, fidelity, fixtures, and operational CLI.",
   "license": "LicenseRef-FSL-1.1-MIT",
   "licenseFile": "LICENSE.md",
   "repository": {
