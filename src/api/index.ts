@@ -11,6 +11,7 @@ export type {
   TurnPort,
   TurnRequest,
   TurnResult,
+  TurnSettlement,
   TurnLimits,
   TurnMetadata,
   TurnUsageReport,
@@ -28,6 +29,7 @@ export {
   TURN_RESULT_STATUSES,
   validateTurnRequest,
   validateTurnResult,
+  validateTurnSettlement,
   validateSeatRef,
   validateExecutionIdentity,
 } from "./ports.js";

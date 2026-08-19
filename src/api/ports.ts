@@ -51,6 +51,9 @@ export type JsonSchema = Record<string, unknown>;
 export interface TurnLimits {
   maxTokens?: number;
   maxWallMs?: number;
+  /** Absolute campaign deadline. A host may use less than maxWallMs when a
+   * persisted request is replayed later, but never more. */
+  deadlineAtEpochMs?: number;
 }
 
 export interface TurnMetadata {
@@ -102,8 +105,19 @@ export type TurnResult =
       usage?: TurnUsageReport;
     };
 
+/** Durable evidence returned by a reconciliation-only lookup. The lookup may
+ * never initiate provider work; the settlement time lets the engine distinguish
+ * a pre-deadline result from work that completed after the campaign expired. */
+export interface TurnSettlement {
+  result: TurnResult;
+  settledAtEpochMs: number;
+}
+
 /** Campaign turns only. */
 export interface TurnPort {
+  /** Return a durable prior settlement for this exact request, or null. This
+   * method is read-only with respect to providers and must never spend. */
+  reconcileTurn(request: TurnRequest): Promise<TurnSettlement | null>;
   runTurn(request: TurnRequest): Promise<TurnResult>;
 }
 
@@ -173,6 +187,7 @@ export function validateTurnRequest(value: unknown, problems: string[]): void {
   if (!requireRecord(value.limits, `${path}.limits`, problems)) return;
   if (value.limits.maxTokens !== undefined) requireInteger(value.limits.maxTokens, `${path}.limits.maxTokens`, problems, 1);
   if (value.limits.maxWallMs !== undefined) requireInteger(value.limits.maxWallMs, `${path}.limits.maxWallMs`, problems, 1);
+  if (value.limits.deadlineAtEpochMs !== undefined) requireInteger(value.limits.deadlineAtEpochMs, `${path}.limits.deadlineAtEpochMs`, problems, 1);
   if (!requireRecord(value.metadata, `${path}.metadata`, problems)) return;
   requireString(value.metadata.runId, `${path}.metadata.runId`, problems);
   requireString(value.metadata.phase, `${path}.metadata.phase`, problems);
@@ -195,6 +210,13 @@ export function validateTurnResult(value: unknown, problems: string[]): void {
     if (value.text !== undefined || value.parsed !== undefined) problems.push(`${path}.text/parsed are invalid for a non-ok result`);
   }
   validateUsage(value.usage, `${path}.usage`, problems);
+}
+
+export function validateTurnSettlement(value: unknown, problems: string[]): void {
+  const path = "turnSettlement";
+  if (!requireRecord(value, path, problems)) return;
+  validateTurnResult(value.result, problems);
+  requireInteger(value.settledAtEpochMs, `${path}.settledAtEpochMs`, problems, 1);
 }
 
 export { requireStringArray };

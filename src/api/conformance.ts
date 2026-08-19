@@ -14,6 +14,7 @@ import type {
   TurnPort,
   TurnRequest,
   TurnResult,
+  TurnSettlement,
 } from "./ports.js";
 import { validateTurnRequest, validateTurnResult } from "./ports.js";
 import { assertValid, safeRepositoryPath } from "./validate.js";
@@ -85,11 +86,18 @@ export interface ScriptedTurn {
 export class ScriptedTurnPort implements TurnPort {
   readonly requests: TurnRequest[] = [];
   readonly #script: ScriptedTurn[];
-  readonly #settled = new Map<string, TurnResult>();
+  readonly #settled = new Map<string, TurnSettlement>();
   #cursor = 0;
 
   constructor(script: ScriptedTurn[]) {
     this.#script = script;
+  }
+
+  async reconcileTurn(request: TurnRequest): Promise<TurnSettlement | null> {
+    const requestProblems: string[] = [];
+    validateTurnRequest(request, requestProblems);
+    assertValid("TurnRequest", requestProblems);
+    return structuredClone(this.#settled.get(request.idempotencyKey) ?? null);
   }
 
   async runTurn(request: TurnRequest): Promise<TurnResult> {
@@ -100,7 +108,7 @@ export class ScriptedTurnPort implements TurnPort {
     // Idempotent settlement: replaying a settled key returns the same result
     // and consumes no scripted turn — the crash-window contract.
     const settled = this.#settled.get(request.idempotencyKey);
-    if (settled) return settled;
+    if (settled) return structuredClone(settled.result);
 
     const entry = this.#script[this.#cursor];
     if (!entry) {
@@ -128,7 +136,7 @@ export class ScriptedTurnPort implements TurnPort {
     validateTurnResult(result, resultProblems);
     assertValid("TurnResult", resultProblems);
     this.requests.push(request);
-    this.#settled.set(request.idempotencyKey, result);
+    this.#settled.set(request.idempotencyKey, { result: structuredClone(result), settledAtEpochMs: Date.now() });
     return result;
   }
 

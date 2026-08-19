@@ -34,7 +34,10 @@ try {
     { runId: "cross-run", profile: "C0", intake: "cross-process fixture", admit: (envelope) => envelope },
     {
       repository: new FakeRepositoryPort({ revision: "rev-x", files: {} }),
-      turns: { async runTurn() { throw new Error("child process died mid-turn"); } },
+      turns: {
+        async reconcileTurn() { return null; },
+        async runTurn() { throw new Error("child process died mid-turn"); },
+      },
       store,
     },
   );
@@ -71,11 +74,13 @@ describe("independent-process resume", () => {
       const parked = await store.load("cross-run");
       expect(parked?.pendingTurn?.idempotencyKey).toBe("cross-run:turn:1");
       expect(parked?.generation).toBe(2);
+      const exactRequest = structuredClone(parked?.pendingTurn?.request);
 
       const scripted = new ScriptedTurnPort([
         {
           result: (request): TurnResult => {
             expect(request.idempotencyKey).toBe("cross-run:turn:1");
+            expect(request).toEqual(exactRequest);
             return {
               status: "ok",
               text: JSON.stringify({ marker: "CAMPAIGN-COMPLETE", files: corpusFiles() }),

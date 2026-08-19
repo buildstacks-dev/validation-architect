@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
@@ -21,10 +22,11 @@ import {
   validateTurnResult,
   type TurnRequest,
   type TurnResult,
+  type TurnSettlement,
 } from "validation-architect";
 
 interface PendingTurn {
-  version: 1;
+  version: 2;
   status: "pending";
   idempotencyKey: string;
   requestDigest: string;
@@ -33,17 +35,19 @@ interface PendingTurn {
 }
 
 interface SettledTurn {
-  version: 1;
+  version: 2;
   status: "settled";
   idempotencyKey: string;
   requestDigest: string;
   result: TurnResult;
+  settledAtEpochMs: number;
 }
 
 type TurnLedgerRecord = PendingTurn | SettledTurn;
 export type TurnClaim =
   | { kind: "owner"; path: string; pending: PendingTurn }
-  | { kind: "replay"; result: TurnResult };
+  | { kind: "replay"; settlement: TurnSettlement }
+  | { kind: "ambiguous"; result: TurnResult };
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 const wait = (milliseconds: number): Promise<void> => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
@@ -61,7 +65,7 @@ function processAlive(pid: number): boolean {
 function validateRecord(value: unknown, path: string): TurnLedgerRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`Turn ledger ${path} is not an object.`);
   const record = value as Record<string, unknown>;
-  if (record["version"] !== 1 || (record["status"] !== "pending" && record["status"] !== "settled")) {
+  if (record["version"] !== 2 || (record["status"] !== "pending" && record["status"] !== "settled")) {
     throw new Error(`Turn ledger ${path} has an unsupported record.`);
   }
   if (typeof record["idempotencyKey"] !== "string" || typeof record["requestDigest"] !== "string") {
@@ -72,6 +76,13 @@ function validateRecord(value: unknown, path: string): TurnLedgerRecord {
       throw new Error(`Turn ledger ${path} has an invalid pending owner/deadline.`);
     }
   } else {
+    if (
+      typeof record["settledAtEpochMs"] !== "number" ||
+      !Number.isSafeInteger(record["settledAtEpochMs"]) ||
+      record["settledAtEpochMs"] < 1
+    ) {
+      throw new Error(`Turn ledger ${path} has an invalid settlement time.`);
+    }
     const problems: string[] = [];
     validateTurnResult(record["result"], problems);
     if (problems.length > 0) throw new Error(`Turn ledger ${path} has an invalid result: ${problems.join("; ")}`);
@@ -87,16 +98,31 @@ export class TurnLedger {
     mkdirSync(this.#directory, { recursive: true, mode: 0o700 });
   }
 
-  async claim(request: TurnRequest): Promise<TurnClaim> {
+  async reconcile(request: TurnRequest): Promise<TurnSettlement | null> {
+    const path = join(this.#directory, `${sha256(request.idempotencyKey)}.json`);
+    if (!existsSync(path)) return null;
+    const requestDigest = sha256(canonicalJson(request));
+    const existing = await this.#read(path);
+    if (existing.idempotencyKey !== request.idempotencyKey || existing.requestDigest !== requestDigest) {
+      throw new Error(`Idempotency key ${request.idempotencyKey} was reused for a different TurnRequest.`);
+    }
+    if (existing.status !== "settled") return null;
+    return {
+      result: structuredClone(existing.result),
+      settledAtEpochMs: existing.settledAtEpochMs,
+    };
+  }
+
+  async claim(request: TurnRequest, effectiveWallMs = request.limits.maxWallMs ?? 60 * 60_000): Promise<TurnClaim> {
     const path = join(this.#directory, `${sha256(request.idempotencyKey)}.json`);
     const requestDigest = sha256(canonicalJson(request));
     const pending: PendingTurn = {
-      version: 1,
+      version: 2,
       status: "pending",
       idempotencyKey: request.idempotencyKey,
       requestDigest,
       ownerPid: process.pid,
-      expiresAtEpochMs: Date.now() + (request.limits.maxWallMs ?? 60 * 60_000) + 5_000,
+      expiresAtEpochMs: Date.now() + effectiveWallMs + 5_000,
     };
     let created = false;
     try {
@@ -123,10 +149,18 @@ export class TurnLedger {
       if (existing.idempotencyKey !== request.idempotencyKey || existing.requestDigest !== requestDigest) {
         throw new Error(`Idempotency key ${request.idempotencyKey} was reused for a different TurnRequest.`);
       }
-      if (existing.status === "settled") return { kind: "replay", result: structuredClone(existing.result) };
-      if (!processAlive(existing.ownerPid) || Date.now() >= existing.expiresAtEpochMs) {
+      if (existing.status === "settled") {
         return {
           kind: "replay",
+          settlement: {
+            result: structuredClone(existing.result),
+            settledAtEpochMs: existing.settledAtEpochMs,
+          },
+        };
+      }
+      if (!processAlive(existing.ownerPid) || Date.now() >= existing.expiresAtEpochMs) {
+        return {
+          kind: "ambiguous",
           result: {
             status: "error",
             reason: `Turn ${request.idempotencyKey} has an ambiguous prior settlement; replay is refused to prevent duplicate provider spend.`,
@@ -142,11 +176,12 @@ export class TurnLedger {
     validateTurnResult(result, problems);
     if (problems.length > 0) throw new Error(`Cannot persist invalid TurnResult: ${problems.join("; ")}`);
     const settled: SettledTurn = {
-      version: 1,
+      version: 2,
       status: "settled",
       idempotencyKey: claim.pending.idempotencyKey,
       requestDigest: claim.pending.requestDigest,
       result,
+      settledAtEpochMs: Date.now(),
     };
     const temp = `${claim.path}.tmp-${process.pid}-${randomUUID()}`;
     try {

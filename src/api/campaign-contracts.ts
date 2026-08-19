@@ -34,6 +34,9 @@ import {
 
 export const DESIGN_RUN_SCHEMA = "validation-architect/design-run/v1";
 export const PROVENANCE_SCHEMA = "validation-architect/provenance/v1";
+/** No individual provider invocation may receive more than one hour, even
+ * when more total campaign wall remains. */
+export const MAX_PROVIDER_TURN_WALL_MS = 60 * 60_000;
 
 export type ProfileTier = CriticalityTier;
 export const PROFILE_TIERS: readonly ProfileTier[] = ["C0", "C1", "C2", "C3", "C4"];
@@ -127,7 +130,7 @@ export interface CampaignCheckpoint {
   /** Current state-machine position (a state name from the envelope). */
   position: string;
   /** The exact next pending request, saved BEFORE the turn is invoked. */
-  pendingTurn?: { idempotencyKey: string; request: TurnRequest };
+  pendingTurn?: { idempotencyKey: string; request: TurnRequest; createdAtEpochMs: number };
   receipts: TurnReceipt[];
   /** Opaque native session identities needed to continue persistent seats,
    * keyed by "seat:instance". */
@@ -511,6 +514,12 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
     if (requireRecord(value.pendingTurn, `${path}.pendingTurn`, problems)) {
       const pendingKeyValid = requireString(value.pendingTurn.idempotencyKey, `${path}.pendingTurn.idempotencyKey`, problems);
       const pendingKey = typeof value.pendingTurn.idempotencyKey === "string" ? value.pendingTurn.idempotencyKey : "";
+      const pendingCreatedValid = requireInteger(
+        value.pendingTurn.createdAtEpochMs,
+        `${path}.pendingTurn.createdAtEpochMs`,
+        problems,
+        1,
+      );
       if (isRecord(value.pendingTurn.request)) {
         validateTurnRequest(value.pendingTurn.request, problems);
         const request = value.pendingTurn.request;
@@ -555,8 +564,32 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
             }
           }
         }
-        if (isRecord(request.limits) && envelope && isRecord(envelope.limits) && typeof request.limits.maxWallMs === "number" && typeof envelope.limits.maxWallMs === "number" && request.limits.maxWallMs > envelope.limits.maxWallMs) {
-          problems.push(`${path}.pendingTurn.request.limits.maxWallMs exceeds the admitted envelope`);
+        if (isRecord(request.limits) && envelope && isRecord(envelope.limits)) {
+          const startedAt = value.startedAtEpochMs;
+          const campaignWall = envelope.limits.maxWallMs;
+          const createdAt = pendingCreatedValid ? value.pendingTurn.createdAtEpochMs as number : 0;
+          if (
+            pendingCreatedValid &&
+            typeof startedAt === "number" &&
+            Number.isSafeInteger(startedAt) &&
+            typeof campaignWall === "number" &&
+            Number.isSafeInteger(campaignWall)
+          ) {
+            const deadline = startedAt + campaignWall;
+            if (!Number.isSafeInteger(deadline)) {
+              problems.push(`${path} absolute campaign deadline must be a safe integer`);
+            } else if (createdAt < startedAt || createdAt >= deadline) {
+              problems.push(`${path}.pendingTurn.createdAtEpochMs must be within the admitted campaign wall`);
+            } else {
+              const expectedWall = Math.min(deadline - createdAt, MAX_PROVIDER_TURN_WALL_MS);
+              if (request.limits.maxWallMs !== expectedWall) {
+                problems.push(`${path}.pendingTurn.request.limits.maxWallMs must equal the persisted remaining campaign wall ${expectedWall}`);
+              }
+              if (request.limits.deadlineAtEpochMs !== deadline) {
+                problems.push(`${path}.pendingTurn.request.limits.deadlineAtEpochMs must equal the absolute campaign deadline ${deadline}`);
+              }
+            }
+          }
         }
       } else {
         problems.push(`${path}.pendingTurn.request must be the exact pending TurnRequest`);
@@ -604,7 +637,17 @@ export function validateCheckpoint(value: unknown, problems: string[], path = "c
       });
     }
   }
-  requireInteger(value.startedAtEpochMs, `${path}.startedAtEpochMs`, problems, 1);
+  const startedAtValid = requireInteger(value.startedAtEpochMs, `${path}.startedAtEpochMs`, problems, 1);
+  if (
+    startedAtValid &&
+    envelope &&
+    isRecord(envelope.limits) &&
+    typeof envelope.limits.maxWallMs === "number" &&
+    Number.isSafeInteger(envelope.limits.maxWallMs) &&
+    !Number.isSafeInteger((value.startedAtEpochMs as number) + envelope.limits.maxWallMs)
+  ) {
+    problems.push(`${path} absolute campaign deadline must be a safe integer`);
+  }
   if (value.auditCoreIdentity !== undefined && (typeof value.auditCoreIdentity !== "string" || !/^[a-f0-9]{64}$/.test(value.auditCoreIdentity))) {
     problems.push(`${path}.auditCoreIdentity must be a lowercase sha256 digest when present`);
   }
