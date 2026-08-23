@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { CORE_PACKAGE_VERSION } from "../src/versions.js";
 
-/** Red-capable detectors for the approval-gated, single-package release path. */
+/** Red-capable detectors for the two-dispatch, single-package release path. */
 
 const root = join(import.meta.dirname, "..");
 const read = (path: string): string => readFileSync(join(root, path), "utf8");
@@ -104,6 +104,9 @@ describe("candidate construction", () => {
     }
     expect(script).not.toMatch(/run\("npm", \["(?:view|publish)/);
     expect(script).not.toMatch(/run\("git", \["tag/);
+    expect(script).toContain("publish=false");
+    expect(script).toContain("publish=true");
+    expect(script).not.toContain("protected npm-publish environment");
   });
 });
 
@@ -125,6 +128,33 @@ describe("gated release workflow", () => {
     ]) {
       expect(workflow).toContain(shape);
     }
+  });
+
+  it("defaults to verify-only and schedules OIDC only on an explicit second dispatch", () => {
+    const parsed = YAML.parse(workflow) as {
+      on: {
+        workflow_dispatch: {
+          inputs: Record<string, { required?: boolean; type?: string; default?: boolean }>;
+        };
+      };
+      jobs: Record<string, {
+        if?: string;
+        needs?: string;
+        environment?: string;
+        permissions?: Record<string, string>;
+      }>;
+    };
+    expect(parsed.on.workflow_dispatch.inputs.publish).toMatchObject({
+      required: true,
+      type: "boolean",
+      default: false,
+    });
+    expect(parsed.jobs.publish?.if).toBe("${{ inputs.publish == true }}");
+    expect(parsed.jobs.publish?.needs).toBe("verify-candidate");
+    expect(parsed.jobs.publish?.environment).toBe("npm-publish");
+    expect(parsed.jobs.publish?.permissions?.["id-token"]).toBe("write");
+    expect(parsed.jobs["verify-candidate"]?.permissions?.["id-token"]).toBeUndefined();
+    expect(workflow.match(/id-token: write/g)).toHaveLength(1);
   });
 
   it("passes approved values to shells through environment variables", () => {
@@ -155,7 +185,7 @@ describe("gated release workflow", () => {
     expect(workflow).toContain("dirty tree after packing");
   });
 
-  it("uses protected OIDC publishing without an unsupported provenance claim", () => {
+  it("uses identity-bound OIDC publishing without a token or provenance claim", () => {
     expect(workflow).toContain("environment: npm-publish");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("node-version: 24");
@@ -213,11 +243,18 @@ describe("release runbook", () => {
     expect(runbook).toMatch(/OIDC trusted\s+publishing/);
   });
 
-  it("documents the one-time owner bootstrap and protected later recovery", () => {
+  it("documents the one-time owner bootstrap and two-dispatch later recovery", () => {
     expect(runbook).toContain("only local publication");
     expect(runbook).toContain("npm publish ./package.tgz --access public --ignore-scripts");
     expect(runbook).toContain("same commit, tag, and digest");
-    expect(runbook).toContain("Every later version is published only by the protected workflow");
+    expect(runbook).toContain("Every later version is published only by the two-dispatch workflow");
+    expect(runbook).toContain("workflow definition from current `main`");
+    expect(runbook).toContain("physically unable to schedule");
+    expect(runbook).toContain("leaving `publish=false`");
+    expect(runbook).toContain("with `publish=true`");
+    expect(runbook).toContain("GitHub Team does not support required environment reviewers for private");
+    expect(runbook).toContain("subject binding");
+    expect(runbook).not.toContain("environment approver");
     expect(runbook).toContain("Only a structured `E404` means absent");
     expect(runbook).toContain("exact npm `dist.integrity`");
   });

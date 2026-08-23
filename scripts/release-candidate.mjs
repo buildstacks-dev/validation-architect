@@ -78,9 +78,10 @@ tarball:         ${tarball}
 ========================================================
 
 To release, use exactly the commit, tag, and digest above as the three inputs
-to the GitHub Actions release workflow. The tag must first
-be created at that commit. The protected npm-publish environment supplies the
-separate publication approval. Any changed digest voids this preview.
+to the GitHub Actions release workflow. The tag must first be created at that
+commit. Dispatch once with publish=false for verification, then repeat the
+exact inputs with publish=true to authorize OIDC publication. Any changed
+digest voids this preview.
 
 No tag, publication, or registry read was performed.
 `);
