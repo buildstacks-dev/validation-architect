@@ -54,6 +54,7 @@ jobs:
         with:
           ref: ${{ steps.approved.outputs.commit }}
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
       - name: Verify immutable source and existing tag
         env:
@@ -62,9 +63,9 @@ jobs:
         run: |
           set -euo pipefail
           [ "$(git rev-parse HEAD)" = "$APPROVED_COMMIT" ] || { echo "checkout did not resolve to approved commit"; exit 1; }
-          git fetch --no-tags origin main:refs/remotes/origin/main
+          git show-ref --verify --quiet refs/remotes/origin/main || { echo "checkout did not fetch origin/main"; exit 1; }
           git merge-base --is-ancestor "$APPROVED_COMMIT" refs/remotes/origin/main || { echo "approved commit is not on main"; exit 1; }
-          git fetch --force origin "refs/tags/$APPROVED_TAG:refs/tags/$APPROVED_TAG"
+          git show-ref --verify --quiet "refs/tags/$APPROVED_TAG" || { echo "checkout did not fetch approved tag"; exit 1; }
           [ "$(git rev-parse "$APPROVED_TAG^{commit}")" = "$APPROVED_COMMIT" ] || { echo "tag does not point to approved commit"; exit 1; }
           [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "source checkout is dirty"; exit 1; }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -179,10 +179,14 @@ describe("gated release workflow", () => {
     expect(workflow).not.toMatch(/uses:\s*actions\/[^@\s]+@v\d/);
     expect(workflow.match(/uses:\s*actions\/[^@\s]+@[0-9a-f]{40}/g)?.length).toBeGreaterThanOrEqual(6);
     expectNode24ActionPins(workflow);
+    expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("fetch-tags: true");
+    expect(workflow).toContain("git show-ref --verify --quiet refs/remotes/origin/main");
     expect(workflow).toContain("git merge-base --is-ancestor");
     expect(workflow).toContain("refs/remotes/origin/main");
     expect(workflow).toContain("tag does not point to approved commit");
     expect(workflow).toContain("dirty tree after packing");
+    expect(workflow).not.toMatch(/^\s*git fetch\b/m);
   });
 
   it("uses identity-bound OIDC publishing without a token or provenance claim", () => {
