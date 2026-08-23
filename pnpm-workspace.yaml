@@ -1,14 +1,12 @@
-# Workspace: the root is the CORE package `validation-architect`; `design/` is
-# the provider-bound `validation-architect-design` package (VA-PKG-001). The
-# two publish in lockstep and design depends on the core at exact equality
-# (pnpm rewrites `workspace:*` to the exact version on pack).
+# Workspace: one publishable package owns the provider-neutral compiler and
+# the provider-bound design composition. The provider SDKs are optional peers
+# for consumers and exact dev dependencies for this repository's offline tests.
 #
 # pnpm >= 10 moved settings out of .npmrc and into this file, and pnpm >= 11
 # refuses every command when the file exists without a `packages:` key — down to
 # `pnpm --version`.
 packages:
   - '.'
-  - 'design'
 
 # Commands never mutate the shared install implicitly. `pnpm install` is an
 # explicit prerequisite; run/exec must remain read-only with respect to

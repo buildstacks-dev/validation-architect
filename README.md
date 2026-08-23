@@ -1,17 +1,25 @@
 # Validation Architect
 
+> **Work in progress:** `@cormidia/validation-architect@0.5.0` is the first
+> publication candidate and is not yet available from npm.
+
 Validation Architect designs a checked validation harness for a product
 repository. A provider-neutral engine runs a bounded designer, product-owner,
-fresh-reader, and independent-auditor campaign; a provider-bound local package
+fresh-reader, and independent-auditor campaign; one provider-bound composition
 supplies immutable Git capture, Claude/Codex turns, at-most-once settlement,
 operational evidence, delivery, and fleet reporting.
 
-The repository publishes two lockstep packages:
+The repository publishes one package, `@cormidia/validation-architect`, with
+three command-line entry points:
 
-- `validation-architect` — provider-neutral contracts, compiler, relationship
-  graph, schemas, skills, deterministic CLI, and public `design()` / `resume()`.
-- `validation-architect-design` — the sole live campaign composition and
-  command, with provider SDKs and local operational adapters.
+- `validation-architect` — deterministic check, compile, plan, and explain.
+- `validation-trace` — deprecated 0.x alias for `validation-architect check`.
+- `validation-architect-design` — live campaign and offline operational command.
+
+The root import exports provider-neutral contracts, compiler, relationship
+graph, schemas, conformance fakes, and public `design()` / `resume()`. The
+`@cormidia/validation-architect/design` subpath exports the local operational
+adapters. Importing either surface does not load a provider SDK.
 
 There is one campaign state machine (`CampaignCheckpoint`), one provider
 settlement implementation (`TurnLedger`), and one confinement implementation
@@ -80,8 +88,31 @@ optional:
 
 ## Installation and offline verification
 
-The package manager is pinned by `packageManager`. Use Corepack and verify the
-reported version before running commands.
+Install the deterministic compiler surface with an exact pre-1.0 pin:
+
+```bash
+pnpm add --save-dev --save-exact @cormidia/validation-architect@0.5.0
+pnpm exec validation-architect check .
+npx @cormidia/validation-architect@0.5.0 --help
+```
+
+The Claude and Codex SDKs are optional peers. Install both exact tested
+versions only on a machine that runs live design work:
+
+```bash
+pnpm add --save-dev --save-exact \
+  @anthropic-ai/claude-agent-sdk@0.3.220 \
+  @openai/codex-sdk@0.146.0
+```
+
+Design campaigns support exactly two harnesses — the Claude Agent SDK and the
+Codex SDK — at the pinned versions; no other provider or harness is supported.
+If a live command needs an absent SDK, it stops with the exact package and
+version to install. Deterministic commands and offline design operations never
+load either SDK.
+
+For repository development, the package manager is pinned by
+`packageManager`. Use Corepack and verify the reported version before running:
 
 ```bash
 pnpm install
@@ -97,7 +128,7 @@ All tests are offline. No test may call a provider SDK for real.
 Start against a clean Git repository:
 
 ```bash
-npx validation-architect-design@<exact-version> ~/code/product --profile C2
+npx -p @cormidia/validation-architect@0.5.0 validation-architect-design ~/code/product --profile C2
 ```
 
 The command prints the run ID and state directory. It captures target HEAD into
@@ -107,7 +138,7 @@ a detached, remote-free clone outside the checkout, then runs public
 Resume an interrupted checkpoint:
 
 ```bash
-npx validation-architect-design@<exact-version> resume <runId> ~/code/product
+npx -p @cormidia/validation-architect@0.5.0 validation-architect-design resume <runId> ~/code/product
 ```
 
 Resume requires the same package version and immutable source snapshot. A
@@ -187,10 +218,10 @@ keys; none contains a second provider adapter or retry loop.
 
 ## Deterministic product CLI
 
-In a product repository, the core package remains the CI/compiler surface:
+In a product repository, the package remains the CI/compiler surface:
 
 ```bash
-pnpm add --save-dev --save-exact validation-architect@0.4.16
+pnpm add --save-dev --save-exact @cormidia/validation-architect@0.5.0
 pnpm exec validation-architect check .
 pnpm exec validation-architect compile . --write
 pnpm exec validation-architect plan . --changed src/example.ts
@@ -234,17 +265,20 @@ discovered, changed, or migrated.
 | `src/api/campaign-contracts.ts` | envelope/checkpoint/bundle contracts and validators |
 | `src/model*.ts` · `src/relationship*.ts` | checked compiler and graph |
 | `src/core-cli.ts` | deterministic `validation-architect` CLI |
-| `design/src/cli.ts` | sole live/operational campaign command |
-| `design/src/provider-port.ts` | sole provider adapter and confinement policy |
-| `design/src/turn-ledger.ts` | sole at-most-once settlement implementation |
-| `design/src/run-context.ts` · `run-repository.ts` | immutable source and append-only intake |
-| `design/src/delivery.ts` · `registry.ts` | offline publication and fleet state |
-| `design/src/posthoc.ts` · `fidelity.ts` | fresh operational judgment |
-| `design/fixtures/` | packaged synthetic products and offline-only answer keys |
+| `src/design/cli.ts` | sole live/operational campaign command |
+| `src/design/provider-port.ts` | sole provider adapter and confinement policy |
+| `src/design/turn-ledger.ts` | sole at-most-once settlement implementation |
+| `src/design/run-context.ts` · `run-repository.ts` | immutable source and append-only intake |
+| `src/design/delivery.ts` · `registry.ts` | offline publication and fleet state |
+| `src/design/posthoc.ts` · `fidelity.ts` | fresh operational judgment |
+| `fixtures/` | packaged synthetic products and offline-only answer keys |
 | `skill/` | design, audit, and implementation skills |
 
-## License
+## License and publication
 
-The packages use the Functional Source License 1.1 with MIT future grant
-([FSL-1.1-MIT](LICENSE.md)), a fair source license that converts to MIT under
-its terms. Copyright 2026 Bikram Gupta.
+`@cormidia/validation-architect` is licensed under the
+[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Copyright 2026 Bikram Gupta.
+
+The source repository remains private for the initial release. Making it
+public is a deferred owner decision; doing so later would enable npm provenance.

@@ -1,4 +1,4 @@
-# Approval-gated lockstep release. This workflow never runs on push and never
+# Approval-gated single-package release. This workflow never runs on push and never
 # creates a tag. npm authentication is OIDC trusted publishing; because this
 # repository is private, npm provenance is deliberately not requested.
 name: release
@@ -12,11 +12,8 @@ on:
       tag:
         description: "Existing exact tag (vX.Y.Z) at that commit"
         required: true
-      core_digest:
-        description: "Lowercase sha256 of the core tarball"
-        required: true
-      design_digest:
-        description: "Lowercase sha256 of the design tarball"
+      digest:
+        description: "Lowercase sha256 of the package tarball"
         required: true
 
 permissions:
@@ -30,26 +27,22 @@ jobs:
       version: ${{ steps.verify.outputs.version }}
       commit: ${{ steps.approved.outputs.commit }}
       tag: ${{ steps.approved.outputs.tag }}
-      core_digest: ${{ steps.approved.outputs.core_digest }}
-      design_digest: ${{ steps.approved.outputs.design_digest }}
+      digest: ${{ steps.approved.outputs.digest }}
     steps:
       - name: Validate approval inputs before checkout or shell use
         id: approved
         env:
           APPROVED_COMMIT: ${{ inputs.commit }}
           APPROVED_TAG: ${{ inputs.tag }}
-          APPROVED_CORE_DIGEST: ${{ inputs.core_digest }}
-          APPROVED_DESIGN_DIGEST: ${{ inputs.design_digest }}
+          APPROVED_DIGEST: ${{ inputs.digest }}
         run: |
           set -euo pipefail
           [[ "$APPROVED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "commit must be exactly 40 lowercase hex characters"; exit 2; }
           [[ "$APPROVED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag must be exactly vX.Y.Z"; exit 2; }
-          [[ "$APPROVED_CORE_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "core digest must be exactly 64 lowercase hex characters"; exit 2; }
-          [[ "$APPROVED_DESIGN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "design digest must be exactly 64 lowercase hex characters"; exit 2; }
+          [[ "$APPROVED_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "digest must be exactly 64 lowercase hex characters"; exit 2; }
           echo "commit=$APPROVED_COMMIT" >> "$GITHUB_OUTPUT"
           echo "tag=$APPROVED_TAG" >> "$GITHUB_OUTPUT"
-          echo "core_digest=$APPROVED_CORE_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "design_digest=$APPROVED_DESIGN_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest=$APPROVED_DIGEST" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.approved.outputs.commit }}
@@ -75,33 +68,27 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:package
-      - name: Verify lockstep identity and approved digests
+      - name: Verify package identity and approved digest
         id: verify
         env:
           APPROVED_TAG: ${{ steps.approved.outputs.tag }}
-          APPROVED_CORE_DIGEST: ${{ steps.approved.outputs.core_digest }}
-          APPROVED_DESIGN_DIGEST: ${{ steps.approved.outputs.design_digest }}
+          APPROVED_DIGEST: ${{ steps.approved.outputs.digest }}
           CANDIDATE_DIR: ${{ runner.temp }}/candidate
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
-          DESIGN_VERSION=$(node -p "require('./design/package.json').version")
-          [ "$VERSION" = "$DESIGN_VERSION" ] || { echo "version skew: $VERSION vs $DESIGN_VERSION"; exit 1; }
           [ "$APPROVED_TAG" = "v$VERSION" ] || { echo "approved tag does not name v$VERSION"; exit 1; }
           [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "dirty tree after verification"; exit 1; }
           mkdir -p "$CANDIDATE_DIR"
-          pnpm pack --out "$CANDIDATE_DIR/core.tgz"
-          pnpm -C design pack --out "$CANDIDATE_DIR/design.tgz"
-          CORE_DIGEST=$(sha256sum "$CANDIDATE_DIR/core.tgz" | cut -d' ' -f1)
-          DESIGN_DIGEST=$(sha256sum "$CANDIDATE_DIR/design.tgz" | cut -d' ' -f1)
-          [ "$CORE_DIGEST" = "$APPROVED_CORE_DIGEST" ] || { echo "core digest mismatch: built $CORE_DIGEST"; exit 1; }
-          [ "$DESIGN_DIGEST" = "$APPROVED_DESIGN_DIGEST" ] || { echo "design digest mismatch: built $DESIGN_DIGEST"; exit 1; }
+          pnpm pack --out "$CANDIDATE_DIR/package.tgz"
+          DIGEST=$(sha256sum "$CANDIDATE_DIR/package.tgz" | cut -d' ' -f1)
+          [ "$DIGEST" = "$APPROVED_DIGEST" ] || { echo "digest mismatch: built $DIGEST"; exit 1; }
           [ -z "$(git status --porcelain --untracked-files=all)" ] || { echo "dirty tree after packing"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: candidate-tarballs
-          path: ${{ runner.temp }}/candidate/*.tgz
+          name: candidate-tarball
+          path: ${{ runner.temp }}/candidate/package.tgz
           if-no-files-found: error
 
   publish:
@@ -116,8 +103,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.verify-candidate.outputs.version }}
       APPROVED_COMMIT: ${{ needs.verify-candidate.outputs.commit }}
       APPROVED_TAG: ${{ needs.verify-candidate.outputs.tag }}
-      APPROVED_CORE_DIGEST: ${{ needs.verify-candidate.outputs.core_digest }}
-      APPROVED_DESIGN_DIGEST: ${{ needs.verify-candidate.outputs.design_digest }}
+      APPROVED_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,30 +125,20 @@ jobs:
         run: echo "CANDIDATE_DIR=$RUNNER_TEMP/candidate" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: candidate-tarballs
+          name: candidate-tarball
           path: ${{ runner.temp }}/candidate
       - name: Re-verify downloaded artifact digests
         run: |
           set -euo pipefail
-          [ "$(sha256sum "$CANDIDATE_DIR/core.tgz" | cut -d' ' -f1)" = "$APPROVED_CORE_DIGEST" ]
-          [ "$(sha256sum "$CANDIDATE_DIR/design.tgz" | cut -d' ' -f1)" = "$APPROVED_DESIGN_DIGEST" ]
-      - name: Inspect registry and plan fresh or partial recovery
+          [ "$(sha256sum "$CANDIDATE_DIR/package.tgz" | cut -d' ' -f1)" = "$APPROVED_DIGEST" ]
+      - name: Inspect registry and plan publication or no-op
         id: registry-plan
-        run: node scripts/release-registry.mjs plan "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"
-      - name: Publish core when absent
-        if: steps.registry-plan.outputs.publish_core == 'true'
-        id: publish-core
+        run: node scripts/release-registry.mjs plan "$RELEASE_VERSION" "$CANDIDATE_DIR/package.tgz"
+      - name: Publish package when absent
+        if: steps.registry-plan.outputs.publish == 'true'
+        id: publish-package
         continue-on-error: true
-        run: npm publish "$CANDIDATE_DIR/core.tgz" --access public
-      - name: Reconcile exact registry state after core attempt
-        if: always() && steps.registry-plan.outcome == 'success'
-        id: after-core
-        run: node scripts/release-registry.mjs plan "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"
-      - name: Publish design only after exact core integrity is present
-        if: steps.after-core.outputs.publish_core == 'false' && steps.after-core.outputs.publish_design == 'true'
-        id: publish-design
-        continue-on-error: true
-        run: npm publish "$CANDIDATE_DIR/design.tgz" --access public
-      - name: Always reconcile final lockstep registry integrity
+        run: npm publish "$CANDIDATE_DIR/package.tgz" --access public --ignore-scripts
+      - name: Always reconcile final registry integrity
         if: always()
-        run: node scripts/release-registry.mjs verify "$RELEASE_VERSION" "$CANDIDATE_DIR/core.tgz" "$CANDIDATE_DIR/design.tgz"
+        run: node scripts/release-registry.mjs verify "$RELEASE_VERSION" "$CANDIDATE_DIR/package.tgz"

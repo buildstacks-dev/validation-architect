@@ -3,6 +3,19 @@
 Package SemVer is the single released identity of the code, the prompts, and
 all three skills (their own CHANGELOGs remain as readable history).
 
+## 0.5.0 — scoped single-package publication candidate (unreleased)
+
+- Merge the provider-neutral compiler and provider-bound design composition
+  into `@cormidia/validation-architect`; all three existing binaries remain.
+- Make the Claude Agent SDK 0.3.220 and Codex SDK 0.146.0 exact optional peers,
+  dynamically loaded only for live provider turns. `yaml` remains the sole
+  runtime dependency.
+- Adopt Apache-2.0 from first publication, ship source and fixtures with the
+  compiled distribution, and reduce release sealing and registry
+  reconciliation to one tarball.
+- Point package users to the Cormidia landing repository. The source repository
+  remains private; public visibility and npm provenance are deferred.
+
 ## 0.4.16 — recurring falsifiability sweep for negative controls (unreleased)
 
 - Spec detection is a per-repo convention (#88): `model/project.yaml` may

@@ -1,15 +1,14 @@
 {
-  "name": "validation-architect",
-  "version": "0.4.16",
+  "name": "@cormidia/validation-architect",
+  "version": "0.5.0",
   "private": false,
-  "description": "Provider-neutral validation architecture: deterministic contracts, campaign orchestration, schemas, skills, and CLI.",
-  "license": "LicenseRef-FSL-1.1-MIT",
-  "licenseFile": "LICENSE.md",
+  "description": "Checked validation compiler and bounded Claude/Codex campaign engine with deterministic and live CLIs.",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cormidia/validation-architect.git"
   },
-  "homepage": "https://github.com/cormidia/validation-architect#readme",
+  "homepage": "https://github.com/cormidia/cormidia-web",
   "bugs": {
     "url": "https://github.com/cormidia/validation-architect/issues"
   },
@@ -23,33 +22,39 @@
   "packageManager": "pnpm@11.10.0",
   "bin": {
     "validation-architect": "./bin/validation-architect.js",
-    "validation-trace": "./bin/validation-trace.js"
+    "validation-trace": "./bin/validation-trace.js",
+    "validation-architect-design": "./bin/validation-architect-design.js"
   },
   "exports": {
     ".": {
       "types": "./dist/api/index.d.ts",
       "default": "./dist/api/index.js"
     },
+    "./design": {
+      "types": "./dist/design/index.d.ts",
+      "default": "./dist/design/index.js"
+    },
     "./schemas/*.schema.json": "./schemas/*.schema.json",
     "./package.json": "./package.json"
   },
   "files": [
-    "LICENSE.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
     "THIRD-PARTY-NOTICES.md",
-    "bin/validation-architect.js",
-    "bin/validation-trace.js",
+    "bin/*",
     "dist/**",
+    "src/**",
     "schemas/**",
     "enablement/**",
-    "skill/validation-harness-design/**",
-    "skill/validation-harness-audit/**",
-    "skill/implement-harness-ticket/**"
+    "skill/**",
+    "fixtures/**"
   ],
   "scripts": {
     "trace": "tsx src/trace-cli.ts",
-    "build": "node scripts/clean-dist.mjs core && tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build",
-    "typecheck": "tsc --noEmit && pnpm run build && tsc -p design/tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit && pnpm run build",
     "test": "vitest run",
     "test:package": "node scripts/package-smoke.mjs",
     "test:watch": "vitest"
@@ -57,7 +62,21 @@
   "dependencies": {
     "yaml": "^2.8.0"
   },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@openai/codex-sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",

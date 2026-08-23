@@ -1,17 +1,15 @@
 /**
- * Two-tarball offline packaging smoke (VA-PKG-001).
+ * Single-tarball offline packaging smoke (VA-PKG-001).
  *
- * Builds and packs BOTH publishable packages, then proves in an ISOLATED
- * consumer (no workspace linkage):
- *   1. the CORE tarball serves the full public API with yaml as its only
- *      runtime dependency (no provider SDK), an exports map that refuses
- *      deep imports, working bins (validation-architect + the deprecated
- *      validation-trace alias with its deterministic warning), the license
- *      pair, all three complete skill trees, all six schema assets, and no
- *      skill VERSION file;
- *   2. the DESIGN tarball's packed manifest depends on validation-architect
- *      at the EXACT version (workspace:* rewritten, no range), installs
- *      alongside the core tarball, and answers --help offline.
+ * Builds and packs the publishable package, then proves in isolated consumers:
+ *   1. a clean install without provider SDKs succeeds and the deterministic
+ *      API/CLI runs with yaml as its sole runtime dependency;
+ *   2. a live design command without its SDK fails closed with the exact
+ *      optional-peer install message and a non-zero exit;
+ *   3. both pinned provider SDKs can be installed from the repository's tested
+ *      closure and the design CLI/programmatic surface load without a call.
+ * It also checks the exact allowlist, Apache license/notice, all three bins,
+ * source + dist + fixture closure, schemas, skills, and deep-import refusal.
  * Plus target-repo behavior: the deprecated alias preserves legacy closure
  * before cutover, refuses fallback after the first model file appears, and
  * executes the same committed-model path after cutover.
@@ -94,17 +92,14 @@ function assertSameTree(actualRoot, expectedRoot, label) {
   return expected;
 }
 
-function packBoth(destination) {
+function packOne(destination) {
   mkdirSync(destination);
   run(packageManager, ["pack", "--pack-destination", destination], repoRoot);
-  run(packageManager, ["-C", "design", "pack", "--pack-destination", destination], repoRoot);
   const tarballs = readdirSync(destination).filter((name) => name.endsWith(".tgz"));
-  const core = tarballs.find((name) => name.startsWith("validation-architect-0"));
-  const design = tarballs.find((name) => name.startsWith("validation-architect-design-"));
-  if (!core || !design || tarballs.length !== 2) {
-    throw new Error(`expected exactly the two package tarballs, found: ${tarballs.join(", ")}`);
+  if (tarballs.length !== 1) {
+    throw new Error(`expected exactly one package tarball, found: ${tarballs.join(", ")}`);
   }
-  return { core: join(destination, core), design: join(destination, design) };
+  return join(destination, tarballs[0]);
 }
 
 const digest = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -135,76 +130,81 @@ function installedPackageDirectories() {
 }
 
 try {
-  // ── build + pack both packages ─────────────────────────────────────────────
-  const referenceCore = join(scratch, "reference-core");
-  const referenceDesign = join(scratch, "reference-design");
+  // ── build + pack the package ───────────────────────────────────────────────
+  const referenceDist = join(scratch, "reference-dist");
   const seeded = [
     join(repoRoot, "dist", "src", "stale-provider.js"),
     join(repoRoot, "dist", "test", "stale-test.js"),
-    join(repoRoot, "design", "dist", "stale-design.js"),
+    join(repoRoot, "dist", "design", "stale-design.js"),
   ];
   for (const path of seeded) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "stale ignored build residue\n");
   }
 
-  run(packageManager, ["exec", "tsc", "-p", "tsconfig.build.json", "--outDir", referenceCore], repoRoot);
+  run(packageManager, ["exec", "tsc", "-p", "tsconfig.build.json", "--outDir", referenceDist], repoRoot);
   run(packageManager, ["run", "build"], repoRoot);
-  for (const path of seeded.slice(0, 2)) {
-    if (existsSync(path)) throw new Error(`ordinary core build left stale output ${path}`);
-  }
-  const expectedCoreDist = assertSameTree(join(repoRoot, "dist"), referenceCore, "core");
-
-  // The design package resolves its exact workspace dependency through the
-  // freshly built core declarations, just as the ordinary workspace build
-  // and release-candidate path do.
-  run(packageManager, ["exec", "tsc", "-p", "tsconfig.build.json", "--outDir", referenceDesign], join(repoRoot, "design"));
-  run(packageManager, ["-C", "design", "run", "build"], repoRoot);
-  for (const path of seeded.slice(2)) {
+  for (const path of seeded) {
     if (existsSync(path)) throw new Error(`ordinary build left stale output ${path}`);
   }
-  const expectedDesignDist = assertSameTree(join(repoRoot, "design", "dist"), referenceDesign, "design");
+  const expectedDist = assertSameTree(join(repoRoot, "dist"), referenceDist, "package");
 
-  const cleanTarballs = packBoth(join(scratch, "pack-clean"));
+  const cleanTarball = packOne(join(scratch, "pack-clean"));
   for (const path of seeded) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "different stale residue before prepack\n");
   }
-  const residueTarballs = packBoth(join(scratch, "pack-after-residue"));
+  const residueTarball = packOne(join(scratch, "pack-after-residue"));
   for (const path of seeded) {
     if (existsSync(path)) throw new Error(`prepack left stale output ${path}`);
   }
-  if (digest(cleanTarballs.core) !== digest(residueTarballs.core)) {
-    throw new Error("core tarball digest depends on prior ignored build residue");
+  if (digest(cleanTarball) !== digest(residueTarball)) {
+    throw new Error("package tarball digest depends on prior ignored build residue");
   }
-  if (digest(cleanTarballs.design) !== digest(residueTarballs.design)) {
-    throw new Error("design tarball digest depends on prior ignored build residue");
-  }
-  const coreTarball = residueTarballs.core;
-  const designTarball = residueTarballs.design;
+  const packageTarball = residueTarball;
 
-  // ── core tarball listing ───────────────────────────────────────────────────
-  const listed = execFileSync("tar", ["-tzf", coreTarball], { encoding: "utf8" }).trim().split("\n");
-  for (const forbidden of [/^package\/test\//, /^package\/fixtures\//, /^package\/src\//, /^package\/dist\/(?:src|test)\//, /rambling\.txt$/, /\/VERSION$/]) {
+  // ── tarball listing ────────────────────────────────────────────────────────
+  const listed = execFileSync("tar", ["-tzf", packageTarball], { encoding: "utf8" }).trim().split("\n");
+  for (const forbidden of [
+    /^package\/test\//,
+    /^package\/docs\//,
+    /^package\/research\//,
+    /^package\/design\//,
+    /^package\/dist\/(?:src|test)\//,
+    /^package\/src\/(?:test|.*\.test\.ts$)/,
+    /(?:^|\/)\.env(?:\.|$)/,
+    /\/VERSION$/,
+  ]) {
     if (listed.some((path) => forbidden.test(path))) {
-      throw new Error(`core package contains forbidden content matching ${forbidden}`);
+      throw new Error(`package contains forbidden content matching ${forbidden}`);
     }
   }
-  const packedCoreDist = listed.filter((path) => path.startsWith("package/dist/")).map((path) => path.slice("package/dist/".length)).sort();
-  if (JSON.stringify(packedCoreDist) !== JSON.stringify([...expectedCoreDist.keys()].sort())) {
-    throw new Error("core tarball dist paths differ from the clean TypeScript build closure");
+  const packedDist = listed.filter((path) => path.startsWith("package/dist/")).map((path) => path.slice("package/dist/".length)).sort();
+  if (JSON.stringify(packedDist) !== JSON.stringify([...expectedDist.keys()].sort())) {
+    throw new Error("tarball dist paths differ from the clean TypeScript build closure");
   }
   const requiredCoreFiles = [
-    "package/LICENSE.md",
+    "package/LICENSE",
+    "package/NOTICE",
+    "package/README.md",
     "package/THIRD-PARTY-NOTICES.md",
     "package/bin/validation-architect.js",
     "package/bin/validation-trace.js",
+    "package/bin/validation-architect-design.js",
     "package/dist/api/index.js",
     "package/dist/api/index.d.ts",
     "package/dist/compiler-report.js",
     "package/dist/compiler-report.d.ts",
     "package/dist/core-cli.js",
     "package/dist/trace-cli.js",
+    "package/dist/design/cli.js",
+    "package/dist/design/index.js",
+    "package/dist/design/index.d.ts",
+    "package/dist/design/provider-port.js",
+    "package/src/api/index.ts",
+    "package/src/core-cli.ts",
+    "package/src/design/cli.ts",
+    "package/src/design/provider-port.ts",
     "package/schemas/corpus.v1.schema.json",
     "package/schemas/case-catalog.v1.schema.json",
     "package/schemas/result.v1.schema.json",
@@ -216,9 +216,12 @@ try {
     "package/enablement/ci/control-sweep.yml",
     "package/enablement/sweep/control-sweep.mjs",
     "package/enablement/sweep/control-sweep.d.mts",
+    "package/fixtures/lumen-webapp/docs/PRODUCT.md",
+    "package/fixtures/lumen-webapp/fixture.yaml",
+    "package/fixtures/lumen-webapp/rambling.txt",
   ];
   for (const required of requiredCoreFiles) {
-    if (!listed.includes(required)) throw new Error(`core package is missing ${required}`);
+    if (!listed.includes(required)) throw new Error(`package is missing ${required}`);
   }
   // ALL THREE complete skill trees: every git-tracked file under each skill
   // directory must be in the packed listing (reference closure by superset).
@@ -229,43 +232,62 @@ try {
       // npm packing always drops ignore files themselves.
       if (file.endsWith(".gitignore") || file.endsWith(".npmignore")) continue;
       if (!listed.includes(`package/${file}`)) {
-        throw new Error(`core package is missing skill file ${file} (skill trees must ship whole)`);
+        throw new Error(`package is missing skill file ${file} (skill trees must ship whole)`);
       }
     }
   }
 
-  // ── core packed manifest, license, install pin, bins ───────────────────────
+  // ── packed manifest, license, optional peers, install pin, bins ────────────
   const extracted = join(scratch, "extracted");
   mkdirSync(extracted);
-  execFileSync("tar", ["-xzf", coreTarball, "-C", extracted]);
+  execFileSync("tar", ["-xzf", packageTarball, "-C", extracted]);
   const packageRoot = join(extracted, "package");
   const packedManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
   const expectedRepository = "git+https://github.com/cormidia/validation-architect.git";
   if (
+    packedManifest.name !== "@cormidia/validation-architect" ||
+    packedManifest.version !== "0.5.0" ||
     packedManifest.repository?.url !== expectedRepository ||
-    packedManifest.homepage !== "https://github.com/cormidia/validation-architect#readme" ||
+    packedManifest.repository?.directory !== undefined ||
+    packedManifest.homepage !== "https://github.com/cormidia/cormidia-web" ||
     packedManifest.bugs?.url !== "https://github.com/cormidia/validation-architect/issues" ||
     packedManifest.publishConfig?.access !== "public" ||
     Object.hasOwn(packedManifest.publishConfig ?? {}, "provenance")
   ) {
-    throw new Error("packed core manifest has invalid registry/provenance metadata");
+    throw new Error("packed manifest has invalid identity, registry, or provenance metadata");
   }
-  if (packedManifest.license !== "LicenseRef-FSL-1.1-MIT") {
-    throw new Error(`packed core license must be LicenseRef-FSL-1.1-MIT, got ${packedManifest.license}`);
+  if (packedManifest.license !== "Apache-2.0") {
+    throw new Error(`packed license must be Apache-2.0, got ${packedManifest.license}`);
   }
-  const packedLicense = readFileSync(join(packageRoot, "LICENSE.md"), "utf8");
-  if (!packedLicense.includes("FSL-1.1-MIT") || !packedLicense.includes("Copyright 2026 Bikram Gupta")) {
-    throw new Error("packed LICENSE.md is missing the FSL-1.1-MIT terms or the confirmed holder");
+  const packedLicense = readFileSync(join(packageRoot, "LICENSE"), "utf8");
+  const packedNotice = readFileSync(join(packageRoot, "NOTICE"), "utf8");
+  if (!packedLicense.includes("Apache License") || !packedLicense.includes("Version 2.0")) {
+    throw new Error("packed LICENSE is not Apache-2.0");
   }
-  if (/\$\{(year|licensor name)\}/.test(packedLicense)) {
-    throw new Error("packed LICENSE.md still contains template placeholders");
+  if (!packedNotice.includes("Copyright 2026 Bikram Gupta")) {
+    throw new Error("packed NOTICE is missing the confirmed copyright holder");
   }
   const dependencyNames = Object.keys(packedManifest.dependencies ?? {});
   if (dependencyNames.length !== 1 || dependencyNames[0] !== "yaml") {
-    throw new Error(`core runtime dependencies must be exactly [yaml], got [${dependencyNames.join(", ")}]`);
+    throw new Error(`runtime dependencies must be exactly [yaml], got [${dependencyNames.join(", ")}]`);
+  }
+  const expectedPeers = {
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0",
+  };
+  if (JSON.stringify(packedManifest.peerDependencies) !== JSON.stringify(expectedPeers)) {
+    throw new Error(`packed optional peers differ from the exact tested pins: ${JSON.stringify(packedManifest.peerDependencies)}`);
+  }
+  for (const [sdk, version] of Object.entries(expectedPeers)) {
+    if (packedManifest.peerDependenciesMeta?.[sdk]?.optional !== true) {
+      throw new Error(`${sdk}@${version} must be marked as an optional peer`);
+    }
+    if (packedManifest.devDependencies?.[sdk] !== version) {
+      throw new Error(`${sdk} must remain an exact dev dependency at ${version}`);
+    }
   }
   const install = readFileSync(join(packageRoot, "enablement", "INSTALL.md"), "utf8");
-  if (install.includes("{{PACKAGE_VERSION}}") || !install.includes(`validation-architect@${packedManifest.version}`)) {
+  if (install.includes("{{PACKAGE_VERSION}}") || !install.includes(`@cormidia/validation-architect@${packedManifest.version}`)) {
     throw new Error("packed enablement INSTALL does not pin the concrete package version");
   }
   if (!install.includes("validation-architect check")) {
@@ -275,74 +297,9 @@ try {
   if (!ciTemplate.includes("validation-architect check")) {
     throw new Error("packed CI template does not invoke `validation-architect check`");
   }
-  for (const bin of ["validation-architect.js", "validation-trace.js"]) {
-    if (/tsx|src\/(trace|core)-cli\.ts/.test(readFileSync(join(packageRoot, "bin", bin), "utf8"))) {
+  for (const bin of ["validation-architect.js", "validation-trace.js", "validation-architect-design.js"]) {
+    if (/tsx|src\/.+\.ts/.test(readFileSync(join(packageRoot, "bin", bin), "utf8"))) {
       throw new Error(`production bin ${bin} still depends on TypeScript dev tooling`);
-    }
-  }
-
-  // ── design tarball listing + exact-version manifest ────────────────────────
-  const designListed = execFileSync("tar", ["-tzf", designTarball], { encoding: "utf8" }).trim().split("\n");
-  const packedDesignDist = designListed.filter((path) => path.startsWith("package/dist/")).map((path) => path.slice("package/dist/".length)).sort();
-  if (JSON.stringify(packedDesignDist) !== JSON.stringify([...expectedDesignDist.keys()].sort())) {
-    throw new Error("design tarball dist paths differ from the clean TypeScript build closure");
-  }
-  for (const required of [
-    "package/LICENSE.md",
-    "package/bin/validation-architect-design.js",
-    "package/dist/cli.js",
-    "package/dist/index.js",
-    "package/dist/index.d.ts",
-    "package/dist/provider-port.js",
-    "package/dist/run-context.js",
-    "package/dist/run-repository.js",
-    "package/dist/fixtures.js",
-    "package/dist/delivery.js",
-    "package/dist/registry.js",
-    "package/dist/posthoc.js",
-    "package/dist/fidelity.js",
-    "package/fixtures/lumen-webapp/docs/PRODUCT.md",
-    "package/fixtures/lumen-webapp/rambling.txt",
-  ]) {
-    if (!designListed.includes(required)) throw new Error(`design package is missing ${required}`);
-  }
-  if (designListed.some((path) => /^package\/(src|test)\//.test(path))) {
-    throw new Error("design package must not ship sources or tests");
-  }
-  const designExtracted = join(scratch, "design-extracted");
-  mkdirSync(designExtracted);
-  execFileSync("tar", ["-xzf", designTarball, "-C", designExtracted]);
-  const designManifest = JSON.parse(readFileSync(join(designExtracted, "package", "package.json"), "utf8"));
-  if (
-    designManifest.repository?.url !== expectedRepository ||
-    designManifest.repository?.directory !== "design" ||
-    designManifest.homepage !== packedManifest.homepage ||
-    designManifest.bugs?.url !== packedManifest.bugs?.url ||
-    designManifest.publishConfig?.access !== "public" ||
-    Object.hasOwn(designManifest.publishConfig ?? {}, "provenance")
-  ) {
-    throw new Error("packed design manifest has invalid registry/provenance metadata");
-  }
-  const corePin = designManifest.dependencies?.["validation-architect"];
-  if (corePin !== packedManifest.version || !/^\d+\.\d+\.\d+$/.test(corePin ?? "")) {
-    throw new Error(
-      `packed design manifest must depend on validation-architect at the exact version ${packedManifest.version} (no range or workspace residue), got ${corePin}`,
-    );
-  }
-  if (designManifest.version !== packedManifest.version) {
-    throw new Error(`lockstep violation: design ${designManifest.version} vs core ${packedManifest.version}`);
-  }
-  if (designManifest.license !== "LicenseRef-FSL-1.1-MIT") {
-    throw new Error(`packed design license must be LicenseRef-FSL-1.1-MIT, got ${designManifest.license}`);
-  }
-  const designLicense = readFileSync(join(designExtracted, "package", "LICENSE.md"), "utf8");
-  if (!designLicense.includes("FSL-1.1-MIT") || !designLicense.includes("Copyright 2026 Bikram Gupta")) {
-    throw new Error("packed design LICENSE.md is missing the FSL-1.1-MIT terms or the confirmed holder");
-  }
-  for (const sdk of ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"]) {
-    const pin = designManifest.dependencies?.[sdk];
-    if (!/^\d+\.\d+\.\d+$/.test(pin ?? "")) {
-      throw new Error(`design must pin ${sdk} exactly, got ${pin}`);
     }
   }
 
@@ -366,12 +323,12 @@ try {
   if (yamlTarballs.length !== 1) throw new Error("could not create local yaml dependency tarball");
   const yamlTarball = join(dependencyPackDir, yamlTarballs[0]);
 
-  // ── isolated consumer: CORE tarball only ───────────────────────────────────
+  // ── isolated consumer: package tarball without optional peers ──────────────
   const consumer = join(scratch, "consumer");
   mkdirSync(consumer, { recursive: true });
   writeFileSync(
     join(consumer, "package.json"),
-    `${JSON.stringify({ private: true, devDependencies: { "validation-architect": `file:${coreTarball}` } }, null, 2)}\n`,
+    `${JSON.stringify({ private: true, devDependencies: { "@cormidia/validation-architect": `file:${packageTarball}` } }, null, 2)}\n`,
   );
   writeFileSync(
     join(consumer, "pnpm-workspace.yaml"),
@@ -384,13 +341,13 @@ try {
   const virtualStore = () =>
     existsSync(join(consumer, "node_modules", ".pnpm")) ? readdirSync(join(consumer, "node_modules", ".pnpm")) : [];
   if (!virtualStore().some((entry) => entry.startsWith("yaml@"))) {
-    throw new Error("core install did not bring the yaml runtime dependency");
+    throw new Error("minimal install did not bring the yaml runtime dependency");
   }
   const forbiddenDependency = (entries) =>
     entries.find((entry) => entry.includes("claude-agent-sdk") || entry.includes("codex"));
   {
     const hit = forbiddenDependency(virtualStore());
-    if (hit) throw new Error(`core install must not bring provider SDKs (found ${hit})`);
+    if (hit) throw new Error(`minimal install must not bring provider SDKs (found ${hit})`);
   }
 
   // Import surface: nine entry points + schema IDs + assets + fakes; deep
@@ -403,7 +360,7 @@ import {
   compile, check, explain, plan, ingest, render, migrate, design, resume,
   PUBLISHED_SCHEMA_IDS, schemaAssetFile, isGreenValidationResult,
   FakeRepositoryPort, ScriptedTurnPort, InMemoryCampaignStore, PublicContractError,
-} from "validation-architect";
+} from "@cormidia/validation-architect";
 
 const nine = { compile, check, explain, plan, ingest, render, migrate, design, resume };
 for (const [name, value] of Object.entries(nine)) {
@@ -415,7 +372,7 @@ for (const fake of [FakeRepositoryPort, ScriptedTurnPort, InMemoryCampaignStore,
 if (Object.keys(PUBLISHED_SCHEMA_IDS).length !== 6) throw new Error("expected six published schema IDs");
 const require = createRequire(import.meta.url);
 for (const id of Object.values(PUBLISHED_SCHEMA_IDS)) {
-  const asset = require("validation-architect/schemas/" + schemaAssetFile(id));
+  const asset = require("@cormidia/validation-architect/schemas/" + schemaAssetFile(id));
   if (typeof asset !== "object" || asset === null) throw new Error("schema asset unreadable for " + id);
 }
 if (typeof isGreenValidationResult !== "function") throw new Error("isGreenValidationResult missing");
@@ -424,7 +381,7 @@ const repo = new FakeRepositoryPort({ revision: "rev-1", files: {} });
 if ((await repo.revision()) !== "rev-1") throw new Error("FakeRepositoryPort broken");
 // Unsupported deep imports must fail (no wildcard into dist).
 try {
-  await import("validation-architect/dist/api/errors.js");
+  await import("@cormidia/validation-architect/dist/api/errors.js");
   throw new Error("deep import into dist unexpectedly succeeded");
 } catch (error) {
   if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
@@ -435,7 +392,7 @@ console.log("surface ok");
   const surface = run("node", ["surface.mjs"], consumer);
   if (!surface.stdout.includes("surface ok")) throw new Error("consumer surface script did not confirm");
 
-  // ── installed core bins ────────────────────────────────────────────────────
+  // ── installed bins ─────────────────────────────────────────────────────────
   const binPath = (name) =>
     join(consumer, "node_modules", ".bin", process.platform === "win32" ? `${name}.cmd` : name);
 
@@ -698,7 +655,7 @@ console.log("surface ok");
     `
 import {
   check, compile, explain, FakeRepositoryPort, isGreenValidationResult,
-} from "validation-architect";
+} from "@cormidia/validation-architect";
 
 const repo = new FakeRepositoryPort({
   revision: ${JSON.stringify(sourceRevision)},
@@ -782,7 +739,27 @@ console.log("pending public root import ok");
     throw new Error("cutover alias did not identify checked-model authority");
   }
 
-  // ── install the DESIGN tarball alongside, core dep → core tarball ──────────
+  // ── live design command fails closed without its optional SDK ──────────────
+  const helpWithoutPeers = tryRun(binPath("validation-architect-design"), ["--help"], consumer);
+  if (helpWithoutPeers.status !== 0 || !helpWithoutPeers.stdout.includes("validation-architect-design [target-dir] --profile")) {
+    throw new Error(`design help must load without optional peers\n${helpWithoutPeers.stdout}\n${helpWithoutPeers.stderr}`);
+  }
+  const missingPeerRun = tryRun(
+    binPath("validation-architect-design"),
+    [target, "--profile", "C0", "--run-id", "missing-peer", "--state-dir", join(scratch, "missing-peer-state")],
+    consumer,
+  );
+  const missingPeerOutput = `${missingPeerRun.stdout}\n${missingPeerRun.stderr}`;
+  const missingClaudeMessage =
+    "Missing optional peer @anthropic-ai/claude-agent-sdk. Install exactly @anthropic-ai/claude-agent-sdk@0.3.220 before running this design command.";
+  if (missingPeerRun.status !== 1 || !missingPeerOutput.includes(missingClaudeMessage)) {
+    throw new Error(`design without SDK must exit 1 with the pinned install message\n${missingPeerOutput}`);
+  }
+  if (missingPeerOutput.includes("ERR_MODULE_NOT_FOUND") || missingPeerOutput.includes("node:internal/modules")) {
+    throw new Error(`design without SDK leaked a module-loader stack trace\n${missingPeerOutput}`);
+  }
+
+  // ── install both exact tested SDK closures from local packages ─────────────
   const installed = installedPackageDirectories();
   const versionsByName = new Map();
   for (const item of installed) {
@@ -795,14 +772,23 @@ console.log("pending public root import ok");
     if (matches.length !== 1) throw new Error(`expected one installed ${name}, found ${matches.length}`);
     providerPeers[name] = `file:${matches[0].path}`;
   }
+  const providerSdks = {};
+  for (const [name, version] of Object.entries({
+    "@anthropic-ai/claude-agent-sdk": "0.3.220",
+    "@openai/codex-sdk": "0.146.0",
+  })) {
+    const match = installed.find((item) => item.name === name && item.version === version);
+    if (!match) throw new Error(`repository install is missing tested SDK ${name}@${version}`);
+    providerSdks[name] = `file:${match.path}`;
+  }
   writeFileSync(
     join(consumer, "package.json"),
     `${JSON.stringify(
       {
         private: true,
         devDependencies: {
-          "validation-architect": `file:${coreTarball}`,
-          "validation-architect-design": `file:${designTarball}`,
+          "@cormidia/validation-architect": `file:${packageTarball}`,
+          ...providerSdks,
           ...providerPeers,
         },
       },
@@ -815,7 +801,7 @@ console.log("pending public root import ok");
   // Single-version names can use a name-wide override; multi-version names
   // (notably @openai/codex platform variants) use exact selectors.
   const overrideEntries = new Map(installed
-    .filter((item) => item.name !== "yaml" && item.name !== "validation-architect")
+    .filter((item) => item.name !== "yaml" && item.name !== "@cormidia/validation-architect")
     .map((item) => {
       const selector = versionsByName.get(item.name).size === 1 ? item.name : `${item.name}@${item.version}`;
       return [selector, `file:${item.path}`];
@@ -837,21 +823,40 @@ console.log("pending public root import ok");
     .join("\n");
   writeFileSync(
     join(consumer, "pnpm-workspace.yaml"),
-    `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n  "validation-architect": file:${coreTarball}\n${localOverrides}\n`,
+    `packages:\n  - .\noverrides:\n  yaml: file:${yamlTarball}\n  "@cormidia/validation-architect": file:${packageTarball}\n${localOverrides}\n`,
   );
   // The overrides changed relative to the first install's lockfile; this is
   // still offline, just not frozen.
   run(packageManager, ["install", "--offline", "--ignore-scripts", "--no-frozen-lockfile", "--config.minimumReleaseAge=0"], consumer, { CI: "true" });
 
+  writeFileSync(
+    join(consumer, "provider-load.mjs"),
+    `
+const claude = await import("@anthropic-ai/claude-agent-sdk");
+const codex = await import("@openai/codex-sdk");
+const design = await import("@cormidia/validation-architect/design");
+if (typeof claude.query !== "function") throw new Error("Claude Agent SDK did not load");
+if (typeof codex.Codex !== "function") throw new Error("Codex SDK did not load");
+if (typeof design.LocalTurnPort !== "function") throw new Error("design subpath did not load");
+if (design.CLAUDE_AGENT_SDK_VERSION !== "0.3.220") throw new Error("Claude SDK pin drifted");
+if (design.CODEX_SDK_VERSION !== "0.146.0") throw new Error("Codex SDK pin drifted");
+console.log("provider and design surfaces loaded");
+`,
+  );
+  const providerLoad = run("node", ["provider-load.mjs"], consumer);
+  if (!providerLoad.stdout.includes("provider and design surfaces loaded")) {
+    throw new Error("both pinned SDKs and the design subpath did not load");
+  }
+
   const designHelp = tryRun(binPath("validation-architect-design"), ["--help"], consumer);
   if (designHelp.status !== 0 || !designHelp.stdout.includes("validation-architect-design [target-dir] --profile")) {
-    throw new Error(`validation-architect-design --help failed offline (${designHelp.status})\n${designHelp.stdout}\n${designHelp.stderr}`);
+    throw new Error(`validation-architect-design --help failed with pinned SDKs (${designHelp.status})\n${designHelp.stdout}\n${designHelp.stderr}`);
   }
   const designUsage = tryRun(binPath("validation-architect-design"), [], consumer);
   if (designUsage.status !== 2) throw new Error("bare validation-architect-design must exit 2");
 
   console.log(
-    `package smoke passed: ${basename(coreTarball)} (${listed.length} entries) + ${basename(designTarball)} (${designListed.length} entries)`,
+    `package smoke passed: ${basename(packageTarball)} (${listed.length} entries); minimal install + missing-peer failure + pinned-SDK load`,
   );
 } finally {
   if (existsSync(scratch)) rmSync(scratch, { recursive: true, force: true });

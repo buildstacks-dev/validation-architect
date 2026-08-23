@@ -28,18 +28,18 @@ anti-rubber-stamp design.
   parallel host state machine or compatibility for unreleased historical
   formats.
 - **One settlement path.** Every provider turn uses
-  `design/src/turn-ledger.ts`. Reconcile before work; ambiguous stateful turns
+  `src/design/turn-ledger.ts`. Reconcile before work; ambiguous stateful turns
   fail closed and are never blindly retried.
 - **One provider/confinement adapter.** All Claude/Codex seats use
-  `design/src/provider-port.ts`. Keep read-only filesystem/tool policy, OS
+  `src/design/provider-port.ts`. Keep read-only filesystem/tool policy, OS
   sandbox, no-network settings, identity checks, and explicit auth selection.
 - **Immutable source.** Campaign and fidelity providers see remote-free
   captured revisions, never the mutable user checkout. Delivery stays outside
   the core engine and never switches the user checkout.
-- **Offline suite.** Nothing under `test/` or `design/test/` may call a real
+- **Offline suite.** Nothing under `test/` may call a real
   provider. Live behavior uses scripted fakes unless a human separately
   authorizes a live smoke.
-- **Fixture answer keys stay hidden.** `design/fixtures/*/fixture.yaml` is for
+- **Fixture answer keys stay hidden.** `fixtures/*/fixture.yaml` is for
   offline checks only. Materialized campaign source must exclude it.
 - **Prompts and schemas are load-bearing.** Preserve provenance separation,
   owner challenge, no taste re-litigation, reader independence, audit-2
@@ -74,8 +74,8 @@ changelogs and `METHOD_VERSION` updates when required by
 - `src/api/` — public contracts, engine, schemas, entry points, conformance fakes.
 - `src/model*.ts`, `src/relationship*.ts`, `src/validation-result.ts` —
   deterministic checked-model implementation.
-- `design/src/` — sole live composition, settlement, capture, operations.
-- `design/fixtures/` — packaged synthetic products.
-- `test/` and `design/test/` — offline red-capable verification.
+- `src/design/` — sole live composition, settlement, capture, operations.
+- `fixtures/` — packaged synthetic products.
+- `test/` — offline red-capable verification, including `test/design/`.
 - `runs/` — ignored historical local data; never migrate, commit, or delete it
   as part of product behavior.

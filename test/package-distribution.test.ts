@@ -10,29 +10,28 @@ describe("package distribution contract", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
       private?: boolean;
       license?: string;
-      licenseFile?: string;
       version?: string;
       files?: string[];
       scripts?: Record<string, string>;
       dependencies?: Record<string, string>;
     };
     expect(pkg.private).toBe(false);
-    expect(pkg.license).toBe("LicenseRef-FSL-1.1-MIT");
-    expect(pkg.licenseFile).toBe("LICENSE.md");
+    expect(pkg.license).toBe("Apache-2.0");
     expect(pkg.files).toEqual([
-      "LICENSE.md",
+      "LICENSE",
+      "NOTICE",
+      "README.md",
       "THIRD-PARTY-NOTICES.md",
-      "bin/validation-architect.js",
-      "bin/validation-trace.js",
+      "bin/*",
       "dist/**",
+      "src/**",
       "schemas/**",
       "enablement/**",
-      "skill/validation-harness-design/**",
-      "skill/validation-harness-audit/**",
-      "skill/implement-harness-ticket/**",
+      "skill/**",
+      "fixtures/**",
     ]);
-    expect(pkg.files).not.toEqual(expect.arrayContaining(["src/**", "test/**", "fixtures/**"]));
-    expect(pkg.scripts?.build).toBe("node scripts/clean-dist.mjs core && tsc -p tsconfig.build.json");
+    expect(pkg.files).not.toEqual(expect.arrayContaining(["test/**", "docs/**", "research/**"]));
+    expect(pkg.scripts?.build).toBe("node scripts/clean-dist.mjs && tsc -p tsconfig.build.json");
     expect(pkg.scripts?.prepack).toContain("build");
     expect(pkg.scripts?.["test:package"]).toContain("package-smoke");
     expect(pkg.dependencies).toEqual({ yaml: "^2.8.0" });
@@ -41,15 +40,10 @@ describe("package distribution contract", () => {
     expect(install).not.toContain("{{PACKAGE_VERSION}}");
   });
 
-  it("cleans both exact ignored output directories before compiling", () => {
-    const designPkg = JSON.parse(readFileSync(resolve(root, "design/package.json"), "utf8")) as {
-      scripts?: Record<string, string>;
-    };
-    expect(designPkg.scripts?.build).toBe("node ../scripts/clean-dist.mjs design && tsc -p tsconfig.build.json");
-
+  it("cleans the exact ignored output directory before compiling", () => {
     const cleaner = readFileSync(resolve(root, "scripts/clean-dist.mjs"), "utf8");
-    expect(cleaner).toContain('core: { root: repositoryRoot, name: "validation-architect" }');
-    expect(cleaner).toContain('design: { root: join(repositoryRoot, "design"), name: "validation-architect-design" }');
+    expect(cleaner).toContain('manifest.name !== "@cormidia/validation-architect"');
+    expect(cleaner).toContain('outputRelative !== "dist"');
     expect(cleaner).toContain("entry.isSymbolicLink() || !entry.isDirectory()");
     expect(cleaner).not.toMatch(/process\.argv\[2\].*(?:resolve|rmSync)/);
   });
@@ -63,7 +57,7 @@ describe("package distribution contract", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as { version: string };
     for (const doc of ["README.md", "enablement/INSTALL.md"]) {
       const text = readFileSync(resolve(root, doc), "utf8");
-      const pinned = [...text.matchAll(/validation-architect@(\d+\.\d+\.\d+)/g)].map((m) => m[1]);
+      const pinned = [...text.matchAll(/@cormidia\/validation-architect@(\d+\.\d+\.\d+)/g)].map((m) => m[1]);
       expect(pinned.length, `${doc} quotes no install pin`).toBeGreaterThan(0);
       expect([...new Set(pinned)], `${doc} pins a stale version`).toEqual([pkg.version]);
     }
@@ -77,5 +71,8 @@ describe("package distribution contract", () => {
     const core = readFileSync(resolve(root, "bin", "validation-architect.js"), "utf8");
     expect(core).toContain("dist/core-cli.js");
     expect(core).not.toMatch(/tsx|src\/core-cli\.ts/);
+    const design = readFileSync(resolve(root, "bin", "validation-architect-design.js"), "utf8");
+    expect(design).toContain("dist/design/cli.js");
+    expect(design).not.toMatch(/tsx|src\/design\/cli\.ts/);
   });
 });

@@ -6,13 +6,13 @@ Status: accepted implementation record for issue #78.
 
 `validation-architect-design` is the sole live campaign command. It composes
 the provider-neutral public `design()` / `resume()` engine with the design
-package's repository, campaign-store, provider, settlement, and operational
-adapters. The root `validation-architect` command remains the deterministic
+composition's repository, campaign-store, provider, settlement, and operational
+adapters inside one package. The `validation-architect` command remains the deterministic
 provider-neutral compiler/check/plan/report CLI; source-only `pnpm vda` is
 removed.
 
 The public `CampaignCheckpoint` is the only campaign transition state and the
-design package's `TurnLedger` is the only provider-settlement authority. No
+design composition's `TurnLedger` is the only provider-settlement authority. No
 reader, writer, migration, or inspection path for the unreleased legacy
 `RunState` is retained.
 
@@ -50,6 +50,6 @@ state home uses public checkpoints and does not discover legacy runs.
   reconciliation-only replay and no blind stateful retry.
 - One confinement implementation: design `LocalTurnPort` policy and OS sandbox.
 - One documented live journey: `validation-architect-design`.
-- Provider SDKs remain outside the core runtime dependency closure.
+- Provider SDKs remain optional peers outside the deterministic runtime dependency closure.
 - Legacy host source, `RunState`, recovery flags, markers, provider adapters,
   and host-only tests are deleted after their retained capabilities have moved.
