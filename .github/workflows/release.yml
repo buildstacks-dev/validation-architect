@@ -1,6 +1,8 @@
-# Approval-gated single-package release. This workflow never runs on push and never
-# creates a tag. npm authentication is OIDC trusted publishing; because this
-# repository is private, npm provenance is deliberately not requested.
+# Two-dispatch single-package release. The default dispatch is verification
+# only and cannot schedule the OIDC-enabled publish job. A second deliberate
+# dispatch with publish=true repeats every check before publication. This
+# workflow never runs on push or creates a tag. Because the repository is
+# private, npm provenance is deliberately not requested.
 name: release
 
 on:
@@ -15,6 +17,11 @@ on:
       digest:
         description: "Lowercase sha256 of the package tarball"
         required: true
+      publish:
+        description: "Schedule the OIDC publish job after verification"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,6 +99,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: ${{ inputs.publish == true }}
     needs: verify-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15

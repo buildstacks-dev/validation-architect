@@ -26,12 +26,16 @@ lifecycle recorded there.
    `.env`-shaped files never ship.
 5. Only the scoped name is published, with public scoped-package access. The
    two former bare package names are never published.
-6. Releases use one approval-sealed tarball and OIDC trusted publishing from
-   the protected `npm-publish` environment. Registry reconciliation publishes
-   when absent, does nothing for identical integrity, and fails closed for
-   different or ambiguous integrity. The owner performs the one-time local
-   bootstrap publication from the sealed tarball and handles every credential,
-   tag, environment, and approval action.
+6. Releases use one digest-sealed tarball and OIDC trusted publishing. Because
+   the private repository is on GitHub Team, the `npm-publish` environment is
+   an identity binding, not a required-reviewer gate. A dispatch defaults to
+   `publish=false`, which cannot schedule the OIDC-enabled job. Publication
+   requires a second deliberate dispatch with `publish=true`; that run repeats
+   every source, tag, test, package, and digest check before receiving OIDC
+   permission. Registry reconciliation publishes when absent, does nothing for
+   identical integrity, and fails closed for different or ambiguous integrity.
+   The owner performs the one-time local bootstrap publication from the sealed
+   tarball and handles every credential, tag, environment, and dispatch action.
 7. Package metadata points to `cormidia/cormidia-web` as the public landing
    page. Its three-package README is updated in a separate post-publication PR.
 
