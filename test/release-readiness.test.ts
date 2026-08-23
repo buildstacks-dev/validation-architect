@@ -4,12 +4,11 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { CORE_PACKAGE_VERSION } from "../src/versions.js";
 
-/** Red-capable detectors for the approval-gated, two-package release path. */
+/** Red-capable detectors for the approval-gated, single-package release path. */
 
 const root = join(import.meta.dirname, "..");
 const read = (path: string): string => readFileSync(join(root, path), "utf8");
-const corePackage = JSON.parse(read("package.json"));
-const designPackage = JSON.parse(read("design/package.json"));
+const packageManifest = JSON.parse(read("package.json"));
 const node24ActionPins = [
   ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
   ["actions/setup-node", "820762786026740c76f36085b0efc47a31fe5020"],
@@ -44,23 +43,24 @@ function shellBlocks(workflow: string): string[] {
   return blocks;
 }
 
-describe("0.4.16 lockstep candidate identity", () => {
-  it("keeps both manifests and the code constant on one version", () => {
-    expect(corePackage.version).toBe("0.4.16");
-    expect(designPackage.version).toBe(corePackage.version);
-    expect(CORE_PACKAGE_VERSION).toBe(corePackage.version);
+describe("0.5.0 scoped single-package candidate identity", () => {
+  it("keeps the manifest and code constant on one version", () => {
+    expect(packageManifest.name).toBe("@cormidia/validation-architect");
+    expect(packageManifest.version).toBe("0.5.0");
+    expect(CORE_PACKAGE_VERSION).toBe(packageManifest.version);
   });
 
   it("exact-pins consumer guidance and carries no stale candidate", () => {
     for (const path of ["enablement/INSTALL.md", "README.md"]) {
       const text = read(path);
-      expect(text, path).toContain(`validation-architect@${corePackage.version}`);
+      expect(text, path).toContain(`@cormidia/validation-architect@${packageManifest.version}`);
       expect(text, path).not.toMatch(/validation-architect@0\.[12]\./);
     }
   });
 
-  it("names 0.4.16 as the candidate and retains the closure history", () => {
+  it("names 0.5.0 as the candidate and retains the closure history", () => {
     const changelog = read("CHANGELOG.md");
+    expect(changelog).toContain("## 0.5.0");
     expect(changelog).toContain("## 0.4.16");
     expect(changelog).toContain("## 0.4.15");
     expect(changelog).toContain("## 0.4.14");
@@ -92,15 +92,13 @@ describe("candidate construction", () => {
     expect(script.match(/assertClean\(/g)).toHaveLength(3);
   });
 
-  it("binds names, versions, commit, and both exact tarball digests", () => {
+  it("binds name, version, commit, and the exact tarball digest", () => {
     for (const value of [
-      "validation-architect",
-      "validation-architect-design",
+      "@cormidia/validation-architect",
       "CORE_PACKAGE_VERSION",
       "git\", [\"rev-parse\", \"HEAD\"]",
       'createHash("sha256")',
-      "coreDigest",
-      "designDigest",
+      "tarballDigest",
     ]) {
       expect(script).toContain(value);
     }
@@ -116,9 +114,10 @@ describe("gated release workflow", () => {
     expect(workflow).toContain("workflow_dispatch");
     expect(workflow).not.toMatch(/\bon:\s*\n\s*push/);
     expect(workflow).not.toContain("pull_request");
-    for (const input of ["commit", "tag", "core_digest", "design_digest"]) {
+    for (const input of ["commit", "tag", "digest"]) {
       expect(workflow).toContain(`${input}:`);
     }
+    expect(workflow).not.toContain("design_digest:");
     for (const shape of [
       "^[0-9a-f]{40}$",
       "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
@@ -165,18 +164,15 @@ describe("gated release workflow", () => {
     expect(workflow).not.toContain("--provenance");
   });
 
-  it("reconciles exact integrity and recovers only in core-then-design order", () => {
+  it("reconciles exact integrity around one conditional publication", () => {
     const initial = workflow.indexOf("release-registry.mjs plan");
-    const core = workflow.indexOf('npm publish "$CANDIDATE_DIR/core.tgz"');
-    const reconcile = workflow.indexOf("Reconcile exact registry state after core attempt");
-    const design = workflow.indexOf('npm publish "$CANDIDATE_DIR/design.tgz"');
+    const publish = workflow.indexOf('npm publish "$CANDIDATE_DIR/package.tgz"');
     const final = workflow.indexOf("release-registry.mjs verify");
     expect(initial).toBeGreaterThan(0);
-    expect(initial).toBeLessThan(core);
-    expect(core).toBeLessThan(reconcile);
-    expect(reconcile).toBeLessThan(design);
-    expect(design).toBeLessThan(final);
-    expect(workflow.match(/continue-on-error: true/g)).toHaveLength(2);
+    expect(initial).toBeLessThan(publish);
+    expect(publish).toBeLessThan(final);
+    expect(workflow.match(/continue-on-error: true/g)).toHaveLength(1);
+    expect(workflow).toContain("steps.registry-plan.outputs.publish == 'true'");
     expect(workflow).toContain("if: always()");
   });
 });
@@ -191,11 +187,13 @@ describe("declared runtime floor", () => {
     expect(workflow).toContain("pnpm test:package");
   });
 
-  it("installs and imports both packed packages under strict Node 20 engines", () => {
+  it("installs and imports the packed package under strict Node 20 engines", () => {
     expect(workflow).toContain("runtime-floor:");
     expect(workflow).toContain('node-version: "20"');
     expect(workflow).toContain('npm_config_engine_strict: "true"');
-    expect(workflow).toContain('"$PACKAGE_DIR/core.tgz" "$PACKAGE_DIR/design.tgz"');
+    expect(workflow).toContain('"$PACKAGE_DIR/package.tgz"');
+    expect(workflow).toContain('from "@cormidia/validation-architect"');
+    expect(workflow).toContain('from "@cormidia/validation-architect/design"');
     for (const entry of [
       "compile, check, explain, plan, ingest, render, migrate, design, resume",
       "LocalCampaignStore, LocalRepository, LocalTurnPort",
@@ -215,11 +213,12 @@ describe("release runbook", () => {
     expect(runbook).toMatch(/OIDC trusted\s+publishing/);
   });
 
-  it("permits recovery only through the same protected workflow inputs", () => {
-    expect(runbook).toContain("same commit, tag, and digests");
-    expect(runbook).toContain("Never publish locally");
+  it("documents the one-time owner bootstrap and protected later recovery", () => {
+    expect(runbook).toContain("only local publication");
+    expect(runbook).toContain("npm publish ./package.tgz --access public --ignore-scripts");
+    expect(runbook).toContain("same commit, tag, and digest");
+    expect(runbook).toContain("Every later version is published only by the protected workflow");
     expect(runbook).toContain("Only a structured `E404` means absent");
     expect(runbook).toContain("exact npm `dist.integrity`");
-    expect(runbook).not.toMatch(/^\s*npm publish\b/m);
   });
 });

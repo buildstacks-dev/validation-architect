@@ -1,6 +1,9 @@
 # VA-API-001 — Public package names, result schema ID, trace-alias transition, and license
 
 Status: **ratified** 2026-08-15 by the repository owner (Bikram Gupta).
+Package count, npm names, and license were superseded by the ratified
+[2026-08-23 single-package publication decision](2026-08-23-single-package-publication.md).
+The result-schema and deprecated-alias decisions below remain current.
 Closes [#25](https://github.com/cormidia/validation-architect/issues/25); the
 license section also implements the decision recorded in
 [#29](https://github.com/cormidia/validation-architect/issues/29).

@@ -4,11 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Conformance detectors for the two-package boundary (VA-PKG-001, building on
- * the ratified decision record 2026-08-15). The packed-tarball halves of these
- * guarantees (exact-version rewrite of workspace:*, tarball contents, deep
- * import refusal) are proven by scripts/package-smoke.mjs; these detectors
- * keep the SOURCE tree from drifting.
+ * Conformance detectors for the ratified single-package boundary. Packed
+ * contents, optional-peer behavior, and deep-import refusal are proven by
+ * scripts/package-smoke.mjs; these detectors keep the source tree from drift.
  */
 
 const root = resolve(__dirname, "..");
@@ -23,6 +21,9 @@ interface Manifest {
   exports?: Record<string, unknown>;
   files?: string[];
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  devDependencies?: Record<string, string>;
   repository?: { type?: string; url?: string; directory?: string };
   homepage?: string;
   bugs?: { url?: string };
@@ -36,82 +37,74 @@ function trackedManifests(): Array<{ path: string; manifest: Manifest }> {
   });
   return out
     .split("\n")
-    .filter(Boolean)
+    .filter((path) => path && existsSync(join(root, path)))
     .map((path) => ({ path, manifest: JSON.parse(readFileSync(join(root, path), "utf8")) as Manifest }));
 }
 
-const corePkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Manifest;
-const designPkg = JSON.parse(readFileSync(join(root, "design", "package.json"), "utf8")) as Manifest;
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Manifest;
 
-describe("exactly two publishable manifests with the ratified names", () => {
-  it("publishes validation-architect and validation-architect-design, nothing else", () => {
+describe("exactly one publishable manifest with the ratified scoped name", () => {
+  it("publishes @cormidia/validation-architect and nothing else", () => {
     const publishable = trackedManifests().filter(({ manifest }) => manifest.private !== true);
-    expect(publishable.map(({ manifest }) => manifest.name).sort()).toEqual([
-      "validation-architect",
-      "validation-architect-design",
-    ]);
-    expect(publishable.map(({ path }) => path).sort()).toEqual(["design/package.json", "package.json"]);
+    expect(publishable.map(({ manifest }) => manifest.name)).toEqual(["@cormidia/validation-architect"]);
+    expect(publishable.map(({ path }) => path)).toEqual(["package.json"]);
   });
 });
 
 describe("dependency boundary", () => {
-  it("core runtime dependencies are exactly { yaml } — no provider SDK ever", () => {
-    expect(Object.keys(corePkg.dependencies ?? {})).toEqual(["yaml"]);
+  it("runtime dependencies are exactly { yaml }", () => {
+    expect(pkg.dependencies).toEqual({ yaml: "^2.8.0" });
   });
 
-  it("design depends on the core through the workspace protocol (pack rewrites to the exact version)", () => {
-    expect(designPkg.dependencies?.["validation-architect"]).toBe("workspace:*");
-  });
-
-  it("design carries both provider SDKs as ORDINARY exact dependencies", () => {
-    expect(designPkg.dependencies?.["@anthropic-ai/claude-agent-sdk"]).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(designPkg.dependencies?.["@openai/codex-sdk"]).toMatch(/^\d+\.\d+\.\d+$/);
+  it("carries both tested SDKs as exact optional peers and exact dev dependencies", () => {
+    const expected = {
+      "@anthropic-ai/claude-agent-sdk": "0.3.220",
+      "@openai/codex-sdk": "0.146.0",
+    };
+    expect(pkg.peerDependencies).toEqual(expected);
+    expect(pkg.peerDependenciesMeta).toEqual({
+      "@anthropic-ai/claude-agent-sdk": { optional: true },
+      "@openai/codex-sdk": { optional: true },
+    });
+    for (const [name, version] of Object.entries(expected)) {
+      expect(pkg.devDependencies?.[name]).toBe(version);
+    }
   });
 });
 
-describe("lockstep versions and license pair", () => {
-  it("both manifests share one version", () => {
-    expect(designPkg.version).toBe(corePkg.version);
+describe("license and registry identity", () => {
+  it("declares Apache-2.0 with bundled LICENSE and NOTICE", () => {
+    expect(pkg.license).toBe("Apache-2.0");
+    expect(pkg.licenseFile).toBeUndefined();
+    expect(pkg.files).toEqual(expect.arrayContaining(["LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md"]));
+    expect(readFileSync(join(root, "LICENSE"), "utf8")).toContain("Apache License");
+    expect(readFileSync(join(root, "NOTICE"), "utf8")).toContain("Copyright 2026 Bikram Gupta");
   });
 
-  it("both manifests declare LicenseRef-FSL-1.1-MIT with a bundled LICENSE.md", () => {
-    for (const pkg of [corePkg, designPkg]) {
-      expect(pkg.license).toBe("LicenseRef-FSL-1.1-MIT");
-      expect(pkg.licenseFile).toBe("LICENSE.md");
-      expect(pkg.files).toContain("LICENSE.md");
-    }
-    // The design copy must not drift from the root license text.
-    expect(readFileSync(join(root, "design", "LICENSE.md"), "utf8")).toBe(
-      readFileSync(join(root, "LICENSE.md"), "utf8"),
-    );
-  });
-
-  it("both publishable manifests carry complete registry metadata", () => {
-    for (const pkg of [corePkg, designPkg]) {
-      expect(pkg.repository?.type).toBe("git");
-      expect(pkg.repository?.url).toBe("git+https://github.com/cormidia/validation-architect.git");
-      expect(pkg.homepage).toBe("https://github.com/cormidia/validation-architect#readme");
-      expect(pkg.bugs?.url).toBe("https://github.com/cormidia/validation-architect/issues");
-      expect(pkg.publishConfig).toEqual({ access: "public" });
-    }
-    expect(corePkg.repository?.directory).toBeUndefined();
-    expect(designPkg.repository?.directory).toBe("design");
+  it("carries complete registry metadata", () => {
+    expect(pkg.repository?.type).toBe("git");
+    expect(pkg.repository?.url).toBe("git+https://github.com/cormidia/validation-architect.git");
+    expect(pkg.repository?.directory).toBeUndefined();
+    expect(pkg.homepage).toBe("https://github.com/cormidia/cormidia-web");
+    expect(pkg.bugs?.url).toBe("https://github.com/cormidia/validation-architect/issues");
+    expect(pkg.publishConfig).toEqual({ access: "public" });
   });
 });
 
 describe("bins and exports", () => {
-  it("core ships both bins; design ships its own", () => {
-    expect(corePkg.bin).toEqual({
+  it("ships all three established bins", () => {
+    expect(pkg.bin).toEqual({
       "validation-architect": "./bin/validation-architect.js",
       "validation-trace": "./bin/validation-trace.js",
+      "validation-architect-design": "./bin/validation-architect-design.js",
     });
-    expect(designPkg.bin).toEqual({ "validation-architect-design": "./bin/validation-architect-design.js" });
   });
 
-  it("core exports map serves the API root and schema assets, no dist wildcard", () => {
-    const exports = corePkg.exports ?? {};
-    expect(Object.keys(exports).sort()).toEqual([".", "./package.json", "./schemas/*.schema.json"]);
+  it("exports the API, design adapters, and schemas with no dist wildcard", () => {
+    const exports = pkg.exports ?? {};
+    expect(Object.keys(exports).sort()).toEqual([".", "./design", "./package.json", "./schemas/*.schema.json"]);
     expect(exports["."]).toEqual({ types: "./dist/api/index.d.ts", default: "./dist/api/index.js" });
+    expect(exports["./design"]).toEqual({ types: "./dist/design/index.d.ts", default: "./dist/design/index.js" });
     expect(exports["./*"]).toBeUndefined();
   });
 });
@@ -119,10 +112,8 @@ describe("bins and exports", () => {
 describe("skills ship whole, with closed internal references and no VERSION file", () => {
   const skills = ["validation-harness-design", "validation-harness-audit", "implement-harness-ticket"];
 
-  it("all three complete skill trees are in the core files allowlist", () => {
-    for (const skill of skills) {
-      expect(corePkg.files).toContain(`skill/${skill}/**`);
-    }
+  it("all three complete skill trees are in the files allowlist", () => {
+    expect(pkg.files).toContain("skill/**");
   });
 
   it("no skill VERSION file exists anywhere", () => {

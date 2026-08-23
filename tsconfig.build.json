@@ -6,19 +6,18 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  // The published build is the dependency closure of these entry files: the
-  // full public API, the trace/catalog modules the alias bin needs, and the
-  // core CLI with its CLI-only local repository composition. Campaign-host /
-  // provider modules (cli.ts, orchestrator.ts, designer.ts, ...) must never
-  // enter this closure; test/package-boundary.test.ts and the package smoke
-  // verify the emitted dist and the packed file list.
+  // The published build is the dependency closure of the provider-neutral API
+  // and CLIs plus the single provider-bound design composition. Tests remain
+  // outside the emitted tree; package smoke verifies the exact closure.
   "include": [
     "src/api/index.ts",
     "src/catalog.ts",
     "src/trace.ts",
     "src/trace-cli.ts",
     "src/core-cli.ts",
-    "src/cli-local-repository.ts"
+    "src/cli-local-repository.ts",
+    "src/design/index.ts",
+    "src/design/cli.ts"
   ],
   "exclude": ["test/**", "fixtures/**", "runs/**"]
 }

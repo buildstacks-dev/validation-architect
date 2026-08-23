@@ -8,15 +8,16 @@ protocol ([core-protocol.md](core-protocol.md)); this layer only exposes and
 runtime-validates it. Naming and schema IDs are ratified in the
 [decision record](decisions/2026-08-15-public-naming-and-license.md).
 
-**Install.** `npm install --save-dev --save-exact validation-architect` and
-`import { check, plan, design, … } from "validation-architect"`; the six
+**Install.** `npm install --save-dev --save-exact @cormidia/validation-architect@0.5.0` and
+`import { check, plan, design, … } from "@cormidia/validation-architect"`; the six
 schema assets are importable as
-`validation-architect/schemas/<name>.schema.json`, and deep imports into
+`@cormidia/validation-architect/schemas/<name>.schema.json`, and deep imports into
 `dist/` are refused by the `exports` map. Standalone provider-bound campaigns
-install the lockstep companion package `validation-architect-design` (its CLI
-composes `design`/`resume` with local fs/git/store/SDK adapters). The
-`validation-architect` CLI (`check`/`compile`/`plan`/`explain`/`report`) ships
-with the core package; `validation-trace` stays a deprecated alias for
+use the same package's `validation-architect-design` CLI, which composes
+`design`/`resume` with local fs/git/store/SDK adapters. Programmatic adapters
+are exported from `@cormidia/validation-architect/design`. The
+`validation-architect` CLI (`check`/`compile`/`plan`/`explain`/`report`) and
+`validation-trace` deprecated alias ship in that package. The alias stays a bridge to
 `validation-architect check` until 1.0. The public core command remains
 checked-model-only; the alias has the bounded pre-model bridge described below.
 
@@ -45,7 +46,7 @@ typed `unsupported_schema_major` failure before any partial output.
 import {
   compile, check, explain, plan, ingest, render, migrate,
   FakeRepositoryPort, isGreenValidationResult,
-} from "validation-architect";
+} from "@cormidia/validation-architect";
 
 const repo = new FakeRepositoryPort({ revision: "abc123", files: { /* … */ } });
 
@@ -145,7 +146,7 @@ const delta = await plan(repo, ["src/x.ts"]);// changed-path plan; unknowns expa
 ## `design` and `resume`
 
 ```ts
-import { design, resume } from "validation-architect";
+import { design, resume } from "@cormidia/validation-architect";
 
 const outcome = await design(
   {

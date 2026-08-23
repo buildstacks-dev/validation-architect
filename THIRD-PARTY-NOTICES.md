@@ -1,6 +1,6 @@
 # Third-party notices
 
-The published `validation-architect` package has exactly one normal runtime
+The published `@cormidia/validation-architect` package has exactly one normal runtime
 dependency. Its license notice is reproduced below as required by its terms.
 Development, build, and test tooling is not distributed with the package and is
 not listed here.

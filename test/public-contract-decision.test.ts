@@ -3,13 +3,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-/** Conformance detectors for the ratified VA-API-001 / license decision record
- * (docs/decisions/2026-08-15-public-naming-and-license.md). Each detector is
- * red-capable: it fails when the repository drifts from a ratified choice. */
+/** Conformance detectors for the current scoped-package publication ruling and
+ * the retained alias/schema decisions in VA-API-001. */
 
 const root = join(import.meta.dirname, "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const record = readFileSync(
+  join(root, "docs", "decisions", "2026-08-23-single-package-publication.md"),
+  "utf8",
+);
+const history = readFileSync(
   join(root, "docs", "decisions", "2026-08-15-public-naming-and-license.md"),
   "utf8",
 );
@@ -33,21 +36,22 @@ function grepTree(pattern: string, binary = "git"): string[] {
     .filter((path) => !path.startsWith("docs/decisions/") && path !== "test/public-contract-decision.test.ts");
 }
 
-describe("decision 1: bare package pair", () => {
+describe("decision 1: scoped single package", () => {
   it("fails closed when the repository scan cannot run", () => {
     expect(() => grepTree("anything", "definitely-not-a-git-binary")).toThrow();
   });
 
-  it("keeps the core package name", () => {
-    expect(pkg.name).toBe("validation-architect");
+  it("keeps the scoped package name", () => {
+    expect(pkg.name).toBe("@cormidia/validation-architect");
   });
 
-  it("spells no scoped @validation-architect package anywhere shipped", () => {
-    expect(grepTree("@validation-architect/")).toEqual([]);
+  it("carries no imports from either superseded bare package", () => {
+    expect(grepTree('from "validation-architect"')).toEqual([]);
+    expect(grepTree('from "validation-architect-design"')).toEqual([]);
   });
 
   it("documents the schema-asset wildcard without inventing a directory export", () => {
-    expect(record).toContain("validation-architect/schemas/<name>.schema.json");
+    expect(record).toContain("schemas/**");
     expect(pkg.exports["./schemas/*.schema.json"])
       .toBe("./schemas/*.schema.json");
     expect(pkg.exports["./schemas"]).toBeUndefined();
@@ -67,7 +71,7 @@ describe("decision 2: validation-trace alias retained through 0.x", () => {
   it("records the bounded bridge without changing the public check command", () => {
     const alias = readFileSync(join(root, "src", "trace-cli.ts"), "utf8");
     const core = readFileSync(join(root, "src", "core-cli.ts"), "utf8");
-    expect(record).toContain("Bounded cutover bridge");
+    expect(history).toContain("Bounded cutover bridge");
     expect(alias).toContain("TRACE_LEGACY_BRIDGE_ACTIVE");
     expect(alias).toContain("hasCheckedModelFile");
     expect(core).not.toContain('"manifest"');
@@ -85,28 +89,30 @@ describe("decision 3: one canonical result schema ID", () => {
   });
 });
 
-describe("decision 4: FSL-1.1-MIT license adoption", () => {
-  const license = readFileSync(join(root, "LICENSE.md"), "utf8");
+describe("decision 4: Apache-2.0 license adoption", () => {
+  const license = readFileSync(join(root, "LICENSE"), "utf8");
+  const notice = readFileSync(join(root, "NOTICE"), "utf8");
 
-  it("declares LicenseRef-FSL-1.1-MIT with a shipped LICENSE.md", () => {
-    expect(pkg.license).toBe("LicenseRef-FSL-1.1-MIT");
-    expect(pkg.licenseFile).toBe("LICENSE.md");
-    expect(pkg.files).toContain("LICENSE.md");
+  it("declares Apache-2.0 with shipped LICENSE and NOTICE", () => {
+    expect(pkg.license).toBe("Apache-2.0");
+    expect(pkg.licenseFile).toBeUndefined();
+    expect(pkg.files).toContain("LICENSE");
+    expect(pkg.files).toContain("NOTICE");
     expect(pkg.files).toContain("THIRD-PARTY-NOTICES.md");
   });
 
-  it("bundles the FSL-1.1-MIT terms with the confirmed holder and no placeholder", () => {
-    expect(license).toContain("FSL-1.1-MIT");
-    expect(license).toContain("Copyright 2026 Bikram Gupta");
-    expect(license).not.toMatch(/\$\{(year|licensor name)\}/);
+  it("bundles Apache-2.0 and the confirmed copyright holder", () => {
+    expect(license).toContain("Apache License");
+    expect(license).toContain("Version 2.0");
+    expect(notice).toContain("Copyright 2026 Bikram Gupta");
   });
 
-  it("never claims to be open source or UNLICENSED", () => {
+  it("never claims to be UNLICENSED and records deferred provenance", () => {
     const readme = readFileSync(join(root, "README.md"), "utf8");
     expect(readme).not.toContain("UNLICENSED");
     const licenseSection = readme.slice(readme.indexOf("## License"));
-    expect(licenseSection).toContain("fair source");
-    expect(licenseSection).not.toMatch(/\bis open source\b/);
+    expect(licenseSection).toContain("Apache License 2.0");
+    expect(licenseSection).toContain("provenance");
   });
 });
 
@@ -120,10 +126,13 @@ describe("no stale release guidance", () => {
     expect(hits).toEqual([]);
   });
 
-  it("records all four ratified decisions", () => {
-    expect(record).toContain("validation-architect-design");
-    expect(record).toContain("validation-architect/result/v1");
-    expect(record).toContain("First deprecated version");
-    expect(record).toContain("LicenseRef-FSL-1.1-MIT");
+  it("records all seven current rulings and retained schema/alias decisions", () => {
+    for (const ruling of ["1.", "2.", "3.", "4.", "5.", "6.", "7."]) {
+      expect(record).toContain(ruling);
+    }
+    expect(record).toContain("@cormidia/validation-architect@0.5.0");
+    expect(record).toContain("Apache-2.0");
+    expect(history).toContain("validation-architect/result/v1");
+    expect(history).toContain("First deprecated version");
   });
 });

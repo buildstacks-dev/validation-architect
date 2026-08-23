@@ -7,7 +7,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PACKAGES = ["validation-architect", "validation-architect-design"];
+const PACKAGE = "@cormidia/validation-architect";
 
 export function tarballIntegrity(path) {
   return `sha512-${createHash("sha512").update(readFileSync(path)).digest("base64")}`;
@@ -40,14 +40,8 @@ export function classifyViewResult(result, expectedVersion, expectedIntegrity, p
   return { state: "matching", integrity };
 }
 
-export function publicationPlan(core, design) {
-  if (core.state === "missing" && design.state === "matching") {
-    throw new Error("Design is published while core is missing; stop for manual investigation.");
-  }
-  return {
-    publishCore: core.state === "missing",
-    publishDesign: design.state === "missing",
-  };
+export function publicationPlan(state) {
+  return { publish: state.state === "missing" };
 }
 
 function inspect(packageName, version, integrity) {
@@ -60,29 +54,29 @@ function inspect(packageName, version, integrity) {
 }
 
 function usage() {
-  console.error("usage: release-registry.mjs <plan|verify> <version> <core.tgz> <design.tgz>");
+  console.error("usage: release-registry.mjs <plan|verify> <version> <package.tgz>");
   return 2;
 }
 
 export function main(argv) {
-  const [mode, version, corePath, designPath] = argv;
-  if ((mode !== "plan" && mode !== "verify") || !/^\d+\.\d+\.\d+$/.test(version ?? "") || !corePath || !designPath) {
+  const [mode, version, packagePath] = argv;
+  if ((mode !== "plan" && mode !== "verify") || !/^\d+\.\d+\.\d+$/.test(version ?? "") || !packagePath) {
     return usage();
   }
   try {
-    const integrities = [tarballIntegrity(resolve(corePath)), tarballIntegrity(resolve(designPath))];
-    const states = PACKAGES.map((name, index) => inspect(name, version, integrities[index]));
-    console.error(`registry: core=${states[0].state} design=${states[1].state}`);
+    const integrity = tarballIntegrity(resolve(packagePath));
+    const state = inspect(PACKAGE, version, integrity);
+    console.error(`registry: package=${state.state}`);
     if (mode === "verify") {
-      if (states.some((state) => state.state !== "matching")) {
-        throw new Error("Partial or ambiguous publication: both exact tarball integrities are required.");
+      if (state.state !== "matching") {
+        throw new Error("Publication is absent: the exact tarball integrity is required.");
       }
       return 0;
     }
-    const plan = publicationPlan(states[0], states[1]);
+    const plan = publicationPlan(state);
     const output = process.env["GITHUB_OUTPUT"];
     if (output) {
-      appendFileSync(output, `publish_core=${String(plan.publishCore)}\npublish_design=${String(plan.publishDesign)}\n`);
+      appendFileSync(output, `publish=${String(plan.publish)}\n`);
     }
     console.log(JSON.stringify(plan));
     return 0;

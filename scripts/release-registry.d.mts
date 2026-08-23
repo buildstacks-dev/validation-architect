@@ -17,7 +17,6 @@ export function classifyViewResult(
   packageName: string,
 ): RegistryState;
 export function publicationPlan(
-  core: RegistryState,
-  design: RegistryState,
-): { publishCore: boolean; publishDesign: boolean };
+  state: RegistryState,
+): { publish: boolean };
 export function main(argv: string[]): number;

@@ -59,29 +59,45 @@ describe("campaign consolidation capability record", () => {
       "test/orchestrator.test.ts",
       "test/cli-acceptance.test.ts",
       "test/version-compatibility.test.ts",
-      "fixtures",
     ];
     for (const path of removed) expect(existsSync(resolve(root, path)), path).toBe(false);
   });
 
-  it("keeps provider SDKs and live imports outside the core package", () => {
+  it("keeps provider SDKs optional and isolated to the one design adapter", () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
       scripts?: Record<string, string>;
       dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
       devDependencies?: Record<string, string>;
     };
     expect(pkg.scripts?.vda).toBeUndefined();
     expect(pkg.dependencies).toEqual({ yaml: "^2.8.0" });
-    expect(pkg.devDependencies).not.toHaveProperty("@anthropic-ai/claude-agent-sdk");
-    expect(pkg.devDependencies).not.toHaveProperty("@openai/codex-sdk");
+    expect(pkg.peerDependencies).toEqual({
+      "@anthropic-ai/claude-agent-sdk": "0.3.220",
+      "@openai/codex-sdk": "0.146.0",
+    });
+    expect(pkg.peerDependenciesMeta).toEqual({
+      "@anthropic-ai/claude-agent-sdk": { optional: true },
+      "@openai/codex-sdk": { optional: true },
+    });
+    expect(pkg.devDependencies?.["@anthropic-ai/claude-agent-sdk"]).toBe("0.3.220");
+    expect(pkg.devDependencies?.["@openai/codex-sdk"]).toBe("0.146.0");
 
     const sourceFiles = (directory: string): string[] => readdirSync(directory).flatMap((entry) => {
       const path = resolve(directory, entry);
       return statSync(path).isDirectory() ? sourceFiles(path) : path.endsWith(".ts") ? [path] : [];
     });
-    const coreSource = sourceFiles(resolve(root, "src")).map((path) => readFileSync(path, "utf8")).join("\n");
+    const coreSource = sourceFiles(resolve(root, "src"))
+      .filter((path) => !path.includes(`${process.platform === "win32" ? "\\" : "/"}design${process.platform === "win32" ? "\\" : "/"}`))
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
     expect(coreSource).not.toContain("@anthropic-ai/claude-agent-sdk");
     expect(coreSource).not.toContain("@openai/codex-sdk");
+    const providerPort = readFileSync(resolve(root, "src/design/provider-port.ts"), "utf8");
+    expect(providerPort).toContain('import("@anthropic-ai/claude-agent-sdk")');
+    expect(providerPort).toContain('import("@openai/codex-sdk")');
+    expect(providerPort).not.toMatch(/import\s+\{[^}]+\}\s+from\s+"@(?:anthropic-ai\/claude-agent-sdk|openai\/codex-sdk)"/);
   });
 
   it("documents only the consolidated campaign command and state", () => {

@@ -184,7 +184,7 @@ export async function runControlSweep(plan, { cwd, execute = defaultExecute, log
 
 export async function main(target = ".", options = {}) {
   const log = options.log ?? console.log;
-  const api = options.api ?? (await import("validation-architect"));
+  const api = options.api ?? (await import("@cormidia/validation-architect"));
   const repo = createLocalPort(target);
   let graph;
   try {

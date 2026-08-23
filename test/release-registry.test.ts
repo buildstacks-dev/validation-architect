@@ -9,7 +9,7 @@ import {
   tarballIntegrity,
 } from "../scripts/release-registry.mjs";
 
-const version = "0.4.16";
+const version = "0.5.0";
 const integrity = `sha512-${createHash("sha512").update("tarball").digest("base64")}`;
 const processResult = (status: number, stdout: string, stderr = "") => ({ status, stdout, stderr });
 
@@ -20,7 +20,7 @@ describe("release registry reconciliation", () => {
         processResult(1, JSON.stringify({ error: { code: "E404" } }), "npm error code E404"),
         version,
         integrity,
-        "validation-architect",
+        "@cormidia/validation-architect",
       ),
     ).toEqual({ state: "missing" });
     expect(() =>
@@ -28,14 +28,14 @@ describe("release registry reconciliation", () => {
         processResult(1, "", "npm error code ECONNRESET"),
         version,
         integrity,
-        "validation-architect",
+        "@cormidia/validation-architect",
       ),
     ).toThrow(/ambiguous/);
   });
 
   it("accepts only the exact published version and tarball integrity", () => {
     const exact = JSON.stringify({ version, "dist.integrity": integrity });
-    expect(classifyViewResult(processResult(0, exact), version, integrity, "validation-architect")).toEqual({
+    expect(classifyViewResult(processResult(0, exact), version, integrity, "@cormidia/validation-architect")).toEqual({
       state: "matching",
       integrity,
     });
@@ -44,18 +44,16 @@ describe("release registry reconciliation", () => {
         processResult(0, JSON.stringify({ version, "dist.integrity": "sha512-other" })),
         version,
         integrity,
-        "validation-architect",
+        "@cormidia/validation-architect",
       ),
     ).toThrow(/different integrity/);
   });
 
-  it("plans a fresh or core-complete recovery without allowing reverse skew", () => {
+  it("plans publication only when the exact version is absent", () => {
     const missing = { state: "missing" } as const;
     const matching = { state: "matching", integrity } as const;
-    expect(publicationPlan(missing, missing)).toEqual({ publishCore: true, publishDesign: true });
-    expect(publicationPlan(matching, missing)).toEqual({ publishCore: false, publishDesign: true });
-    expect(publicationPlan(matching, matching)).toEqual({ publishCore: false, publishDesign: false });
-    expect(() => publicationPlan(missing, matching)).toThrow(/Design is published while core is missing/);
+    expect(publicationPlan(missing)).toEqual({ publish: true });
+    expect(publicationPlan(matching)).toEqual({ publish: false });
   });
 
   it("computes npm-compatible sha512 SRI from the exact tarball bytes", () => {
